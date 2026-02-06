@@ -1,4 +1,18 @@
 import { useEffect, useState } from "react";
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
+  Spinner,
+  Text,
+  makeStyles,
+  tokens,
+} from "@fluentui/react-components";
+import { ArrowClockwiseRegular, SettingsRegular } from "@fluentui/react-icons";
 import { useSettings } from "./hooks/useSettings";
 import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
@@ -6,7 +20,76 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { SearchBox } from "./components/SearchBox";
 import { GhostList } from "./components/GhostList";
 
+const useStyles = makeStyles({
+  app: {
+    maxWidth: "900px",
+    margin: "0 auto",
+    minHeight: "100vh",
+    padding: "20px 16px 28px",
+  },
+  shell: {
+    borderRadius: tokens.borderRadiusXLarge,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow16,
+    backdropFilter: "blur(16px)",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    padding: "20px",
+    "@media (max-width: 600px)": {
+      padding: "16px",
+    },
+  },
+  loading: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: "12px",
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  title: {
+    fontSize: tokens.fontSizeHero800,
+    lineHeight: tokens.lineHeightHero800,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  toolbar: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "8px",
+    alignItems: "stretch",
+    "@media (max-width: 600px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  content: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+  },
+  emptyState: {
+    borderRadius: tokens.borderRadiusXLarge,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground2,
+    boxShadow: tokens.shadow4,
+    padding: "24px",
+    textAlign: "center",
+  },
+  dialogSurface: {
+    width: "min(860px, calc(100vw - 24px))",
+    boxShadow: tokens.shadow64,
+    backdropFilter: "blur(18px)",
+  },
+});
+
 function App() {
+  const styles = useStyles();
   const {
     sspPath,
     saveSspPath,
@@ -27,80 +110,85 @@ function App() {
   }, [settingsLoading, sspPath]);
 
   if (settingsLoading) {
-    return <div className="app-loading">読み込み中...</div>;
+    return (
+      <div className={styles.loading}>
+        <Spinner label="読み込み中..." />
+      </div>
+    );
   }
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Ghost Launcher</h1>
-        <div className="header-actions">
-          <button
-            className="btn btn-secondary settings-trigger"
+    <div className={styles.app}>
+      <div className={styles.shell}>
+        <header className={styles.header}>
+          <Text as="h1" className={styles.title}>
+            Ghost Launcher
+          </Text>
+          <Button
+            icon={<SettingsRegular />}
+            appearance="secondary"
             onClick={() => setSettingsOpen(true)}
           >
-            <svg
-              className="settings-icon"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                fill="currentColor"
-                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.2A3.2 3.2 0 1 1 12 8.8a3.2 3.2 0 0 1 0 6.4Z"
-              />
-            </svg>
             設定
-          </button>
-        </div>
-      </header>
+          </Button>
+        </header>
 
-      {settingsOpen && (
-        <div className="settings-modal-overlay" onClick={() => setSettingsOpen(false)}>
-          <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="settings-modal-header">
-              <h2>設定</h2>
-              <button
-                className="btn btn-secondary btn-small"
-                onClick={() => setSettingsOpen(false)}
+        {sspPath && (
+          <>
+            <div className={styles.toolbar}>
+              <SearchBox value={searchQuery} onChange={setSearchQuery} />
+              <Button
+                icon={<ArrowClockwiseRegular />}
+                appearance="secondary"
+                onClick={refresh}
+                disabled={ghostsLoading}
               >
-                閉じる
-              </button>
+                再読込
+              </Button>
             </div>
-            <SettingsPanel
-              sspPath={sspPath}
-              onPathChange={saveSspPath}
-              ghostFolders={ghostFolders}
-              onAddFolder={addGhostFolder}
-              onRemoveFolder={removeGhostFolder}
-            />
-          </div>
-        </div>
-      )}
+            <div className={styles.content}>
+              <GhostList
+                ghosts={filteredGhosts}
+                sspPath={sspPath}
+                loading={ghostsLoading}
+                error={error}
+              />
+            </div>
+          </>
+        )}
 
-      {sspPath && (
-        <>
-          <div className="toolbar">
-            <SearchBox value={searchQuery} onChange={setSearchQuery} />
-            <button className="btn btn-secondary" onClick={refresh} disabled={ghostsLoading}>
-              再読込
-            </button>
+        {!sspPath && (
+          <div className={styles.emptyState}>
+            <Text>SSPフォルダを選択してください</Text>
           </div>
-          <GhostList
-            ghosts={filteredGhosts}
-            sspPath={sspPath}
-            loading={ghostsLoading}
-            error={error}
-          />
-        </>
-      )}
+        )}
+      </div>
 
-      {!sspPath && (
-        <div className="ghost-list-message">
-          SSPフォルダを選択してください
-        </div>
-      )}
+      <Dialog
+        modalType="modal"
+        open={settingsOpen}
+        onOpenChange={(_: unknown, data: { open: boolean }) => setSettingsOpen(data.open)}
+      >
+        <DialogSurface className={styles.dialogSurface}>
+          <DialogBody>
+            <DialogTitle>設定</DialogTitle>
+            <DialogContent>
+              <SettingsPanel
+                sspPath={sspPath}
+                onPathChange={saveSspPath}
+                ghostFolders={ghostFolders}
+                onAddFolder={addGhostFolder}
+                onRemoveFolder={removeGhostFolder}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setSettingsOpen(false)}>
+                閉じる
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   );
 }

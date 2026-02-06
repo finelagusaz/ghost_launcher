@@ -1,3 +1,6 @@
+import { Input } from "@fluentui/react-components";
+import { SearchRegular } from "@fluentui/react-icons";
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -5,14 +8,11 @@ interface Props {
 
 export function SearchBox({ value, onChange }: Props) {
   return (
-    <div className="search-box">
-      <input
-        type="text"
-        className="search-input"
-        placeholder="ゴースト名で検索..."
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
+    <Input
+      contentBefore={<SearchRegular />}
+      placeholder="ゴースト名で検索..."
+      value={value}
+      onChange={(_: unknown, data: { value: string }) => onChange(data.value)}
+    />
   );
 }

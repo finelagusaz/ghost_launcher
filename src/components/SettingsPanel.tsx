@@ -1,4 +1,13 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  Button,
+  Field,
+  Input,
+  Text,
+  makeStyles,
+  tokens,
+} from "@fluentui/react-components";
+import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
 
 interface Props {
   sspPath: string | null;
@@ -8,6 +17,54 @@ interface Props {
   onRemoveFolder: (folder: string) => void;
 }
 
+const useStyles = makeStyles({
+  panel: {
+    borderRadius: tokens.borderRadiusLarge,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow4,
+    backdropFilter: "blur(12px)",
+    padding: "14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+  },
+  row: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "8px",
+    alignItems: "end",
+    "@media (max-width: 600px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  folderList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  folderRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "8px",
+    alignItems: "center",
+    "@media (max-width: 600px)": {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  empty: {
+    color: tokens.colorNeutralForeground3,
+    fontStyle: "italic",
+  },
+});
+
 export function SettingsPanel({
   sspPath,
   onPathChange,
@@ -15,6 +72,8 @@ export function SettingsPanel({
   onAddFolder,
   onRemoveFolder,
 }: Props) {
+  const styles = useStyles();
+
   const handleSelectFolder = async () => {
     const selected = await open({
       directory: true,
@@ -38,40 +97,40 @@ export function SettingsPanel({
   };
 
   return (
-    <div className="settings-panel">
-      <div className="settings-row">
-        <label className="settings-label">SSPフォルダ:</label>
-        <span className="settings-path" title={sspPath ?? undefined}>
-          {sspPath ?? "未設定"}
-        </span>
-        <button className="btn btn-secondary" onClick={handleSelectFolder}>
+    <div className={styles.panel}>
+      <div className={styles.row}>
+        <Field label="SSPフォルダ">
+          <Input readOnly value={sspPath ?? "未設定"} />
+        </Field>
+        <Button icon={<FolderOpenRegular />} appearance="secondary" onClick={handleSelectFolder}>
           選択
-        </button>
+        </Button>
       </div>
 
-      <div className="settings-section">
-        <div className="settings-section-header">
-          <label className="settings-label">追加ゴーストフォルダ:</label>
-          <button className="btn btn-secondary btn-small" onClick={handleAddGhostFolder}>
+      <div>
+        <div className={styles.sectionHeader}>
+          <Text weight="semibold">追加ゴーストフォルダ</Text>
+          <Button icon={<AddRegular />} appearance="secondary" onClick={handleAddGhostFolder}>
             追加
-          </button>
+          </Button>
         </div>
         {ghostFolders.length === 0 && (
-          <div className="settings-empty">追加フォルダなし</div>
+          <Text className={styles.empty}>追加フォルダなし</Text>
         )}
-        {ghostFolders.map((folder) => (
-          <div key={folder} className="settings-folder-row">
-            <span className="settings-path" title={folder}>
-              {folder}
-            </span>
-            <button
-              className="btn btn-danger btn-small"
-              onClick={() => onRemoveFolder(folder)}
-            >
-              削除
-            </button>
-          </div>
-        ))}
+        <div className={styles.folderList}>
+          {ghostFolders.map((folder) => (
+            <div key={folder} className={styles.folderRow}>
+              <Input readOnly value={folder} />
+              <Button
+                icon={<DeleteRegular />}
+                appearance="outline"
+                onClick={() => onRemoveFolder(folder)}
+              >
+                削除
+              </Button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
