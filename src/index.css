@@ -82,6 +82,54 @@ body {
   color: var(--text-primary);
 }
 
+/* Ghost Folder Settings Section */
+.settings-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.settings-folder-row .settings-path {
+  flex: 1;
+}
+
+.settings-empty {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--accent);
+  color: white;
+}
+
 /* Toolbar */
 .toolbar {
   display: flex;
@@ -225,4 +273,10 @@ body {
   font-size: 0.75rem;
   color: var(--accent);
   margin-top: 4px;
+}
+
+.ghost-source-badge {
+  color: var(--accent);
+  font-size: 0.7rem;
+  margin-left: 4px;
 }

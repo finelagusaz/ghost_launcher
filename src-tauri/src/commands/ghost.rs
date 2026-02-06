@@ -11,24 +11,18 @@ pub struct Ghost {
     pub directory_name: String,
     /// ゴーストのフルパス
     pub path: String,
+    /// ゴーストの出自（"ssp" or 追加フォルダのパス）
+    pub source: String,
 }
 
-/// SSP フォルダ内の ghost/ ディレクトリをスキャンし、ゴースト一覧を返す
-#[tauri::command]
-pub fn scan_ghosts(ssp_path: String) -> Result<Vec<Ghost>, String> {
-    let ghost_dir = Path::new(&ssp_path).join("ghost");
-
-    if !ghost_dir.exists() {
-        return Err(format!(
-            "ghost フォルダが見つかりません: {}",
-            ghost_dir.display()
-        ));
-    }
-
+/// 指定ディレクトリ内のゴーストサブディレクトリをスキャンする
+fn scan_ghost_dir(parent_dir: &Path, source: &str) -> Vec<Ghost> {
     let mut ghosts = Vec::new();
 
-    let entries =
-        fs::read_dir(&ghost_dir).map_err(|e| format!("ghost フォルダの読み取りに失敗: {}", e))?;
+    let entries = match fs::read_dir(parent_dir) {
+        Ok(e) => e,
+        Err(_) => return ghosts,
+    };
 
     for entry in entries {
         let entry = match entry {
@@ -66,7 +60,35 @@ pub fn scan_ghosts(ssp_path: String) -> Result<Vec<Ghost>, String> {
             name,
             directory_name,
             path: path.to_string_lossy().into_owned(),
+            source: source.to_string(),
         });
+    }
+
+    ghosts
+}
+
+/// SSP フォルダ内の ghost/ ディレクトリ + 追加フォルダをスキャンし、ゴースト一覧を返す
+#[tauri::command]
+pub fn scan_ghosts(ssp_path: String, additional_folders: Vec<String>) -> Result<Vec<Ghost>, String> {
+    let ghost_dir = Path::new(&ssp_path).join("ghost");
+
+    if !ghost_dir.exists() {
+        return Err(format!(
+            "ghost フォルダが見つかりません: {}",
+            ghost_dir.display()
+        ));
+    }
+
+    // SSP の ghost/ ディレクトリをスキャン
+    let mut ghosts = scan_ghost_dir(&ghost_dir, "ssp");
+
+    // 追加フォルダをスキャン
+    for folder in &additional_folders {
+        let folder_path = Path::new(folder);
+        if folder_path.exists() && folder_path.is_dir() {
+            let mut additional = scan_ghost_dir(folder_path, folder);
+            ghosts.append(&mut additional);
+        }
     }
 
     // 名前でソート

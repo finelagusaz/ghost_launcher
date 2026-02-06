@@ -7,8 +7,15 @@ import { SearchBox } from "./components/SearchBox";
 import { GhostList } from "./components/GhostList";
 
 function App() {
-  const { sspPath, saveSspPath, loading: settingsLoading } = useSettings();
-  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath);
+  const {
+    sspPath,
+    saveSspPath,
+    ghostFolders,
+    addGhostFolder,
+    removeGhostFolder,
+    loading: settingsLoading,
+  } = useSettings();
+  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const filteredGhosts = useSearch(ghosts, searchQuery);
 
@@ -22,7 +29,13 @@ function App() {
         <h1>Ghost Launcher</h1>
       </header>
 
-      <SettingsPanel sspPath={sspPath} onPathChange={saveSspPath} />
+      <SettingsPanel
+        sspPath={sspPath}
+        onPathChange={saveSspPath}
+        ghostFolders={ghostFolders}
+        onAddFolder={addGhostFolder}
+        onRemoveFolder={removeGhostFolder}
+      />
 
       {sspPath && (
         <>

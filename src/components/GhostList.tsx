@@ -25,7 +25,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     <div className="ghost-list">
       <div className="ghost-count">{ghosts.length} 体のゴースト</div>
       {ghosts.map((ghost) => (
-        <GhostCard key={ghost.directory_name} ghost={ghost} sspPath={sspPath} />
+        <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
       ))}
     </div>
   );

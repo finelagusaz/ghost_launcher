@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Ghost } from "../types";
 
-export function useGhosts(sspPath: string | null) {
+export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const [ghosts, setGhosts] = useState<Ghost[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +15,10 @@ export function useGhosts(sspPath: string | null) {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<Ghost[]>("scan_ghosts", { sspPath });
+      const result = await invoke<Ghost[]>("scan_ghosts", {
+        sspPath,
+        additionalFolders: ghostFolders,
+      });
       setGhosts(result);
     } catch (e) {
       setError(String(e));
@@ -23,7 +26,7 @@ export function useGhosts(sspPath: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [sspPath]);
+  }, [sspPath, ghostFolders]);
 
   useEffect(() => {
     refresh();

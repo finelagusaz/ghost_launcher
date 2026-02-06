@@ -18,6 +18,7 @@ export function GhostCard({ ghost, sspPath }: Props) {
       await invoke("launch_ghost", {
         sspPath,
         ghostDirectoryName: ghost.directory_name,
+        ghostSource: ghost.source,
       });
     } catch (e) {
       setError(String(e));
@@ -30,7 +31,12 @@ export function GhostCard({ ghost, sspPath }: Props) {
     <div className="ghost-card">
       <div className="ghost-info">
         <span className="ghost-name">{ghost.name}</span>
-        <span className="ghost-dir">{ghost.directory_name}</span>
+        <span className="ghost-dir">
+          {ghost.directory_name}
+          {ghost.source !== "ssp" && (
+            <span className="ghost-source-badge">(外部)</span>
+          )}
+        </span>
       </div>
       <div className="ghost-actions">
         <button

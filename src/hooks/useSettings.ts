@@ -5,6 +5,7 @@ const store = new LazyStore("settings.json");
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
+  const [ghostFolders, setGhostFolders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -12,8 +13,11 @@ export function useSettings() {
       try {
         const path = await store.get<string>("ssp_path");
         setSspPath(path ?? null);
+        const folders = await store.get<string[]>("ghost_folders");
+        setGhostFolders(folders ?? []);
       } catch {
         setSspPath(null);
+        setGhostFolders([]);
       } finally {
         setLoading(false);
       }
@@ -27,5 +31,22 @@ export function useSettings() {
     setSspPath(path);
   }, []);
 
-  return { sspPath, saveSspPath, loading };
+  const addGhostFolder = useCallback(async (folder: string) => {
+    setGhostFolders((prev) => {
+      if (prev.includes(folder)) return prev;
+      const updated = [...prev, folder];
+      store.set("ghost_folders", updated).then(() => store.save());
+      return updated;
+    });
+  }, []);
+
+  const removeGhostFolder = useCallback(async (folder: string) => {
+    setGhostFolders((prev) => {
+      const updated = prev.filter((f) => f !== folder);
+      store.set("ghost_folders", updated).then(() => store.save());
+      return updated;
+    });
+  }, []);
+
+  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading };
 }
