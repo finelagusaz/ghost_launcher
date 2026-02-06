@@ -21,10 +21,10 @@ function App() {
   const filteredGhosts = useSearch(ghosts, searchQuery);
 
   useEffect(() => {
-    if (!sspPath) {
+    if (!settingsLoading && !sspPath) {
       setSettingsOpen(true);
     }
-  }, [sspPath]);
+  }, [settingsLoading, sspPath]);
 
   if (settingsLoading) {
     return <div className="app-loading">読み込み中...</div>;
