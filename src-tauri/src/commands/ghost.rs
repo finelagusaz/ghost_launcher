@@ -16,13 +16,16 @@ pub struct Ghost {
 }
 
 /// 指定ディレクトリ内のゴーストサブディレクトリをスキャンする
-fn scan_ghost_dir(parent_dir: &Path, source: &str) -> Vec<Ghost> {
+fn scan_ghost_dir(parent_dir: &Path, source: &str) -> Result<Vec<Ghost>, String> {
     let mut ghosts = Vec::new();
 
-    let entries = match fs::read_dir(parent_dir) {
-        Ok(e) => e,
-        Err(_) => return ghosts,
-    };
+    let entries = fs::read_dir(parent_dir).map_err(|e| {
+        format!(
+            "ディレクトリを読み取れませんでした ({}): {}",
+            parent_dir.display(),
+            e
+        )
+    })?;
 
     for entry in entries {
         let entry = match entry {
@@ -64,7 +67,7 @@ fn scan_ghost_dir(parent_dir: &Path, source: &str) -> Vec<Ghost> {
         });
     }
 
-    ghosts
+    Ok(ghosts)
 }
 
 /// SSP フォルダ内の ghost/ ディレクトリ + 追加フォルダをスキャンし、ゴースト一覧を返す
@@ -80,14 +83,15 @@ pub fn scan_ghosts(ssp_path: String, additional_folders: Vec<String>) -> Result<
     }
 
     // SSP の ghost/ ディレクトリをスキャン
-    let mut ghosts = scan_ghost_dir(&ghost_dir, "ssp");
+    let mut ghosts = scan_ghost_dir(&ghost_dir, "ssp")?;
 
     // 追加フォルダをスキャン
     for folder in &additional_folders {
         let folder_path = Path::new(folder);
         if folder_path.exists() && folder_path.is_dir() {
-            let mut additional = scan_ghost_dir(folder_path, folder);
-            ghosts.append(&mut additional);
+            if let Ok(mut additional) = scan_ghost_dir(folder_path, folder) {
+                ghosts.append(&mut additional);
+            }
         }
     }
 

@@ -7,9 +7,14 @@ interface Props {
   sspPath: string;
 }
 
+function getSourceFolderLabel(source: string): string {
+  return source.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source;
+}
+
 export function GhostCard({ ghost, sspPath }: Props) {
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sourceFolderLabel = ghost.source !== "ssp" ? getSourceFolderLabel(ghost.source) : null;
 
   const handleLaunch = async () => {
     setLaunching(true);
@@ -33,8 +38,8 @@ export function GhostCard({ ghost, sspPath }: Props) {
         <span className="ghost-name">{ghost.name}</span>
         <span className="ghost-dir">
           {ghost.directory_name}
-          {ghost.source !== "ssp" && (
-            <span className="ghost-source-badge">(外部)</span>
+          {sourceFolderLabel && (
+            <span className="ghost-source-badge">({sourceFolderLabel})</span>
           )}
         </span>
       </div>
