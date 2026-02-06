@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\workspace\\\\ghost_launcher\")",
+      "Bash(npm create tauri-app@latest . -- --template react-ts --yes)",
+      "Bash(where npm)",
+      "Bash(where:*)",
+      "Bash(cmd /c \"where npm\")",
+      "Bash(cmd /c \"npm --version\")",
+      "Bash(powershell -Command \"npm --version\")",
+      "Bash(powershell -Command \"cargo --version\")",
+      "Bash(powershell -Command \"Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell -Command \"C:\\\\nvm4w\\\\nodejs\\\\npm --version\")",
+      "Bash(powershell -Command \"Get-ChildItem C:\\\\nvm4w\\\\nodejs\")",
+      "Bash(powershell:*)",
+      "Bash(echo:*)",
+      "Bash(export PATH=\"/c/nvm4w/nodejs:$PATH\")",
+      "Bash(npm:*)",
+      "Bash(/c/nvm4w/nodejs/node.exe --version)",
+      "Bash(/c/nvm4w/nodejs/node.exe /c/nvm4w/nodejs/node_modules/npm/bin/npm-cli.js --version)",
+      "Bash(nvm list:*)",
+      "Bash(node --version:*)",
+      "Bash(cmd.exe /c \"nvm list\")",
+      "Bash(cmd.exe /c \"node --version\")",
+      "Bash(cmd.exe /c \"npm --version\")",
+      "Bash(cmd.exe:*)",
+      "Bash(printf:*)",
+      "Bash(env)",
+      "Bash(ls:*)",
+      "Bash(rustc:*)",
+      "Bash(cargo --version:*)",
+      "Bash(cmd /c \"node --version && npm --version && rustc --version && cargo --version\")",
+      "Bash(cmd /c \"node -e \"\"console.log\\(''node:''+process.version\\)\"\" && npm -v && rustc --version && cargo --version\")",
+      "Bash(/c/nvm4w/nodejs/node.exe -e \"console.log\\(''node ok''\\)\")",
+      "Bash(export PATH=\"/c/Program Files/nodejs:/c/Users/$USER/.cargo/bin:/c/nvm4w/nodejs:$PATH\")",
+      "Bash(tee:*)"
+    ]
+  }
+}
