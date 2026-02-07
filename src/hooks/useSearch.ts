@@ -1,14 +1,12 @@
 import { useMemo } from "react";
-import type { Ghost } from "../types";
+import type { GhostView } from "../types";
 
-export function useSearch(ghosts: Ghost[], query: string): Ghost[] {
+export function useSearch(ghosts: GhostView[], query: string): GhostView[] {
   return useMemo(() => {
     if (!query.trim()) return ghosts;
     const lowerQuery = query.toLowerCase();
     return ghosts.filter(
-      (g) =>
-        g.name.toLowerCase().includes(lowerQuery) ||
-        g.directory_name.toLowerCase().includes(lowerQuery)
+      (g) => g.name_lower.includes(lowerQuery) || g.directory_name_lower.includes(lowerQuery)
     );
   }, [ghosts, query]);
 }

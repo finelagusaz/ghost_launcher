@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import {
   Button,
   Dialog,
@@ -101,7 +101,8 @@ function App() {
   const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const filteredGhosts = useSearch(ghosts, searchQuery);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const filteredGhosts = useSearch(ghosts, deferredSearchQuery);
 
   useEffect(() => {
     if (!settingsLoading && !sspPath) {

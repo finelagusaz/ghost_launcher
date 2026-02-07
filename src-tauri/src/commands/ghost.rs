@@ -43,12 +43,8 @@ fn scan_ghost_dir(parent_dir: &Path, source: &str) -> Result<Vec<Ghost>, String>
             None => continue,
         };
 
-        // ghost/master/descript.txt を探す
+        // ghost/master/descript.txt を読む
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        if !descript_path.exists() {
-            continue;
-        }
-
         let fields = match descript::parse_descript(&descript_path) {
             Ok(f) => f,
             Err(_) => continue,
@@ -88,7 +84,7 @@ pub fn scan_ghosts(ssp_path: String, additional_folders: Vec<String>) -> Result<
     // 追加フォルダをスキャン
     for folder in &additional_folders {
         let folder_path = Path::new(folder);
-        if folder_path.exists() && folder_path.is_dir() {
+        if folder_path.is_dir() {
             if let Ok(mut additional) = scan_ghost_dir(folder_path, folder) {
                 ghosts.append(&mut additional);
             }
@@ -96,7 +92,7 @@ pub fn scan_ghosts(ssp_path: String, additional_folders: Vec<String>) -> Result<
     }
 
     // 名前でソート
-    ghosts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    ghosts.sort_by_cached_key(|g| g.name.to_lowercase());
 
     Ok(ghosts)
 }
