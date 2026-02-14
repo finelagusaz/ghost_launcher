@@ -27,16 +27,23 @@ SSP 本体の `ghost` フォルダに加え、任意の追加フォルダにあ�
 
 ## 動作環境
 
-- OS: Windows（`ssp.exe` 起動前提のため）
+- OS: Windows
+- WebView2 ランタイム
+- Microsoft Visual C++ ランタイム（`VCRUNTIME140.dll` / `VCRUNTIME140_1.dll` を含む環境）
+- SSP 本体（`ssp.exe` が存在すること）
+
+## 開発方法
+
+### 開発環境
+
+- OS: Windows
 - Node.js: 20 系推奨
 - npm: Node.js 同梱版で可
 - Rust: stable
 - Tauri: v2
+- Tauri の前提ツール（Visual Studio C++ Build Tools など）
 
-開発前に Tauri の前提ツール（Visual Studio C++ Build Tools など）をセットアップしてください。  
 参考: https://tauri.app/start/prerequisites/
-
-## 開発方法
 
 ### 1. セットアップ
 
