@@ -28,9 +28,14 @@ const useStyles = makeStyles({
   },
   row: {
     display: "grid",
-    gridTemplateColumns: "1fr auto",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
     gap: "16px",
     alignItems: "center",
+    "@media (max-width: 600px)": {
+      gridTemplateColumns: "1fr",
+      gap: "10px",
+      alignItems: "stretch",
+    },
   },
   info: {
     minWidth: 0,
@@ -48,12 +53,26 @@ const useStyles = makeStyles({
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
+    minWidth: 0,
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
     overflow: "hidden",
+    "@media (max-width: 600px)": {
+      display: "flex",
+      flexWrap: "wrap",
+      whiteSpace: "normal",
+      textOverflow: "clip",
+      overflow: "visible",
+    },
   },
   sourceBadge: {
     flexShrink: 0,
+  },
+  launchButton: {
+    flexShrink: 0,
+    "@media (max-width: 600px)": {
+      width: "100%",
+    },
   },
   error: {
     color: tokens.colorPaletteRedForeground1,
@@ -110,6 +129,7 @@ export function GhostCard({ ghost, sspPath }: Props) {
           </Text>
         </div>
         <Button
+          className={styles.launchButton}
           icon={<PlayRegular />}
           appearance="primary"
           onClick={handleLaunch}
