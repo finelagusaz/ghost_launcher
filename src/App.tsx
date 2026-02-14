@@ -72,7 +72,7 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
     "@media (max-width: 600px)": {
-      justifyContent: "flex-end",
+      justifyContent: "flex-start",
     },
   },
   title: {

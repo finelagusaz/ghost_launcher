@@ -59,16 +59,20 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
+  const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
+
   useEffect(() => {
     setScrollTop(0);
     const viewport = viewportRef.current;
     if (viewport && viewport.scrollTop !== 0) {
       viewport.scrollTop = 0;
     }
-  }, [ghosts]);
+  }, [ghostsFingerprint]);
+
+  const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
 
   useEffect(() => {
-    if (ghosts.length < VIRTUALIZE_THRESHOLD) {
+    if (!shouldVirtualize) {
       return;
     }
 
@@ -98,7 +102,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     return () => {
       observer.disconnect();
     };
-  }, [ghosts.length]);
+  }, [shouldVirtualize]);
 
   if (loading) {
     return (

@@ -14,11 +14,4 @@ body {
   font-family: "Segoe UI Variable Text", "Segoe UI", "Meiryo", sans-serif;
   line-height: 1.5;
   overflow-y: auto;
-  background-color: #f3f3f3;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #202020;
-  }
 }

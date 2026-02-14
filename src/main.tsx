@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
+import { FluentProvider, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import App from "./App";
 import "./index.css";
 import { useSystemTheme } from "./hooks/useSystemTheme";
@@ -9,7 +9,10 @@ function Root() {
   const theme = useSystemTheme();
 
   return (
-    <FluentProvider theme={theme === "dark" ? webDarkTheme : webLightTheme}>
+    <FluentProvider
+      theme={theme === "dark" ? webDarkTheme : webLightTheme}
+      style={{ backgroundColor: tokens.colorNeutralBackground3, minHeight: "100vh" }}
+    >
       <App />
     </FluentProvider>
   );

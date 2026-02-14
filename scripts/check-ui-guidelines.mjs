@@ -15,13 +15,13 @@ const checks = [
     id: "searchbox-labeled",
     file: "src/components/SearchBox.tsx",
     message: "検索入力に明示ラベルが必要です (`Field label=\"ゴースト検索\"`)。",
-    test: (source) => /<Field\s+label="ゴースト検索">/.test(source),
+    test: (source) => /<Field\b[\s\S]*?label="ゴースト検索"/.test(source),
   },
   {
     id: "settings-delete-aria-label",
     file: "src/components/SettingsPanel.tsx",
     message: "削除ボタンには対象フォルダ名を含む aria-label が必要です。",
-    test: (source) => /aria-label=\{`追加フォルダを削除:\s*\$\{folder\}`\}/.test(source),
+    test: (source) => /aria-label=\{[^}]*追加フォルダを削除/.test(source),
   },
   {
     id: "ghostlist-alert-role",

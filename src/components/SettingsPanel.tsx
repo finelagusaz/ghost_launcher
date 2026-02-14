@@ -103,17 +103,21 @@ export function SettingsPanel({
   };
 
   const handleRemoveFolder = async (folder: string) => {
-    const approved = await confirm(
-      `このフォルダを一覧対象から削除しますか？\n${folder}`,
-      {
-        title: "追加フォルダの削除",
-        kind: "warning",
-        okLabel: "削除",
-        cancelLabel: "キャンセル",
-      },
-    );
-    if (approved) {
-      onRemoveFolder(folder);
+    try {
+      const approved = await confirm(
+        `このフォルダを一覧対象から削除しますか？\n${folder}`,
+        {
+          title: "追加フォルダの削除",
+          kind: "warning",
+          okLabel: "削除",
+          cancelLabel: "キャンセル",
+        },
+      );
+      if (approved) {
+        onRemoveFolder(folder);
+      }
+    } catch (e) {
+      console.error("フォルダ削除の確認中にエラーが発生しました", e);
     }
   };
 
