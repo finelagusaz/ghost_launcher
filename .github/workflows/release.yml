@@ -33,10 +33,40 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $releaseDir = "src-tauri/target/release"
+          $stageDir = "dist-release"
+          $zipName = "ghost-launcher-${{ github.ref_name }}-windows-x64.zip"
+
+          if (Test-Path $stageDir) {
+            Remove-Item -Recurse -Force $stageDir
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+
+          $exeCandidates = Get-ChildItem -Path $releaseDir -Filter *.exe -File | Where-Object {
+            $_.Name -notmatch "^(unins.*|.*setup.*|.*updater.*)$"
+          }
+
+          if ($exeCandidates.Count -ne 1) {
+            Write-Error "Expected exactly one app executable, found $($exeCandidates.Count)."
+            $exeCandidates | ForEach-Object { Write-Host " - $($_.Name)" }
+            exit 1
+          }
+
+          Copy-Item $exeCandidates[0].FullName -Destination (Join-Path $stageDir $exeCandidates[0].Name) -Force
+          Get-Content README.md | Set-Content -Path (Join-Path $stageDir "readme.txt")
+
+          if (Test-Path $zipName) {
+            Remove-Item -Force $zipName
+          }
+          Compress-Archive -Path "$stageDir/*" -DestinationPath $zipName
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            src-tauri/target/release/bundle/**/*
+            ghost-launcher-${{ github.ref_name }}-windows-x64.zip
