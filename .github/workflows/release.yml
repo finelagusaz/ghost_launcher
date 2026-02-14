@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        run: npm run tauri build
+        run: npx tauri build --no-bundle
 
       - name: Package portable ZIP
         shell: pwsh
