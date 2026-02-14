@@ -25,6 +25,7 @@ const useStyles = makeStyles({
     maxHeight: "60vh",
     minHeight: "240px",
     overflowY: "auto",
+    scrollbarGutter: "stable",
     padding: "8px",
     borderRadius: tokens.borderRadiusLarge,
     border: `1px solid ${tokens.colorNeutralStroke1}`,

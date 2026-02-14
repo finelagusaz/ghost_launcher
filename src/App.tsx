@@ -100,7 +100,7 @@ const useStyles = makeStyles({
     textAlign: "center",
   },
   dialogSurface: {
-    width: "min(760px, calc(100vw - 24px))",
+    width: "min(760px, calc(100% - 24px))",
     borderRadius: tokens.borderRadiusLarge,
     boxShadow: tokens.shadow16,
   },
