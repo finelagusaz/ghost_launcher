@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
 import type { Ghost } from "../types";
@@ -13,34 +13,37 @@ interface Props {
 const VIRTUALIZE_THRESHOLD = 80;
 const ESTIMATED_ROW_HEIGHT = 100;
 const OVERSCAN_ROWS = 6;
+const DEFAULT_VIEWPORT_HEIGHT = 420;
 
 const useStyles = makeStyles({
   root: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "12px",
   },
   viewport: {
-    maxHeight: "62vh",
-    minHeight: "220px",
+    maxHeight: "60vh",
+    minHeight: "240px",
     overflowY: "auto",
-    paddingRight: "2px",
+    padding: "8px",
+    borderRadius: tokens.borderRadiusLarge,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1,
   },
   stack: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
   },
   count: {
     color: tokens.colorNeutralForeground3,
   },
   state: {
-    borderRadius: tokens.borderRadiusXLarge,
+    borderRadius: tokens.borderRadiusLarge,
     border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-    boxShadow: tokens.shadow4,
-    backdropFilter: "blur(10px)",
+    backgroundColor: tokens.colorNeutralBackground2,
     padding: "24px",
+    minHeight: "140px",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -53,6 +56,53 @@ const useStyles = makeStyles({
 export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const styles = useStyles();
   const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
+
+  useEffect(() => {
+    setScrollTop(0);
+    const viewport = viewportRef.current;
+    if (viewport && viewport.scrollTop !== 0) {
+      viewport.scrollTop = 0;
+    }
+  }, [ghostsFingerprint]);
+
+  const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
+
+  useEffect(() => {
+    if (!shouldVirtualize) {
+      return;
+    }
+
+    const element = viewportRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateHeight = () => {
+      const nextHeight = element.clientHeight;
+      if (nextHeight > 0) {
+        setViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+      }
+    };
+
+    updateHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [shouldVirtualize]);
 
   if (loading) {
     return (
@@ -65,7 +115,9 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   if (error) {
     return (
       <div className={styles.state}>
-        <Text className={styles.error}>{error}</Text>
+        <Text role="alert" className={styles.error}>
+          {error}
+        </Text>
       </div>
     );
   }
@@ -81,7 +133,9 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   if (ghosts.length < VIRTUALIZE_THRESHOLD) {
     return (
       <div className={styles.root}>
-        <Text className={styles.count}>{ghosts.length} 体のゴースト</Text>
+        <Text className={styles.count} aria-live="polite">
+          {ghosts.length} 体のゴースト
+        </Text>
         <div className={styles.stack}>
           {ghosts.map((ghost) => (
             <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
@@ -91,8 +145,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     );
   }
 
-  const viewportHeight = window.innerHeight * 0.62;
-  const visibleRowCount = Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT);
+  const visibleRowCount = Math.max(1, Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT));
   const startIndex = Math.max(0, Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN_ROWS);
   const endIndex = Math.min(
     ghosts.length,
@@ -109,8 +162,14 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
 
   return (
     <div className={styles.root}>
-      <Text className={styles.count}>{ghosts.length} 体のゴースト</Text>
-      <div className={styles.viewport} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+      <Text className={styles.count} aria-live="polite">
+        {ghosts.length} 体のゴースト
+      </Text>
+      <div
+        className={styles.viewport}
+        ref={viewportRef}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
         <div style={{ height: topSpacer }} />
         <div className={styles.stack}>
           {visibleGhosts.map((ghost) => (

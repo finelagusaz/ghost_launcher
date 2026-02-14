@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check:ui-guidelines": "node scripts/check-ui-guidelines.mjs",
+    "test:ui-guidelines-check": "node --test scripts/check-ui-guidelines.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

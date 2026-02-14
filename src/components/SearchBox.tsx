@@ -1,4 +1,4 @@
-import { Input } from "@fluentui/react-components";
+import { Field, Input, makeStyles } from "@fluentui/react-components";
 import { SearchRegular } from "@fluentui/react-icons";
 
 interface Props {
@@ -6,13 +6,25 @@ interface Props {
   onChange: (value: string) => void;
 }
 
+const useStyles = makeStyles({
+  root: {
+    maxWidth: "480px",
+  },
+});
+
 export function SearchBox({ value, onChange }: Props) {
+  const styles = useStyles();
+
   return (
-    <Input
-      contentBefore={<SearchRegular />}
-      placeholder="ゴースト名で検索..."
-      value={value}
-      onChange={(_: unknown, data: { value: string }) => onChange(data.value)}
-    />
+    <div className={styles.root}>
+      <Field label="ゴースト検索">
+        <Input
+          contentBefore={<SearchRegular />}
+          placeholder="ゴースト名で検索"
+          value={value}
+          onChange={(_: unknown, data: { value: string }) => onChange(data.value)}
+        />
+      </Field>
+    </div>
   );
 }

@@ -11,34 +11,32 @@ interface Props {
 
 const useStyles = makeStyles({
   card: {
-    padding: "14px 16px",
-    borderRadius: tokens.borderRadiusXLarge,
+    padding: "12px 16px",
+    borderRadius: tokens.borderRadiusLarge,
     border: `1px solid ${tokens.colorNeutralStroke1}`,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow4,
-    backdropFilter: "blur(8px)",
     display: "flex",
     flexDirection: "column",
     gap: "8px",
     transitionDuration: tokens.durationNormal,
-    transitionProperty: "transform, box-shadow",
+    transitionProperty: "background-color, border-color",
     transitionTimingFunction: tokens.curveEasyEase,
     ":hover": {
-      transform: "translateY(-1px)",
-      boxShadow: tokens.shadow16,
+      backgroundColor: tokens.colorNeutralBackground2,
     },
   },
   row: {
     display: "grid",
     gridTemplateColumns: "1fr auto",
-    gap: "12px",
+    gap: "16px",
     alignItems: "center",
   },
   info: {
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "4px",
+    gap: "6px",
   },
   name: {
     whiteSpace: "nowrap",
@@ -49,7 +47,7 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
+    gap: "8px",
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
     overflow: "hidden",
@@ -64,6 +62,13 @@ const useStyles = makeStyles({
 
 function getSourceFolderLabel(source: string): string {
   return source.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source;
+}
+
+function buildLaunchErrorMessage(error: unknown): string {
+  const detail =
+    error instanceof Error ? error.message.trim() : String(error).trim();
+  const detailText = detail ? `（詳細: ${detail}）` : "";
+  return `起動に失敗しました。SSPフォルダ設定とゴースト情報を確認して、再度お試しください。${detailText}`;
 }
 
 export function GhostCard({ ghost, sspPath }: Props) {
@@ -82,7 +87,7 @@ export function GhostCard({ ghost, sspPath }: Props) {
         ghostSource: ghost.source,
       });
     } catch (e) {
-      setError(String(e));
+      setError(buildLaunchErrorMessage(e));
     } finally {
       setLaunching(false);
     }

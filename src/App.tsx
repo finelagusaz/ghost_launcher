@@ -22,21 +22,23 @@ import { GhostList } from "./components/GhostList";
 
 const useStyles = makeStyles({
   app: {
-    maxWidth: "900px",
+    maxWidth: "960px",
     margin: "0 auto",
     minHeight: "100vh",
-    padding: "20px 16px 28px",
+    padding: "24px 20px 32px",
+    "@media (max-width: 600px)": {
+      padding: "16px 12px 24px",
+    },
   },
   shell: {
-    borderRadius: tokens.borderRadiusXLarge,
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusLarge,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    boxShadow: tokens.shadow16,
-    backdropFilter: "blur(16px)",
+    boxShadow: tokens.shadow4,
     display: "flex",
     flexDirection: "column",
     gap: "16px",
-    padding: "20px",
+    padding: "24px",
     "@media (max-width: 600px)": {
       padding: "16px",
     },
@@ -49,42 +51,58 @@ const useStyles = makeStyles({
   },
   header: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    paddingBottom: "12px",
+    gap: "12px",
+    paddingBottom: "16px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    "@media (max-width: 600px)": {
+      flexDirection: "column",
+      alignItems: "stretch",
+    },
+  },
+  titleBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+    "@media (max-width: 600px)": {
+      justifyContent: "flex-start",
+    },
   },
   title: {
-    fontSize: tokens.fontSizeHero800,
-    lineHeight: tokens.lineHeightHero800,
+    fontSize: tokens.fontSizeBase600,
+    lineHeight: tokens.lineHeightBase600,
     fontWeight: tokens.fontWeightSemibold,
   },
+  subtitle: {
+    color: tokens.colorNeutralForeground3,
+  },
   toolbar: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: "8px",
-    alignItems: "stretch",
-    "@media (max-width: 600px)": {
-      gridTemplateColumns: "1fr",
-    },
+    display: "block",
   },
   content: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
+    gap: "12px",
   },
   emptyState: {
-    borderRadius: tokens.borderRadiusXLarge,
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusLarge,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
     backgroundColor: tokens.colorNeutralBackground2,
-    boxShadow: tokens.shadow4,
     padding: "24px",
     textAlign: "center",
   },
   dialogSurface: {
-    width: "min(860px, calc(100vw - 24px))",
-    boxShadow: tokens.shadow64,
-    backdropFilter: "blur(18px)",
+    width: "min(760px, calc(100vw - 24px))",
+    borderRadius: tokens.borderRadiusLarge,
+    boxShadow: tokens.shadow16,
   },
 });
 
@@ -122,22 +140,13 @@ function App() {
     <div className={styles.app}>
       <div className={styles.shell}>
         <header className={styles.header}>
-          <Text as="h1" className={styles.title}>
-            Ghost Launcher
-          </Text>
-          <Button
-            icon={<SettingsRegular />}
-            appearance="secondary"
-            onClick={() => setSettingsOpen(true)}
-          >
-            設定
-          </Button>
-        </header>
-
-        {sspPath && (
-          <>
-            <div className={styles.toolbar}>
-              <SearchBox value={searchQuery} onChange={setSearchQuery} />
+          <div className={styles.titleBlock}>
+            <Text as="h1" className={styles.title}>
+              Ghost Launcher
+            </Text>
+          </div>
+          <div className={styles.headerActions}>
+            {sspPath && (
               <Button
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
@@ -146,6 +155,21 @@ function App() {
               >
                 再読込
               </Button>
+            )}
+            <Button
+              icon={<SettingsRegular />}
+              appearance="secondary"
+              onClick={() => setSettingsOpen(true)}
+            >
+              設定
+            </Button>
+          </div>
+        </header>
+
+        {sspPath && (
+          <>
+            <div className={styles.toolbar}>
+              <SearchBox value={searchQuery} onChange={setSearchQuery} />
             </div>
             <div className={styles.content}>
               <GhostList

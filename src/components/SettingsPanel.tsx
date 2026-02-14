@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
   Field,
@@ -23,27 +23,34 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke1}`,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow4,
-    backdropFilter: "blur(12px)",
-    padding: "14px",
+    padding: "16px",
     display: "flex",
     flexDirection: "column",
-    gap: "14px",
+    gap: "16px",
   },
   row: {
     display: "grid",
     gridTemplateColumns: "1fr auto",
-    gap: "8px",
+    gap: "12px",
     alignItems: "end",
     "@media (max-width: 600px)": {
       gridTemplateColumns: "1fr",
     },
   },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
   sectionHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "12px",
+    gap: "8px",
     flexWrap: "wrap",
+  },
+  helper: {
+    color: tokens.colorNeutralForeground3,
   },
   folderList: {
     display: "flex",
@@ -61,7 +68,6 @@ const useStyles = makeStyles({
   },
   empty: {
     color: tokens.colorNeutralForeground3,
-    fontStyle: "italic",
   },
 });
 
@@ -96,6 +102,25 @@ export function SettingsPanel({
     }
   };
 
+  const handleRemoveFolder = async (folder: string) => {
+    try {
+      const approved = await confirm(
+        `このフォルダを一覧対象から削除しますか？\n${folder}`,
+        {
+          title: "追加フォルダの削除",
+          kind: "warning",
+          okLabel: "削除",
+          cancelLabel: "キャンセル",
+        },
+      );
+      if (approved) {
+        onRemoveFolder(folder);
+      }
+    } catch (e) {
+      console.error("フォルダ削除の確認中にエラーが発生しました", e);
+    }
+  };
+
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
@@ -107,13 +132,14 @@ export function SettingsPanel({
         </Button>
       </div>
 
-      <div>
+      <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Text weight="semibold">追加ゴーストフォルダ</Text>
           <Button icon={<AddRegular />} appearance="secondary" onClick={handleAddGhostFolder}>
             追加
           </Button>
         </div>
+        <Text className={styles.helper}>追加フォルダ内のゴーストを一覧に含めます。</Text>
         {ghostFolders.length === 0 && (
           <Text className={styles.empty}>追加フォルダなし</Text>
         )}
@@ -124,7 +150,8 @@ export function SettingsPanel({
               <Button
                 icon={<DeleteRegular />}
                 appearance="outline"
-                onClick={() => onRemoveFolder(folder)}
+                aria-label={`追加フォルダを削除: ${folder}`}
+                onClick={() => void handleRemoveFolder(folder)}
               >
                 削除
               </Button>
