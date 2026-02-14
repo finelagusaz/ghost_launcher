@@ -1,4 +1,4 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
   Field,
@@ -96,6 +96,21 @@ export function SettingsPanel({
     }
   };
 
+  const handleRemoveFolder = async (folder: string) => {
+    const approved = await confirm(
+      `このフォルダを一覧対象から削除しますか？\n${folder}`,
+      {
+        title: "追加フォルダの削除",
+        kind: "warning",
+        okLabel: "削除",
+        cancelLabel: "キャンセル",
+      },
+    );
+    if (approved) {
+      onRemoveFolder(folder);
+    }
+  };
+
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
@@ -124,7 +139,8 @@ export function SettingsPanel({
               <Button
                 icon={<DeleteRegular />}
                 appearance="outline"
-                onClick={() => onRemoveFolder(folder)}
+                aria-label={`追加フォルダを削除: ${folder}`}
+                onClick={() => void handleRemoveFolder(folder)}
               >
                 削除
               </Button>

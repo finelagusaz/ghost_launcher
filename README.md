@@ -72,3 +72,7 @@ npm run tauri build
 
 - `.github/workflows/ci-build.yml`
 - `.github/workflows/release.yml`
+
+## ドキュメント
+
+- UI デザインガイドライン: `docs/ui-guidelines.md`

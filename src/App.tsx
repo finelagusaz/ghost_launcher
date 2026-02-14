@@ -54,19 +54,18 @@ const useStyles = makeStyles({
     paddingBottom: "12px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
   },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
   title: {
     fontSize: tokens.fontSizeHero800,
     lineHeight: tokens.lineHeightHero800,
     fontWeight: tokens.fontWeightSemibold,
   },
   toolbar: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: "8px",
-    alignItems: "stretch",
-    "@media (max-width: 600px)": {
-      gridTemplateColumns: "1fr",
-    },
+    display: "block",
   },
   content: {
     flex: 1,
@@ -125,19 +124,8 @@ function App() {
           <Text as="h1" className={styles.title}>
             Ghost Launcher
           </Text>
-          <Button
-            icon={<SettingsRegular />}
-            appearance="secondary"
-            onClick={() => setSettingsOpen(true)}
-          >
-            設定
-          </Button>
-        </header>
-
-        {sspPath && (
-          <>
-            <div className={styles.toolbar}>
-              <SearchBox value={searchQuery} onChange={setSearchQuery} />
+          <div className={styles.headerActions}>
+            {sspPath && (
               <Button
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
@@ -146,6 +134,21 @@ function App() {
               >
                 再読込
               </Button>
+            )}
+            <Button
+              icon={<SettingsRegular />}
+              appearance="secondary"
+              onClick={() => setSettingsOpen(true)}
+            >
+              設定
+            </Button>
+          </div>
+        </header>
+
+        {sspPath && (
+          <>
+            <div className={styles.toolbar}>
+              <SearchBox value={searchQuery} onChange={setSearchQuery} />
             </div>
             <div className={styles.content}>
               <GhostList

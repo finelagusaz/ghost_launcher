@@ -12,6 +12,13 @@ function toGhostView(ghost: Ghost): GhostView {
   };
 }
 
+function buildScanErrorMessage(error: unknown): string {
+  const detail =
+    error instanceof Error ? error.message.trim() : String(error).trim();
+  const detailText = detail ? `（詳細: ${detail}）` : "";
+  return `ゴースト一覧の取得に失敗しました。SSPフォルダと追加フォルダを確認して「再読込」を実行してください。${detailText}`;
+}
+
 export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [loading, setLoading] = useState(false);
@@ -22,6 +29,8 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const refresh = useCallback(async () => {
     if (!sspPath) {
       setGhosts([]);
+      setError(null);
+      setLoading(false);
       return;
     }
 
@@ -53,7 +62,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       }
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
-        setError(String(e));
+        setError(buildScanErrorMessage(e));
         setGhosts([]);
       }
     } finally {
