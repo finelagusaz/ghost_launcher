@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 function read(relativePath) {
   const fullPath = resolve(process.cwd(), relativePath);
@@ -10,18 +11,18 @@ function read(relativePath) {
   }
 }
 
-const checks = [
+export const checks = [
   {
     id: "searchbox-labeled",
     file: "src/components/SearchBox.tsx",
     message: "検索入力に明示ラベルが必要です (`Field label=\"ゴースト検索\"`)。",
-    test: (source) => /<Field\b[\s\S]*?label="ゴースト検索"/.test(source),
+    test: (source) => /<Field\b[^>]*\blabel\s*=\s*"ゴースト検索"[^>]*>/.test(source),
   },
   {
     id: "settings-delete-aria-label",
     file: "src/components/SettingsPanel.tsx",
     message: "削除ボタンには対象フォルダ名を含む aria-label が必要です。",
-    test: (source) => /aria-label=\{[^}]*追加フォルダを削除/.test(source),
+    test: (source) => /aria-label\s*=\s*\{\s*`追加フォルダを削除\s*:\s*\$\{folder\}`\s*\}/.test(source),
   },
   {
     id: "ghostlist-alert-role",
@@ -49,28 +50,44 @@ const checks = [
   },
 ];
 
-const failures = [];
+export function runChecks() {
+  const failures = [];
 
-for (const check of checks) {
-  let source = "";
-  try {
-    source = read(check.file);
-  } catch (error) {
-    failures.push(`[${check.id}] ${String(error)}`);
-    continue;
+  for (const check of checks) {
+    let source = "";
+    try {
+      source = read(check.file);
+    } catch (error) {
+      failures.push(`[${check.id}] ${String(error)}`);
+      continue;
+    }
+
+    if (!check.test(source)) {
+      failures.push(`[${check.id}] ${check.file}: ${check.message}`);
+    }
   }
 
-  if (!check.test(source)) {
-    failures.push(`[${check.id}] ${check.file}: ${check.message}`);
-  }
+  return failures;
 }
 
-if (failures.length > 0) {
-  console.error("UI ガイドラインチェックに失敗しました。");
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
+function runCli() {
+  const failures = runChecks();
+
+  if (failures.length > 0) {
+    console.error("UI ガイドラインチェックに失敗しました。");
+    for (const failure of failures) {
+      console.error(`- ${failure}`);
+    }
+    process.exit(1);
   }
-  process.exit(1);
+
+  console.log(`UI ガイドラインチェック: ${checks.length} 件すべて成功`);
 }
 
-console.log(`UI ガイドラインチェック: ${checks.length} 件すべて成功`);
+const isDirectExecution =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectExecution) {
+  runCli();
+}
