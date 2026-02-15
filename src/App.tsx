@@ -53,39 +53,20 @@ const useStyles = makeStyles({
   },
   header: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    flexWrap: "wrap",
     gap: "12px",
     minWidth: 0,
     paddingBottom: "16px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-    "@media (max-width: 600px)": {
-      flexDirection: "column",
-      alignItems: "stretch",
-    },
-  },
-  titleBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: 0,
   },
   headerActions: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
-    "@media (max-width: 600px)": {
-      flexDirection: "column",
-      alignItems: "stretch",
-      justifyContent: "flex-start",
-      width: "100%",
-    },
-  },
-  headerActionButton: {
-    "@media (max-width: 600px)": {
-      width: "100%",
-    },
+    marginLeft: "auto",
   },
   title: {
     fontSize: "clamp(1.5rem, 5vw, 2rem)",
@@ -155,15 +136,12 @@ function App() {
     <div className={styles.app}>
       <div className={styles.shell}>
         <header className={styles.header}>
-          <div className={styles.titleBlock}>
-            <Text as="h1" className={styles.title}>
-              Ghost Launcher
-            </Text>
-          </div>
+          <Text as="h1" className={styles.title}>
+            Ghost Launcher
+          </Text>
           <div className={styles.headerActions}>
             {sspPath && (
               <Button
-                className={styles.headerActionButton}
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
                 onClick={() => refresh({ forceFullScan: true })}
@@ -172,12 +150,7 @@ function App() {
                 再読込
               </Button>
             )}
-            <Button
-              className={styles.headerActionButton}
-              icon={<SettingsRegular />}
-              appearance="secondary"
-              onClick={() => setSettingsOpen(true)}
-            >
+            <Button icon={<SettingsRegular />} appearance="secondary" onClick={() => setSettingsOpen(true)}>
               設定
             </Button>
           </div>
