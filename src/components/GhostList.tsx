@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
+import { useVirtualizedList } from "../hooks/useVirtualizedList";
 import type { Ghost } from "../types";
 
 interface Props {
@@ -105,6 +106,13 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     };
   }, [shouldVirtualize]);
 
+  const { visibleItems: visibleGhosts, topSpacer, bottomSpacer } = useVirtualizedList(ghosts, {
+    scrollTop,
+    viewportHeight,
+    estimatedRowHeight: ESTIMATED_ROW_HEIGHT,
+    overscanRows: OVERSCAN_ROWS,
+  });
+
   if (loading) {
     return (
       <div className={styles.state}>
@@ -145,21 +153,6 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
       </div>
     );
   }
-
-  const visibleRowCount = Math.max(1, Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT));
-  const startIndex = Math.max(0, Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN_ROWS);
-  const endIndex = Math.min(
-    ghosts.length,
-    startIndex + visibleRowCount + OVERSCAN_ROWS * 2,
-  );
-
-  const totalHeight = ghosts.length * ESTIMATED_ROW_HEIGHT;
-  const topSpacer = startIndex * ESTIMATED_ROW_HEIGHT;
-  const visibleGhosts = ghosts.slice(startIndex, endIndex);
-  const bottomSpacer = Math.max(
-    0,
-    totalHeight - topSpacer - visibleGhosts.length * ESTIMATED_ROW_HEIGHT,
-  );
 
   return (
     <div className={styles.root}>

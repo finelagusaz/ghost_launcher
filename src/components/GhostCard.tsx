@@ -2,6 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Badge, Button, Card, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
+import { buildLaunchErrorMessage, getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import type { Ghost } from "../types";
 
 interface Props {
@@ -78,17 +79,6 @@ const useStyles = makeStyles({
     color: tokens.colorPaletteRedForeground1,
   },
 });
-
-function getSourceFolderLabel(source: string): string {
-  return source.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || source;
-}
-
-function buildLaunchErrorMessage(error: unknown): string {
-  const detail =
-    error instanceof Error ? error.message.trim() : String(error).trim();
-  const detailText = detail ? `（詳細: ${detail}）` : "";
-  return `起動に失敗しました。SSPフォルダ設定とゴースト情報を確認して、再度お試しください。${detailText}`;
-}
 
 export function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
