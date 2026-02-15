@@ -8,17 +8,15 @@ import {
   DialogSurface,
   DialogTitle,
   Spinner,
-  Text,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { ArrowClockwiseRegular, SettingsRegular } from "@fluentui/react-icons";
 import { useSettings } from "./hooks/useSettings";
 import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
+import { AppHeader } from "./components/AppHeader";
+import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { SearchBox } from "./components/SearchBox";
-import { GhostList } from "./components/GhostList";
 
 const useStyles = makeStyles({
   app: {
@@ -50,56 +48,6 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    flexWrap: "wrap",
-    gap: "12px",
-    minWidth: 0,
-    paddingBottom: "16px",
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-  },
-  titleBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: 0,
-  },
-  headerActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-    marginLeft: "auto",
-  },
-  title: {
-    fontSize: "clamp(1.5rem, 5vw, 2rem)",
-    lineHeight: tokens.lineHeightBase600,
-    fontWeight: tokens.fontWeightSemibold,
-  },
-  subtitle: {
-    color: tokens.colorNeutralForeground3,
-  },
-  toolbar: {
-    display: "block",
-    width: "min(480px, 100%)",
-    minWidth: 0,
-  },
-  content: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    minWidth: 0,
-  },
-  emptyState: {
-    borderRadius: tokens.borderRadiusLarge,
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground2,
-    padding: "24px",
-    textAlign: "center",
   },
   dialogSurface: {
     width: "min(760px, calc(100% - 24px))",
@@ -141,54 +89,20 @@ function App() {
   return (
     <div className={styles.app}>
       <div className={styles.shell}>
-        <header className={styles.header}>
-          <div className={styles.titleBlock}>
-            <Text as="h1" className={styles.title}>
-              Ghost Launcher
-            </Text>
-          </div>
-          <div className={styles.headerActions}>
-            {sspPath && (
-              <Button
-                icon={<ArrowClockwiseRegular />}
-                appearance="secondary"
-                onClick={() => refresh({ forceFullScan: true })}
-                disabled={ghostsLoading}
-              >
-                再読込
-              </Button>
-            )}
-            <Button
-              icon={<SettingsRegular />}
-              appearance="secondary"
-              onClick={() => setSettingsOpen(true)}
-            >
-              設定
-            </Button>
-          </div>
-        </header>
-
-        {sspPath && (
-          <>
-            <div className={styles.toolbar}>
-              <SearchBox value={searchQuery} onChange={setSearchQuery} />
-            </div>
-            <div className={styles.content}>
-              <GhostList
-                ghosts={filteredGhosts}
-                sspPath={sspPath}
-                loading={ghostsLoading}
-                error={error}
-              />
-            </div>
-          </>
-        )}
-
-        {!sspPath && (
-          <div className={styles.emptyState}>
-            <Text>SSPフォルダを選択してください</Text>
-          </div>
-        )}
+        <AppHeader
+          sspPath={sspPath}
+          ghostsLoading={ghostsLoading}
+          onRefresh={() => refresh({ forceFullScan: true })}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        <GhostContent
+          ghosts={filteredGhosts}
+          sspPath={sspPath}
+          searchQuery={searchQuery}
+          loading={ghostsLoading}
+          error={error}
+          onSearchChange={setSearchQuery}
+        />
       </div>
 
       <Dialog

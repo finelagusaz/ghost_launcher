@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
   const [ghostFolders, setGhostFolders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const ghostFoldersRef = useRef<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -12,10 +13,13 @@ export function useSettings() {
         const path = await settingsStore.get<string>("ssp_path");
         setSspPath(path ?? null);
         const folders = await settingsStore.get<string[]>("ghost_folders");
-        setGhostFolders(folders ?? []);
+        const loadedFolders = folders ?? [];
+        setGhostFolders(loadedFolders);
+        ghostFoldersRef.current = loadedFolders;
       } catch {
         setSspPath(null);
         setGhostFolders([]);
+        ghostFoldersRef.current = [];
       } finally {
         setLoading(false);
       }
@@ -24,27 +28,57 @@ export function useSettings() {
   }, []);
 
   const saveSspPath = useCallback(async (path: string) => {
-    await settingsStore.set("ssp_path", path);
+    try {
+      await settingsStore.set("ssp_path", path);
+      await settingsStore.save();
+      setSspPath(path);
+    } catch (error) {
+      console.error("SSPフォルダ設定の保存に失敗しました", error);
+    }
+  }, []);
+
+  const persistGhostFolders = useCallback(async (folders: string[]) => {
+    await settingsStore.set("ghost_folders", folders);
     await settingsStore.save();
-    setSspPath(path);
   }, []);
 
   const addGhostFolder = useCallback(async (folder: string) => {
-    setGhostFolders((prev) => {
-      if (prev.includes(folder)) return prev;
-      const updated = [...prev, folder];
-      settingsStore.set("ghost_folders", updated).then(() => settingsStore.save());
-      return updated;
-    });
-  }, []);
+    const previous = ghostFoldersRef.current;
+    if (previous.includes(folder)) {
+      return;
+    }
+
+    const updated = [...previous, folder];
+    setGhostFolders(updated);
+    ghostFoldersRef.current = updated;
+
+    try {
+      await persistGhostFolders(updated);
+    } catch (error) {
+      console.error("追加フォルダ設定の保存に失敗しました", error);
+      setGhostFolders(previous);
+      ghostFoldersRef.current = previous;
+    }
+  }, [persistGhostFolders]);
 
   const removeGhostFolder = useCallback(async (folder: string) => {
-    setGhostFolders((prev) => {
-      const updated = prev.filter((f) => f !== folder);
-      settingsStore.set("ghost_folders", updated).then(() => settingsStore.save());
-      return updated;
-    });
-  }, []);
+    const previous = ghostFoldersRef.current;
+    const updated = previous.filter((value) => value !== folder);
+    if (updated.length === previous.length) {
+      return;
+    }
+
+    setGhostFolders(updated);
+    ghostFoldersRef.current = updated;
+
+    try {
+      await persistGhostFolders(updated);
+    } catch (error) {
+      console.error("追加フォルダ設定の削除保存に失敗しました", error);
+      setGhostFolders(previous);
+      ghostFoldersRef.current = previous;
+    }
+  }, [persistGhostFolders]);
 
   return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading };
 }
