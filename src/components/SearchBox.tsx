@@ -9,6 +9,8 @@ interface Props {
 const useStyles = makeStyles({
   root: {
     maxWidth: "480px",
+    width: "100%",
+    minWidth: 0,
   },
 });
 

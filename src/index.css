@@ -13,5 +13,17 @@ body,
 body {
   font-family: "Segoe UI Variable Text", "Segoe UI", "Meiryo", sans-serif;
   line-height: 1.5;
-  overflow-y: auto;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+@supports (scrollbar-gutter: stable) {
+  html,
+  body {
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    overflow-y: auto;
+  }
 }

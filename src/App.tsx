@@ -39,6 +39,8 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "16px",
     padding: "24px",
+    minWidth: 0,
+    overflowX: "hidden",
     "@media (max-width: 600px)": {
       padding: "16px",
     },
@@ -54,6 +56,7 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: "12px",
+    minWidth: 0,
     paddingBottom: "16px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     "@media (max-width: 600px)": {
@@ -65,6 +68,7 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "4px",
+    minWidth: 0,
   },
   headerActions: {
     display: "flex",
@@ -72,11 +76,19 @@ const useStyles = makeStyles({
     gap: "8px",
     flexWrap: "wrap",
     "@media (max-width: 600px)": {
+      flexDirection: "column",
+      alignItems: "stretch",
       justifyContent: "flex-start",
+      width: "100%",
+    },
+  },
+  headerActionButton: {
+    "@media (max-width: 600px)": {
+      width: "100%",
     },
   },
   title: {
-    fontSize: tokens.fontSizeBase600,
+    fontSize: "clamp(1.5rem, 5vw, 2rem)",
     lineHeight: tokens.lineHeightBase600,
     fontWeight: tokens.fontWeightSemibold,
   },
@@ -85,12 +97,15 @@ const useStyles = makeStyles({
   },
   toolbar: {
     display: "block",
+    width: "min(480px, 100%)",
+    minWidth: 0,
   },
   content: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: "12px",
+    minWidth: 0,
   },
   emptyState: {
     borderRadius: tokens.borderRadiusLarge,
@@ -100,7 +115,7 @@ const useStyles = makeStyles({
     textAlign: "center",
   },
   dialogSurface: {
-    width: "min(760px, calc(100vw - 24px))",
+    width: "min(760px, calc(100% - 24px))",
     borderRadius: tokens.borderRadiusLarge,
     boxShadow: tokens.shadow16,
   },
@@ -148,6 +163,7 @@ function App() {
           <div className={styles.headerActions}>
             {sspPath && (
               <Button
+                className={styles.headerActionButton}
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
                 onClick={refresh}
@@ -157,6 +173,7 @@ function App() {
               </Button>
             )}
             <Button
+              className={styles.headerActionButton}
               icon={<SettingsRegular />}
               appearance="secondary"
               onClick={() => setSettingsOpen(true)}
