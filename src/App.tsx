@@ -53,16 +53,13 @@ const useStyles = makeStyles({
   },
   header: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    flexWrap: "wrap",
     gap: "12px",
     minWidth: 0,
     paddingBottom: "16px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-    "@media (max-width: 600px)": {
-      flexDirection: "column",
-      alignItems: "stretch",
-    },
   },
   titleBlock: {
     display: "flex",
@@ -75,17 +72,7 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
-    "@media (max-width: 600px)": {
-      flexDirection: "column",
-      alignItems: "stretch",
-      justifyContent: "flex-start",
-      width: "100%",
-    },
-  },
-  headerActionButton: {
-    "@media (max-width: 600px)": {
-      width: "100%",
-    },
+    marginLeft: "auto",
   },
   title: {
     fontSize: "clamp(1.5rem, 5vw, 2rem)",
@@ -163,7 +150,6 @@ function App() {
           <div className={styles.headerActions}>
             {sspPath && (
               <Button
-                className={styles.headerActionButton}
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
                 onClick={() => refresh({ forceFullScan: true })}
@@ -173,7 +159,6 @@ function App() {
               </Button>
             )}
             <Button
-              className={styles.headerActionButton}
               icon={<SettingsRegular />}
               appearance="secondary"
               onClick={() => setSettingsOpen(true)}
