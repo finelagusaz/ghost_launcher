@@ -8,6 +8,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             commands::ghost::scan_ghosts,
+            commands::ghost::scan_ghosts_with_meta,
+            commands::ghost::get_ghosts_fingerprint,
             commands::ssp::launch_ghost,
         ])
         .run(tauri::generate_context!())

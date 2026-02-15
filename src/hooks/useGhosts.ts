@@ -1,8 +1,76 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Ghost, GhostView } from "../types";
+import { settingsStore } from "../lib/settingsStore";
+import type {
+  Ghost,
+  GhostCacheEntry,
+  GhostCacheStoreV1,
+  GhostView,
+  ScanGhostsResponse,
+} from "../types";
 
-const pendingScans = new Map<string, Promise<Ghost[]>>();
+const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
+const GHOST_CACHE_KEY = "ghost_cache_v1";
+const GHOST_CACHE_VERSION = 1 as const;
+
+interface RefreshOptions {
+  forceFullScan?: boolean;
+}
+
+function normalizePathKey(path: string): string {
+  return path.trim().replace(/\\/g, "/").toLowerCase();
+}
+
+function buildAdditionalFolders(folders: string[]): string[] {
+  const sorted = folders
+    .map((folder) => ({ raw: folder, key: normalizePathKey(folder) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  const unique: string[] = [];
+  let lastKey: string | null = null;
+
+  for (const folder of sorted) {
+    if (folder.key === lastKey) continue;
+    unique.push(folder.raw);
+    lastKey = folder.key;
+  }
+
+  return unique;
+}
+
+function buildRequestKey(sspPath: string, additionalFolders: string[]): string {
+  const normalizedSspPath = normalizePathKey(sspPath);
+  const normalizedFolders = additionalFolders.map((folder) =>
+    normalizePathKey(folder),
+  );
+  return `${normalizedSspPath}::${normalizedFolders.join("|")}`;
+}
+
+function isGhostCacheStoreV1(value: unknown): value is GhostCacheStoreV1 {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Partial<GhostCacheStoreV1>;
+  return candidate.version === GHOST_CACHE_VERSION && !!candidate.entries && typeof candidate.entries === "object";
+}
+
+async function readGhostCacheStore(): Promise<GhostCacheStoreV1> {
+  const cached = await settingsStore.get<unknown>(GHOST_CACHE_KEY);
+  if (isGhostCacheStoreV1(cached)) {
+    return cached;
+  }
+
+  return {
+    version: GHOST_CACHE_VERSION,
+    entries: {},
+  };
+}
+
+async function writeGhostCacheEntry(requestKey: string, entry: GhostCacheEntry): Promise<void> {
+  const cacheStore = await readGhostCacheStore();
+  cacheStore.entries[requestKey] = entry;
+  await settingsStore.set(GHOST_CACHE_KEY, cacheStore);
+  await settingsStore.save();
+}
 
 function toGhostView(ghost: Ghost): GhostView {
   return {
@@ -26,7 +94,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (!sspPath) {
       setGhosts([]);
       setError(null);
@@ -34,42 +102,97 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       return;
     }
 
-    const requestKey = `${sspPath}::${ghostFolders.join("|")}`;
-    if (inFlightKeyRef.current === requestKey) {
+    const additionalFolders = buildAdditionalFolders(ghostFolders);
+    const requestKey = buildRequestKey(sspPath, additionalFolders);
+    const forceFullScan = options.forceFullScan === true;
+    const inFlightKey = `${requestKey}::${forceFullScan ? "force" : "auto"}`;
+
+    if (inFlightKeyRef.current === inFlightKey) {
       return;
     }
 
     const requestSeq = requestSeqRef.current + 1;
     requestSeqRef.current = requestSeq;
-    inFlightKeyRef.current = requestKey;
+    inFlightKeyRef.current = inFlightKey;
 
-    setLoading(true);
-    setError(null);
+    let usedCachedGhosts = false;
+    let cachedEntry: GhostCacheEntry | undefined;
+
     try {
+      setError(null);
+
+      if (!forceFullScan) {
+        const cacheStore = await readGhostCacheStore();
+        cachedEntry = cacheStore.entries[requestKey];
+
+        if (requestSeq !== requestSeqRef.current) {
+          return;
+        }
+
+        if (cachedEntry) {
+          usedCachedGhosts = true;
+          setGhosts(cachedEntry.ghosts.map(toGhostView));
+        }
+      }
+
+      setLoading(!usedCachedGhosts);
+
+      if (!forceFullScan && cachedEntry) {
+        try {
+          const fingerprint = await invoke<string>("get_ghosts_fingerprint", {
+            sspPath,
+            additionalFolders,
+          });
+          if (requestSeq !== requestSeqRef.current) {
+            return;
+          }
+
+          if (fingerprint === cachedEntry.fingerprint) {
+            return;
+          }
+        } catch {
+          // 指紋取得に失敗した場合はフルスキャンへフォールバックする。
+        }
+      }
+
       let scanPromise = pendingScans.get(requestKey);
-      if (!scanPromise) {
-        scanPromise = invoke<Ghost[]>("scan_ghosts", {
+      if (!scanPromise || forceFullScan) {
+        scanPromise = invoke<ScanGhostsResponse>("scan_ghosts_with_meta", {
           sspPath,
-          additionalFolders: ghostFolders,
-        }).finally(() => {
-          pendingScans.delete(requestKey);
+          additionalFolders,
         });
         pendingScans.set(requestKey, scanPromise);
+        scanPromise.finally(() => {
+          if (pendingScans.get(requestKey) === scanPromise) {
+            pendingScans.delete(requestKey);
+          }
+        });
       }
+
       const result = await scanPromise;
       if (requestSeq === requestSeqRef.current) {
-        setGhosts(result.map(toGhostView));
+        setGhosts(result.ghosts.map(toGhostView));
+        setError(null);
       }
+
+      await writeGhostCacheEntry(requestKey, {
+        request_key: requestKey,
+        fingerprint: result.fingerprint,
+        ghosts: result.ghosts,
+        cached_at: new Date().toISOString(),
+      });
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
-        setError(buildScanErrorMessage(e));
-        setGhosts([]);
+        if (!usedCachedGhosts || forceFullScan) {
+          setError(buildScanErrorMessage(e));
+          setGhosts([]);
+        }
       }
     } finally {
       if (requestSeq === requestSeqRef.current) {
         setLoading(false);
       }
-      if (inFlightKeyRef.current === requestKey) {
+      if (inFlightKeyRef.current === inFlightKey) {
         inFlightKeyRef.current = null;
       }
     }
