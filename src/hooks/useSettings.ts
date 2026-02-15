@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { LazyStore } from "@tauri-apps/plugin-store";
-
-const store = new LazyStore("settings.json");
+import { settingsStore } from "../lib/settingsStore";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
@@ -11,9 +9,9 @@ export function useSettings() {
   useEffect(() => {
     const load = async () => {
       try {
-        const path = await store.get<string>("ssp_path");
+        const path = await settingsStore.get<string>("ssp_path");
         setSspPath(path ?? null);
-        const folders = await store.get<string[]>("ghost_folders");
+        const folders = await settingsStore.get<string[]>("ghost_folders");
         setGhostFolders(folders ?? []);
       } catch {
         setSspPath(null);
@@ -26,8 +24,8 @@ export function useSettings() {
   }, []);
 
   const saveSspPath = useCallback(async (path: string) => {
-    await store.set("ssp_path", path);
-    await store.save();
+    await settingsStore.set("ssp_path", path);
+    await settingsStore.save();
     setSspPath(path);
   }, []);
 
@@ -35,7 +33,7 @@ export function useSettings() {
     setGhostFolders((prev) => {
       if (prev.includes(folder)) return prev;
       const updated = [...prev, folder];
-      store.set("ghost_folders", updated).then(() => store.save());
+      settingsStore.set("ghost_folders", updated).then(() => settingsStore.save());
       return updated;
     });
   }, []);
@@ -43,7 +41,7 @@ export function useSettings() {
   const removeGhostFolder = useCallback(async (folder: string) => {
     setGhostFolders((prev) => {
       const updated = prev.filter((f) => f !== folder);
-      store.set("ghost_folders", updated).then(() => store.save());
+      settingsStore.set("ghost_folders", updated).then(() => settingsStore.save());
       return updated;
     });
   }, []);

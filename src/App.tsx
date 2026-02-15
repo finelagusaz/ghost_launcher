@@ -166,7 +166,7 @@ function App() {
                 className={styles.headerActionButton}
                 icon={<ArrowClockwiseRegular />}
                 appearance="secondary"
-                onClick={refresh}
+                onClick={() => refresh({ forceFullScan: true })}
                 disabled={ghostsLoading}
               >
                 再読込
