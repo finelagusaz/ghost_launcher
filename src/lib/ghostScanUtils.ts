@@ -1,5 +1,9 @@
 export function normalizePathKey(path: string): string {
-  return path.trim().replace(/\\/g, "/").toLowerCase();
+  const normalized = path.trim().replace(/\\/g, "/").toLowerCase();
+  if (/^[a-z]:\/$/i.test(normalized)) {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/g, "");
 }
 
 export function buildAdditionalFolders(folders: string[]): string[] {

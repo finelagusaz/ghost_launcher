@@ -3,6 +3,7 @@ import type { GhostCacheEntry, GhostCacheStoreV1 } from "../types";
 
 const GHOST_CACHE_KEY = "ghost_cache_v1";
 const GHOST_CACHE_VERSION = 1 as const;
+let cacheWriteQueue: Promise<void> = Promise.resolve();
 
 function isGhostCacheStoreV1(value: unknown): value is GhostCacheStoreV1 {
   if (!value || typeof value !== "object") {
@@ -38,8 +39,13 @@ export async function writeGhostCacheEntry(
   requestKey: string,
   entry: GhostCacheEntry,
 ): Promise<void> {
-  const cacheStore = await readGhostCacheStore();
-  cacheStore.entries[requestKey] = entry;
-  await settingsStore.set(GHOST_CACHE_KEY, cacheStore);
-  await settingsStore.save();
+  const runWrite = async () => {
+    const cacheStore = await readGhostCacheStore();
+    cacheStore.entries[requestKey] = entry;
+    await settingsStore.set(GHOST_CACHE_KEY, cacheStore);
+    await settingsStore.save();
+  };
+
+  cacheWriteQueue = cacheWriteQueue.then(runWrite, runWrite);
+  await cacheWriteQueue;
 }
