@@ -12,13 +12,18 @@ import type {
 const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
 const GHOST_CACHE_KEY = "ghost_cache_v1";
 const GHOST_CACHE_VERSION = 1 as const;
+let cacheWriteQueue: Promise<void> = Promise.resolve();
 
 interface RefreshOptions {
   forceFullScan?: boolean;
 }
 
 function normalizePathKey(path: string): string {
-  return path.trim().replace(/\\/g, "/").toLowerCase();
+  const normalized = path.trim().replace(/\\/g, "/").toLowerCase();
+  if (/^[a-z]:\/$/i.test(normalized)) {
+    return normalized;
+  }
+  return normalized.replace(/\/+$/g, "");
 }
 
 function buildAdditionalFolders(folders: string[]): string[] {
@@ -66,10 +71,15 @@ async function readGhostCacheStore(): Promise<GhostCacheStoreV1> {
 }
 
 async function writeGhostCacheEntry(requestKey: string, entry: GhostCacheEntry): Promise<void> {
-  const cacheStore = await readGhostCacheStore();
-  cacheStore.entries[requestKey] = entry;
-  await settingsStore.set(GHOST_CACHE_KEY, cacheStore);
-  await settingsStore.save();
+  const runWrite = async () => {
+    const cacheStore = await readGhostCacheStore();
+    cacheStore.entries[requestKey] = entry;
+    await settingsStore.set(GHOST_CACHE_KEY, cacheStore);
+    await settingsStore.save();
+  };
+
+  cacheWriteQueue = cacheWriteQueue.then(runWrite, runWrite);
+  await cacheWriteQueue;
 }
 
 function toGhostView(ghost: Ghost): GhostView {
