@@ -17,6 +17,7 @@ import type {
 } from "../types";
 
 const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
+const SCAN_RETRY_ACTION_LABEL = "再読込";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -120,7 +121,11 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
         if (!usedCachedGhosts || forceFullScan) {
-          setError(buildScanErrorMessage(e));
+          const scanErrorMessage = buildScanErrorMessage(e);
+          const actionableMessage = scanErrorMessage.includes(SCAN_RETRY_ACTION_LABEL)
+            ? scanErrorMessage
+            : `${scanErrorMessage}「${SCAN_RETRY_ACTION_LABEL}」を実行してください。`;
+          setError(actionableMessage);
           setGhosts([]);
         }
       }
