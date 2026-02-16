@@ -139,21 +139,6 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     );
   }
 
-  if (ghosts.length < VIRTUALIZE_THRESHOLD) {
-    return (
-      <div className={styles.root}>
-        <Text className={styles.count} aria-live="polite">
-          {ghosts.length} 体のゴースト
-        </Text>
-        <div className={styles.stack}>
-          {ghosts.map((ghost) => (
-            <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.root}>
       <Text className={styles.count} aria-live="polite">
@@ -164,13 +149,13 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
         ref={viewportRef}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        <div style={{ height: topSpacer }} />
+        {shouldVirtualize && <div style={{ height: topSpacer }} />}
         <div className={styles.stack}>
-          {visibleGhosts.map((ghost) => (
+          {(shouldVirtualize ? visibleGhosts : ghosts).map((ghost) => (
             <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
           ))}
         </div>
-        <div style={{ height: bottomSpacer }} />
+        {shouldVirtualize && <div style={{ height: bottomSpacer }} />}
       </div>
     </div>
   );
