@@ -6,11 +6,6 @@ mod types;
 pub use types::{Ghost, ScanGhostsResponse};
 
 #[tauri::command]
-pub fn scan_ghosts(ssp_path: String, additional_folders: Vec<String>) -> Result<Vec<Ghost>, String> {
-    scan::scan_ghosts_internal(&ssp_path, &additional_folders)
-}
-
-#[tauri::command]
 pub fn scan_ghosts_with_meta(
     ssp_path: String,
     additional_folders: Vec<String>,

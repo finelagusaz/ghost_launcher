@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
+import { useElementHeight } from "../hooks/useElementHeight";
 import { useVirtualizedList } from "../hooks/useVirtualizedList";
 import type { Ghost } from "../types";
 
@@ -58,7 +59,6 @@ const useStyles = makeStyles({
 export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const styles = useStyles();
   const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
@@ -72,39 +72,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   }, [ghostsFingerprint]);
 
   const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
-
-  useEffect(() => {
-    if (!shouldVirtualize) {
-      return;
-    }
-
-    const element = viewportRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateHeight = () => {
-      const nextHeight = element.clientHeight;
-      if (nextHeight > 0) {
-        setViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-      }
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateHeight();
-    });
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [shouldVirtualize]);
+  const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
 
   const { visibleItems: visibleGhosts, topSpacer, bottomSpacer } = useVirtualizedList(ghosts, {
     scrollTop,
