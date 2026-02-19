@@ -3,21 +3,13 @@ import {
   readGhostCacheEntry,
   writeGhostCacheEntry,
 } from "../lib/ghostCacheRepository";
-import { getGhostsFingerprint, scanGhostsWithMeta } from "../lib/ghostScanClient";
+import { validateCache, executeScan } from "../lib/ghostScanOrchestrator";
 import {
   buildAdditionalFolders,
   buildRequestKey,
   buildScanErrorMessage,
 } from "../lib/ghostScanUtils";
-import type {
-  Ghost,
-  GhostCacheEntry,
-  GhostView,
-  ScanGhostsResponse,
-} from "../types";
-
-const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
-const SCAN_RETRY_ACTION_LABEL = "再読込";
+import type { Ghost, GhostCacheEntry, GhostView } from "../types";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -65,6 +57,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
     try {
       setError(null);
 
+      // 1. キャッシュ表示
       if (!forceFullScan) {
         cachedEntry = await readGhostCacheEntry(requestKey);
 
@@ -80,38 +73,25 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
 
       setLoading(!usedCachedGhosts);
 
+      // 2. 指紋検証
       if (!forceFullScan && cachedEntry) {
-        try {
-          const fingerprint = await getGhostsFingerprint(sspPath, additionalFolders);
-          if (requestSeq !== requestSeqRef.current) {
-            return;
-          }
-
-          if (fingerprint === cachedEntry.fingerprint) {
-            return;
-          }
-        } catch {
-          // 指紋取得に失敗した場合はフルスキャンへフォールバックする。
+        const cacheValid = await validateCache(cachedEntry, sspPath, additionalFolders);
+        if (requestSeq !== requestSeqRef.current) {
+          return;
+        }
+        if (cacheValid) {
+          return;
         }
       }
 
-      let scanPromise = pendingScans.get(requestKey);
-      if (!scanPromise || forceFullScan) {
-        scanPromise = scanGhostsWithMeta(sspPath, additionalFolders);
-        pendingScans.set(requestKey, scanPromise);
-        scanPromise.finally(() => {
-          if (pendingScans.get(requestKey) === scanPromise) {
-            pendingScans.delete(requestKey);
-          }
-        });
-      }
-
-      const result = await scanPromise;
+      // 3. スキャン実行
+      const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
       if (requestSeq === requestSeqRef.current) {
         setGhosts(result.ghosts.map(toGhostView));
         setError(null);
       }
 
+      // 4. キャッシュ書き込み
       await writeGhostCacheEntry(requestKey, {
         request_key: requestKey,
         fingerprint: result.fingerprint,
@@ -121,11 +101,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
         if (!usedCachedGhosts || forceFullScan) {
-          const scanErrorMessage = buildScanErrorMessage(e);
-          const actionableMessage = scanErrorMessage.includes(SCAN_RETRY_ACTION_LABEL)
-            ? scanErrorMessage
-            : `${scanErrorMessage}「${SCAN_RETRY_ACTION_LABEL}」を実行してください。`;
-          setError(actionableMessage);
+          setError(buildScanErrorMessage(e));
           setGhosts([]);
         }
       }

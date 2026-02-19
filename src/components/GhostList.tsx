@@ -147,7 +147,9 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
       <div
         className={styles.viewport}
         ref={viewportRef}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        onScroll={
+          shouldVirtualize ? (event) => setScrollTop(event.currentTarget.scrollTop) : undefined
+        }
       >
         {shouldVirtualize && <div style={{ height: topSpacer }} />}
         <div className={styles.stack}>
