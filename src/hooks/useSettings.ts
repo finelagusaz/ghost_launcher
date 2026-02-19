@@ -10,9 +10,11 @@ export function useSettings() {
   useEffect(() => {
     const load = async () => {
       try {
-        const path = await settingsStore.get<string>("ssp_path");
+        const [path, folders] = await Promise.all([
+          settingsStore.get<string>("ssp_path"),
+          settingsStore.get<string[]>("ghost_folders"),
+        ]);
         setSspPath(path ?? null);
-        const folders = await settingsStore.get<string[]>("ghost_folders");
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;

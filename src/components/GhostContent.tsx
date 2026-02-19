@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
@@ -40,7 +41,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function GhostContent({
+export const GhostContent = memo(function GhostContent({
   ghosts,
   sspPath,
   searchQuery,
@@ -72,4 +73,4 @@ export function GhostContent({
       </div>
     </>
   );
-}
+});

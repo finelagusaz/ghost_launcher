@@ -3,7 +3,7 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-use super::path_utils::{modified_nanos, normalize_path};
+use super::path_utils::normalize_path;
 use super::scan::unique_sorted_additional_folders;
 
 fn push_parent_fingerprint_tokens(
@@ -39,8 +39,11 @@ fn push_parent_fingerprint_tokens(
         return Ok(());
     }
 
-    let parent_modified = modified_nanos(parent_dir)
-        .map(|value| value.to_string())
+    let parent_modified = fs::metadata(parent_dir)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos().to_string())
         .unwrap_or_else(|| "unreadable".to_string());
     tokens.push(format!(
         "parent|{}|{}|{}",
@@ -80,18 +83,25 @@ fn push_parent_fingerprint_tokens(
             None => continue,
         };
 
-        let dir_modified = modified_nanos(&path)
-            .map(|value| value.to_string())
+        let dir_modified = fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos().to_string())
             .unwrap_or_else(|| "unreadable".to_string());
 
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let (descript_state, descript_modified) = if !descript_path.exists() {
-            ("missing".to_string(), "-".to_string())
-        } else {
-            match modified_nanos(&descript_path) {
-                Some(value) => ("present".to_string(), value.to_string()),
+        let (descript_state, descript_modified) = match fs::metadata(&descript_path) {
+            Err(_) => ("missing".to_string(), "-".to_string()),
+            Ok(meta) => match meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos())
+            {
+                Some(nanos) => ("present".to_string(), nanos.to_string()),
                 None => ("unreadable".to_string(), "-".to_string()),
-            }
+            },
         };
 
         tokens.push(format!(

@@ -10,8 +10,8 @@ pub fn scan_ghosts_with_meta(
     ssp_path: String,
     additional_folders: Vec<String>,
 ) -> Result<ScanGhostsResponse, String> {
-    let ghosts = scan::scan_ghosts_internal(&ssp_path, &additional_folders)?;
-    let fingerprint = fingerprint::build_fingerprint(&ssp_path, &additional_folders)?;
+    let (ghosts, fingerprint) =
+        scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
     Ok(ScanGhostsResponse { ghosts, fingerprint })
 }
 
@@ -26,7 +26,10 @@ pub fn get_ghosts_fingerprint(
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;
-    use super::scan::{scan_ghosts_internal, unique_sorted_additional_folders};
+    use super::scan::{
+        scan_ghosts_internal, scan_ghosts_with_fingerprint_internal,
+        unique_sorted_additional_folders,
+    };
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -207,6 +210,32 @@ mod tests {
         assert!(result.is_err());
         let error = result.err().ok_or_else(|| "expected error".to_string())?;
         assert!(error.contains("ghost フォルダが見つかりません"));
+        Ok(())
+    }
+
+    #[test]
+    fn integrated_fingerprint_matches_standalone_build_fingerprint() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_fp_consistency_test")?;
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir(&ssp_ghost, "ghost_a")?;
+        create_ghost_dir(&ssp_ghost, "ghost_b")?;
+
+        let additional = workspace.path().join("additional");
+        fs::create_dir_all(&additional)
+            .map_err(|error| format!("failed to create additional: {}", error))?;
+        create_ghost_dir(&additional, "extra_ghost")?;
+
+        let additional_folders = vec![additional.to_string_lossy().to_string()];
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+
+        let standalone = build_fingerprint(&ssp_path, &additional_folders)?;
+        let (_, integrated) =
+            scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
+
+        assert_eq!(standalone, integrated);
         Ok(())
     }
 }

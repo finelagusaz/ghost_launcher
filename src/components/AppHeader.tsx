@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ArrowClockwiseRegular, SettingsRegular } from "@fluentui/react-icons";
 
@@ -39,7 +40,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings }: Props) {
+export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings }: Props) {
   const styles = useStyles();
 
   return (
@@ -66,4 +67,4 @@ export function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings }:
       </div>
     </header>
   );
-}
+});

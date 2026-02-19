@@ -96,12 +96,14 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
         setError(null);
       }
 
-      // 4. キャッシュ書き込み
-      await writeGhostCacheEntry(requestKey, {
+      // 4. キャッシュ書き込み（fire-and-forget: UI 更新をブロックしない）
+      writeGhostCacheEntry(requestKey, {
         request_key: requestKey,
         fingerprint: result.fingerprint,
         ghosts: result.ghosts,
         cached_at: new Date().toISOString(),
+      }).catch((error) => {
+        console.error("ゴーストキャッシュの書き込みに失敗しました", error);
       });
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
