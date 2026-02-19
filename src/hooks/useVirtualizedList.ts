@@ -41,6 +41,7 @@ export function useVirtualizedList<T>(
   );
 
   const rafRef = useRef(0);
+  const scrollTopRef = useRef(0);
   const prevIndicesRef = useRef(indices);
 
   // items/options が変わった場合はインデックスをリセット
@@ -56,7 +57,7 @@ export function useVirtualizedList<T>(
     prevItemsLenRef.current = items.length;
     prevRowHeightRef.current = rowHeight;
     prevViewportRef.current = viewportHeight;
-    const newIndices = calcIndices(0, viewportHeight, items.length, rowHeight, overscanRows);
+    const newIndices = calcIndices(scrollTopRef.current, viewportHeight, items.length, rowHeight, overscanRows);
     prevIndicesRef.current = newIndices;
     setIndices(newIndices);
   }
@@ -64,6 +65,7 @@ export function useVirtualizedList<T>(
   const onScroll = useCallback(
     (event: React.UIEvent<HTMLElement>) => {
       const scrollTop = event.currentTarget.scrollTop;
+      scrollTopRef.current = scrollTop;
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         const next = calcIndices(scrollTop, viewportHeight, items.length, rowHeight, overscanRows);
@@ -77,10 +79,9 @@ export function useVirtualizedList<T>(
   );
 
   const [startIndex, endIndex] = indices;
-  const totalHeight = items.length * rowHeight - gap;
   const topSpacer = startIndex * rowHeight;
   const visibleItems = items.slice(startIndex, endIndex);
-  const bottomSpacer = Math.max(0, totalHeight - topSpacer - visibleItems.length * rowHeight);
+  const bottomSpacer = (items.length - endIndex) * rowHeight;
 
   return {
     visibleItems,
