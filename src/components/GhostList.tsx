@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
 import { useElementHeight } from "../hooks/useElementHeight";
@@ -14,6 +14,7 @@ interface Props {
 
 const VIRTUALIZE_THRESHOLD = 80;
 const ESTIMATED_ROW_HEIGHT = 100;
+const STACK_GAP = 8;
 const OVERSCAN_ROWS = 6;
 const DEFAULT_VIEWPORT_HEIGHT = 420;
 
@@ -36,7 +37,7 @@ const useStyles = makeStyles({
   stack: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: `${STACK_GAP}px`,
   },
   count: {
     color: tokens.colorNeutralForeground3,
@@ -58,13 +59,11 @@ const useStyles = makeStyles({
 
 export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const styles = useStyles();
-  const [scrollTop, setScrollTop] = useState(0);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
 
   useEffect(() => {
-    setScrollTop(0);
     const viewport = viewportRef.current;
     if (viewport && viewport.scrollTop !== 0) {
       viewport.scrollTop = 0;
@@ -74,12 +73,15 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
   const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
 
-  const { visibleItems: visibleGhosts, topSpacer, bottomSpacer } = useVirtualizedList(ghosts, {
-    scrollTop,
-    viewportHeight,
-    estimatedRowHeight: ESTIMATED_ROW_HEIGHT,
-    overscanRows: OVERSCAN_ROWS,
-  });
+  const { visibleItems: visibleGhosts, topSpacer, bottomSpacer, onScroll } = useVirtualizedList(
+    ghosts,
+    {
+      viewportHeight,
+      estimatedRowHeight: ESTIMATED_ROW_HEIGHT,
+      overscanRows: OVERSCAN_ROWS,
+      gap: STACK_GAP,
+    },
+  );
 
   if (loading) {
     return (
@@ -115,9 +117,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
       <div
         className={styles.viewport}
         ref={viewportRef}
-        onScroll={
-          shouldVirtualize ? (event) => setScrollTop(event.currentTarget.scrollTop) : undefined
-        }
+        onScroll={shouldVirtualize ? onScroll : undefined}
       >
         {shouldVirtualize && <div style={{ height: topSpacer }} />}
         <div className={styles.stack}>

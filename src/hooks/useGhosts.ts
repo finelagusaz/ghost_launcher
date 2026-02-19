@@ -30,6 +30,11 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
 
+  // ghostFolders の参照安定化: 内容が同じなら useCallback を再生成しない
+  const ghostFoldersKey = JSON.stringify(ghostFolders);
+  const ghostFoldersRef = useRef(ghostFolders);
+  ghostFoldersRef.current = ghostFolders;
+
   const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (!sspPath) {
       setGhosts([]);
@@ -38,7 +43,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       return;
     }
 
-    const additionalFolders = buildAdditionalFolders(ghostFolders);
+    const additionalFolders = buildAdditionalFolders(ghostFoldersRef.current);
     const requestKey = buildRequestKey(sspPath, additionalFolders);
     const forceFullScan = options.forceFullScan === true;
     const inFlightKey = `${requestKey}::${forceFullScan ? "force" : "auto"}`;
@@ -113,7 +118,8 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
         inFlightKeyRef.current = null;
       }
     }
-  }, [sspPath, ghostFolders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sspPath, ghostFoldersKey]);
 
   useEffect(() => {
     refresh();

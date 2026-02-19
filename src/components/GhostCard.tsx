@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Badge, Button, Card, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
@@ -80,7 +80,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function GhostCard({ ghost, sspPath }: Props) {
+export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,4 +135,4 @@ export function GhostCard({ ghost, sspPath }: Props) {
       )}
     </Card>
   );
-}
+});
