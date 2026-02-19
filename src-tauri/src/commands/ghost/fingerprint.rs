@@ -73,19 +73,25 @@ fn push_parent_fingerprint_tokens(
             Ok(value) => value,
             Err(_) => continue,
         };
+
+        // entry.metadata() は Windows では FindNextFile のキャッシュを利用（modified time 取得用）
+        let entry_meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
-
         let directory_name = match path.file_name().and_then(|name| name.to_str()) {
             Some(name) => name.to_string(),
             None => continue,
         };
 
-        let dir_modified = fs::metadata(&path)
+        // entry.metadata() 再利用
+        let dir_modified = entry_meta
+            .modified()
             .ok()
-            .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_nanos().to_string())
             .unwrap_or_else(|| "unreadable".to_string());

@@ -65,8 +65,9 @@ function App() {
     addGhostFolder,
     removeGhostFolder,
     loading: settingsLoading,
+    initialGhostCache,
   } = useSettings();
-  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
+  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders, initialGhostCache);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);

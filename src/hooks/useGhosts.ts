@@ -9,7 +9,7 @@ import {
   buildRequestKey,
   buildScanErrorMessage,
 } from "../lib/ghostScanUtils";
-import type { Ghost, GhostCacheEntry, GhostView } from "../types";
+import type { Ghost, GhostCacheEntry, GhostCacheStoreV1, GhostView } from "../types";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -23,12 +23,18 @@ function toGhostView(ghost: Ghost): GhostView {
   };
 }
 
-export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
+export function useGhosts(sspPath: string | null, ghostFolders: string[], preloadedCache: GhostCacheStoreV1 | null = null) {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
+  const preloadedCacheRef = useRef(preloadedCache);
+  const preloadedCacheConsumedRef = useRef(false);
+  // 未消費の場合のみ prop から更新（初回 null → 設定ロード後に実値が来るため）
+  if (!preloadedCacheConsumedRef.current) {
+    preloadedCacheRef.current = preloadedCache;
+  }
 
   // ghostFolders の参照安定化: 内容が同じなら useCallback を再生成しない
   const ghostFoldersKey = JSON.stringify(ghostFolders);
@@ -62,9 +68,16 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
     try {
       setError(null);
 
-      // 1. キャッシュ表示
+      // 1. キャッシュ表示（preloaded があればストア読み込みをスキップ）
       if (!forceFullScan) {
-        cachedEntry = await readGhostCacheEntry(requestKey);
+        const preloaded = preloadedCacheRef.current;
+        if (preloaded) {
+          cachedEntry = preloaded.entries[requestKey];
+          preloadedCacheConsumedRef.current = true;
+          preloadedCacheRef.current = null;
+        } else {
+          cachedEntry = await readGhostCacheEntry(requestKey);
+        }
 
         if (requestSeq !== requestSeqRef.current) {
           return;

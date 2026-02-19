@@ -1,23 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
+import { GHOST_CACHE_KEY, isGhostCacheStoreV1 } from "../lib/ghostCacheRepository";
+import type { GhostCacheStoreV1 } from "../types";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
   const [ghostFolders, setGhostFolders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialGhostCache, setInitialGhostCache] = useState<GhostCacheStoreV1 | null>(null);
   const ghostFoldersRef = useRef<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [path, folders] = await Promise.all([
+        const [path, folders, rawCache] = await Promise.all([
           settingsStore.get<string>("ssp_path"),
           settingsStore.get<string[]>("ghost_folders"),
+          settingsStore.get<unknown>(GHOST_CACHE_KEY),
         ]);
         setSspPath(path ?? null);
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;
+        if (isGhostCacheStoreV1(rawCache)) {
+          setInitialGhostCache(rawCache);
+        }
       } catch {
         setSspPath(null);
         setGhostFolders([]);
@@ -82,5 +89,5 @@ export function useSettings() {
     }
   }, [persistGhostFolders]);
 
-  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading };
+  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading, initialGhostCache };
 }

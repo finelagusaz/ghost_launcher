@@ -80,21 +80,22 @@ fn scan_ghost_dir_with_fingerprint(
             Err(_) => continue,
         };
 
+        // entry.metadata() は Windows では FindNextFile のキャッシュを利用（modified time 取得用）
+        let entry_meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
-
         let directory_name = match path.file_name().and_then(|n| n.to_str()) {
             Some(name) => name.to_string(),
             None => continue,
         };
 
-        // ディレクトリの modified time（fingerprint 用）
-        let dir_modified = fs::metadata(&path)
-            .as_ref()
-            .map(metadata_modified_string)
-            .unwrap_or_else(|_| "unreadable".to_string());
+        // ディレクトリの modified time（fingerprint 用）— entry.metadata() 再利用
+        let dir_modified = metadata_modified_string(&entry_meta);
 
         // descript.txt: metadata 1回で存在確認 + modified time（fingerprint 用）
         let descript_path = path.join("ghost").join("master").join("descript.txt");
