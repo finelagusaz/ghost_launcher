@@ -29,10 +29,7 @@ const useStyles = makeStyles({
     minHeight: "240px",
     overflowY: "auto",
     scrollbarGutter: "stable",
-    padding: "8px",
-    borderRadius: tokens.borderRadiusLarge,
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "4px 0",
   },
   stack: {
     display: "flex",

@@ -21,10 +21,11 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "8px",
     transitionDuration: tokens.durationNormal,
-    transitionProperty: "background-color, border-color",
+    transitionProperty: "background-color, box-shadow",
     transitionTimingFunction: tokens.curveEasyEase,
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2,
+      boxShadow: tokens.shadow8,
     },
   },
   row: {
@@ -34,7 +35,7 @@ const useStyles = makeStyles({
     alignItems: "center",
     "@media (max-width: 600px)": {
       gridTemplateColumns: "1fr",
-      gap: "10px",
+      gap: "12px",
       alignItems: "stretch",
     },
   },
@@ -42,7 +43,7 @@ const useStyles = makeStyles({
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "8px",
   },
   name: {
     whiteSpace: "nowrap",
@@ -103,7 +104,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   };
 
   return (
-    <Card className={styles.card} appearance="subtle">
+    <Card className={styles.card} appearance="outline">
       <div className={styles.row}>
         <div className={styles.info}>
           <Text weight="semibold" className={styles.name}>
@@ -121,7 +122,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
         <Button
           className={styles.launchButton}
           icon={<PlayRegular />}
-          appearance="primary"
+          appearance="outline"
           onClick={handleLaunch}
           disabled={launching}
         >

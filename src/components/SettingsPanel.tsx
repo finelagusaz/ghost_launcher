@@ -19,11 +19,6 @@ interface Props {
 
 const useStyles = makeStyles({
   panel: {
-    borderRadius: tokens.borderRadiusLarge,
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-    boxShadow: tokens.shadow4,
-    padding: "16px",
     display: "flex",
     flexDirection: "column",
     gap: "16px",

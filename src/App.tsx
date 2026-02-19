@@ -102,6 +102,7 @@ function App() {
           loading={ghostsLoading}
           error={error}
           onSearchChange={setSearchQuery}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       </div>
 
