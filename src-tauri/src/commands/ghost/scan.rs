@@ -1,9 +1,8 @@
 use crate::utils::descript;
-use std::collections::hash_map::DefaultHasher;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use super::fingerprint::{compute_fingerprint_hash, descript_metadata_for_token, metadata_modified_string};
 use super::path_utils::normalize_path;
 use super::types::Ghost;
 
@@ -22,15 +21,6 @@ pub(crate) fn unique_sorted_additional_folders(
     folders.sort_by(|a, b| a.2.cmp(&b.2));
     folders.dedup_by(|a, b| a.2 == b.2);
     folders
-}
-
-/// fs::metadata から更新時刻の nanos 文字列を取得するヘルパー
-fn metadata_modified_string(meta: &fs::Metadata) -> String {
-    meta.modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos().to_string())
-        .unwrap_or_else(|| "unreadable".to_string())
 }
 
 /// ゴーストディレクトリを走査し、Ghost データとフィンガープリントトークンを同時収集する
@@ -99,21 +89,7 @@ fn scan_ghost_dir_with_fingerprint(
 
         // descript.txt: metadata 1回で存在確認 + modified time（fingerprint 用）
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let (descript_state, descript_modified, descript_exists) = match fs::metadata(&descript_path)
-        {
-            Err(_) => ("missing".to_string(), "-".to_string(), false),
-            Ok(meta) => {
-                let modified = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_nanos());
-                match modified {
-                    Some(nanos) => ("present".to_string(), nanos.to_string(), true),
-                    None => ("unreadable".to_string(), "-".to_string(), true),
-                }
-            }
-        };
+        let (descript_state, descript_modified) = descript_metadata_for_token(&descript_path);
 
         tokens.push(format!(
             "entry|{}|{}|{}|{}|{}|{}",
@@ -126,7 +102,7 @@ fn scan_ghost_dir_with_fingerprint(
         ));
 
         // descript.txt が存在する場合のみパースして Ghost を構築
-        if descript_exists {
+        if descript_state != "missing" {
             if let Ok(fields) = descript::parse_descript(&descript_path) {
                 let name = fields
                     .get("name")
@@ -201,12 +177,7 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     ghosts.sort_by_cached_key(|ghost| ghost.name.to_lowercase());
 
     // フィンガープリント計算
-    tokens.sort();
-    let mut hasher = DefaultHasher::new();
-    for token in &tokens {
-        token.hash(&mut hasher);
-    }
-    let fingerprint = format!("{:016x}", hasher.finish());
+    let fingerprint = compute_fingerprint_hash(&mut tokens);
 
     Ok((ghosts, fingerprint))
 }

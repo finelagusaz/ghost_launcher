@@ -6,6 +6,41 @@ use std::path::Path;
 use super::path_utils::normalize_path;
 use super::scan::unique_sorted_additional_folders;
 
+/// fs::Metadata から更新時刻の nanos 文字列を取得するヘルパー
+pub(crate) fn metadata_modified_string(meta: &fs::Metadata) -> String {
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos().to_string())
+        .unwrap_or_else(|| "unreadable".to_string())
+}
+
+/// descript.txt の metadata から (state, modified) のトークン用タプルを取得する
+pub(crate) fn descript_metadata_for_token(descript_path: &Path) -> (String, String) {
+    match fs::metadata(descript_path) {
+        Err(_) => ("missing".to_string(), "-".to_string()),
+        Ok(meta) => match meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+        {
+            Some(nanos) => ("present".to_string(), nanos.to_string()),
+            None => ("unreadable".to_string(), "-".to_string()),
+        },
+    }
+}
+
+/// トークン列からフィンガープリントハッシュを計算する
+pub(crate) fn compute_fingerprint_hash(tokens: &mut Vec<String>) -> String {
+    tokens.sort();
+    let mut hasher = DefaultHasher::new();
+    for token in tokens.iter() {
+        token.hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
+}
+
 fn push_parent_fingerprint_tokens(
     tokens: &mut Vec<String>,
     parent_label: &str,
@@ -40,11 +75,9 @@ fn push_parent_fingerprint_tokens(
     }
 
     let parent_modified = fs::metadata(parent_dir)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos().to_string())
-        .unwrap_or_else(|| "unreadable".to_string());
+        .as_ref()
+        .map(metadata_modified_string)
+        .unwrap_or_else(|_| "unreadable".to_string());
     tokens.push(format!(
         "parent|{}|{}|{}",
         parent_label, normalized_parent, parent_modified
@@ -88,27 +121,10 @@ fn push_parent_fingerprint_tokens(
             None => continue,
         };
 
-        // entry.metadata() 再利用
-        let dir_modified = entry_meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos().to_string())
-            .unwrap_or_else(|| "unreadable".to_string());
+        let dir_modified = metadata_modified_string(&entry_meta);
 
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let (descript_state, descript_modified) = match fs::metadata(&descript_path) {
-            Err(_) => ("missing".to_string(), "-".to_string()),
-            Ok(meta) => match meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos())
-            {
-                Some(nanos) => ("present".to_string(), nanos.to_string()),
-                None => ("unreadable".to_string(), "-".to_string()),
-            },
-        };
+        let (descript_state, descript_modified) = descript_metadata_for_token(&descript_path);
 
         tokens.push(format!(
             "entry|{}|{}|{}|{}|{}|{}",
@@ -136,12 +152,5 @@ pub(crate) fn build_fingerprint(
         push_parent_fingerprint_tokens(&mut tokens, &normalized_folder, &folder_path, false)?;
     }
 
-    tokens.sort();
-
-    let mut hasher = DefaultHasher::new();
-    for token in &tokens {
-        token.hash(&mut hasher);
-    }
-
-    Ok(format!("{:016x}", hasher.finish()))
+    Ok(compute_fingerprint_hash(&mut tokens))
 }
