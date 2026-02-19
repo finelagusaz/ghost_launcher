@@ -209,11 +209,3 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
 
     Ok((ghosts, fingerprint))
 }
-
-pub(crate) fn scan_ghosts_internal(
-    ssp_path: &str,
-    additional_folders: &[String],
-) -> Result<Vec<Ghost>, String> {
-    let (ghosts, _) = scan_ghosts_with_fingerprint_internal(ssp_path, additional_folders)?;
-    Ok(ghosts)
-}

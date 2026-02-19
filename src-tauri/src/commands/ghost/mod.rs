@@ -3,7 +3,7 @@ mod path_utils;
 mod scan;
 mod types;
 
-pub use types::{Ghost, ScanGhostsResponse};
+pub use types::ScanGhostsResponse;
 
 #[tauri::command]
 pub fn scan_ghosts_with_meta(
@@ -26,10 +26,7 @@ pub fn get_ghosts_fingerprint(
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;
-    use super::scan::{
-        scan_ghosts_internal, scan_ghosts_with_fingerprint_internal,
-        unique_sorted_additional_folders,
-    };
+    use super::scan::{scan_ghosts_with_fingerprint_internal, unique_sorted_additional_folders};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -148,7 +145,8 @@ mod tests {
             additional_b.to_string_lossy().to_string(),
             additional_a.to_string_lossy().to_string(),
         ];
-        let ghosts = scan_ghosts_internal(&ssp_root.to_string_lossy(), &additional_paths)?;
+        let (ghosts, _) =
+            scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &additional_paths)?;
 
         assert_eq!(ghosts.len(), 3);
         assert_eq!(ghosts[0].name, "Alpha");
@@ -189,7 +187,8 @@ mod tests {
             "charset,UTF-8\n// no name field\n",
         )?;
 
-        let ghosts = scan_ghosts_internal(&ssp_root.to_string_lossy(), &[])?;
+        let (ghosts, _) =
+            scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[])?;
         let fallback = ghosts
             .iter()
             .find(|ghost| ghost.directory_name == "fallback_dir")
@@ -206,7 +205,7 @@ mod tests {
         fs::create_dir_all(&ssp_root)
             .map_err(|error| format!("failed to create ssp root dir: {}", error))?;
 
-        let result = scan_ghosts_internal(&ssp_root.to_string_lossy(), &[]);
+        let result = scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[]);
         assert!(result.is_err());
         let error = result.err().ok_or_else(|| "expected error".to_string())?;
         assert!(error.contains("ghost フォルダが見つかりません"));
