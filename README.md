@@ -1,6 +1,21 @@
+<div align="center">
+
 # Ghost Launcher
 
-Ghost Launcher は、SSP/伺か用のゴーストを一覧表示し、選択したゴーストをすぐに起動できる Tauri 製ランチャーです。  
+**伺か/SSP ゴーストをすばやく検索・起動できるデスクトップランチャー**
+
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)](https://github.com/finelagusaz/ghost_launcher)
+
+</div>
+
+---
+
+Ghost Launcher は、SSP/伺か用のゴーストを一覧表示し、選択したゴーストをすぐに起動できる Tauri 製ランチャーです。
 SSP 本体の `ghost` フォルダに加え、任意の追加フォルダにあるゴーストもまとめて扱えます。
 
 ## ソフトの概要
