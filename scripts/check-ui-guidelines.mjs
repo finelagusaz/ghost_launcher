@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 function read(relativePath) {
@@ -9,6 +9,18 @@ function read(relativePath) {
   } catch (error) {
     throw new Error(`ファイルを読み込めません: ${relativePath} (${String(error)})`);
   }
+}
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx"];
+
+// dir 内の全 .ts/.tsx ソースを結合して返す
+function readDir(relativeDir) {
+  const fullPath = resolve(process.cwd(), relativeDir);
+  const entries = readdirSync(fullPath, { recursive: true });
+  return entries
+    .filter((entry) => SOURCE_EXTENSIONS.some((ext) => entry.endsWith(ext)))
+    .map((entry) => readFileSync(join(fullPath, entry), "utf8"))
+    .join("\n");
 }
 
 export const checks = [
@@ -44,7 +56,7 @@ export const checks = [
   },
   {
     id: "scan-error-actionable",
-    file: "src/hooks/useGhosts.ts",
+    dir: "src",
     message: "スキャン失敗時は再操作が分かる文言を含めてください。",
     test: (source) => /再読込/.test(source),
   },
@@ -54,16 +66,17 @@ export function runChecks() {
   const failures = [];
 
   for (const check of checks) {
+    const target = check.dir ?? check.file;
     let source = "";
     try {
-      source = read(check.file);
+      source = check.dir ? readDir(check.dir) : read(check.file);
     } catch (error) {
       failures.push(`[${check.id}] ${String(error)}`);
       continue;
     }
 
     if (!check.test(source)) {
-      failures.push(`[${check.id}] ${check.file}: ${check.message}`);
+      failures.push(`[${check.id}] ${target}: ${check.message}`);
     }
   }
 
