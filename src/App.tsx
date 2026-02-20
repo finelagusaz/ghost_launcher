@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import {
   Button,
   Dialog,
@@ -65,12 +65,17 @@ function App() {
     addGhostFolder,
     removeGhostFolder,
     loading: settingsLoading,
+    initialGhostCache,
   } = useSettings();
-  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
+  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders, initialGhostCache);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const filteredGhosts = useSearch(ghosts, deferredSearchQuery);
+
+  const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
+  const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
+  const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
 
   useEffect(() => {
     if (!settingsLoading && !sspPath) {
@@ -92,8 +97,8 @@ function App() {
         <AppHeader
           sspPath={sspPath}
           ghostsLoading={ghostsLoading}
-          onRefresh={() => refresh({ forceFullScan: true })}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onRefresh={handleRefresh}
+          onOpenSettings={handleOpenSettings}
         />
         <GhostContent
           ghosts={filteredGhosts}
@@ -102,6 +107,7 @@ function App() {
           loading={ghostsLoading}
           error={error}
           onSearchChange={setSearchQuery}
+          onOpenSettings={handleOpenSettings}
         />
       </div>
 
@@ -123,7 +129,7 @@ function App() {
               />
             </DialogContent>
             <DialogActions>
-              <Button appearance="secondary" onClick={() => setSettingsOpen(false)}>
+              <Button appearance="secondary" onClick={handleCloseSettings}>
                 閉じる
               </Button>
             </DialogActions>

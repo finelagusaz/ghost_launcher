@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
+import { useElementHeight } from "../hooks/useElementHeight";
 import { useVirtualizedList } from "../hooks/useVirtualizedList";
 import type { Ghost } from "../types";
 
@@ -13,6 +14,7 @@ interface Props {
 
 const VIRTUALIZE_THRESHOLD = 80;
 const ESTIMATED_ROW_HEIGHT = 100;
+const STACK_GAP = 8;
 const OVERSCAN_ROWS = 6;
 const DEFAULT_VIEWPORT_HEIGHT = 420;
 
@@ -27,15 +29,12 @@ const useStyles = makeStyles({
     minHeight: "240px",
     overflowY: "auto",
     scrollbarGutter: "stable",
-    padding: "8px",
-    borderRadius: tokens.borderRadiusLarge,
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    backgroundColor: tokens.colorNeutralBackground1,
+    padding: "4px 0",
   },
   stack: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: `${STACK_GAP}px`,
   },
   count: {
     color: tokens.colorNeutralForeground3,
@@ -57,14 +56,11 @@ const useStyles = makeStyles({
 
 export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   const styles = useStyles();
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(DEFAULT_VIEWPORT_HEIGHT);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
 
   useEffect(() => {
-    setScrollTop(0);
     const viewport = viewportRef.current;
     if (viewport && viewport.scrollTop !== 0) {
       viewport.scrollTop = 0;
@@ -72,46 +68,17 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   }, [ghostsFingerprint]);
 
   const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
+  const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
 
-  useEffect(() => {
-    if (!shouldVirtualize) {
-      return;
-    }
-
-    const element = viewportRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateHeight = () => {
-      const nextHeight = element.clientHeight;
-      if (nextHeight > 0) {
-        setViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-      }
-    };
-
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      updateHeight();
-    });
-    observer.observe(element);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [shouldVirtualize]);
-
-  const { visibleItems: visibleGhosts, topSpacer, bottomSpacer } = useVirtualizedList(ghosts, {
-    scrollTop,
-    viewportHeight,
-    estimatedRowHeight: ESTIMATED_ROW_HEIGHT,
-    overscanRows: OVERSCAN_ROWS,
-  });
+  const { visibleItems: visibleGhosts, topSpacer, bottomSpacer, onScroll } = useVirtualizedList(
+    ghosts,
+    {
+      viewportHeight,
+      estimatedRowHeight: ESTIMATED_ROW_HEIGHT,
+      overscanRows: OVERSCAN_ROWS,
+      gap: STACK_GAP,
+    },
+  );
 
   if (loading) {
     return (
@@ -139,21 +106,6 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
     );
   }
 
-  if (ghosts.length < VIRTUALIZE_THRESHOLD) {
-    return (
-      <div className={styles.root}>
-        <Text className={styles.count} aria-live="polite">
-          {ghosts.length} 体のゴースト
-        </Text>
-        <div className={styles.stack}>
-          {ghosts.map((ghost) => (
-            <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.root}>
       <Text className={styles.count} aria-live="polite">
@@ -162,15 +114,15 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
       <div
         className={styles.viewport}
         ref={viewportRef}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        onScroll={shouldVirtualize ? onScroll : undefined}
       >
-        <div style={{ height: topSpacer }} />
+        {shouldVirtualize && <div style={{ height: topSpacer }} />}
         <div className={styles.stack}>
-          {visibleGhosts.map((ghost) => (
+          {(shouldVirtualize ? visibleGhosts : ghosts).map((ghost) => (
             <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
           ))}
         </div>
-        <div style={{ height: bottomSpacer }} />
+        {shouldVirtualize && <div style={{ height: bottomSpacer }} />}
       </div>
     </div>
   );

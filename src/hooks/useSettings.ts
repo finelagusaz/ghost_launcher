@@ -1,21 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
+import { GHOST_CACHE_KEY, isGhostCacheStoreV1 } from "../lib/ghostCacheRepository";
+import type { GhostCacheStoreV1 } from "../types";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
   const [ghostFolders, setGhostFolders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialGhostCache, setInitialGhostCache] = useState<GhostCacheStoreV1 | null>(null);
   const ghostFoldersRef = useRef<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const path = await settingsStore.get<string>("ssp_path");
+        const [path, folders, rawCache] = await Promise.all([
+          settingsStore.get<string>("ssp_path"),
+          settingsStore.get<string[]>("ghost_folders"),
+          settingsStore.get<unknown>(GHOST_CACHE_KEY),
+        ]);
         setSspPath(path ?? null);
-        const folders = await settingsStore.get<string[]>("ghost_folders");
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;
+        if (isGhostCacheStoreV1(rawCache)) {
+          setInitialGhostCache(rawCache);
+        }
       } catch {
         setSspPath(null);
         setGhostFolders([]);
@@ -42,43 +51,44 @@ export function useSettings() {
     await settingsStore.save();
   }, []);
 
-  const addGhostFolder = useCallback(async (folder: string) => {
+  const updateGhostFolders = useCallback(async (
+    computeUpdated: (previous: string[]) => string[] | null,
+    errorMessage: string,
+  ) => {
     const previous = ghostFoldersRef.current;
-    if (previous.includes(folder)) {
+    const updated = computeUpdated(previous);
+    if (updated === null) {
       return;
     }
 
-    const updated = [...previous, folder];
     setGhostFolders(updated);
     ghostFoldersRef.current = updated;
 
     try {
       await persistGhostFolders(updated);
     } catch (error) {
-      console.error("追加フォルダ設定の保存に失敗しました", error);
+      console.error(errorMessage, error);
       setGhostFolders(previous);
       ghostFoldersRef.current = previous;
     }
   }, [persistGhostFolders]);
+
+  const addGhostFolder = useCallback(async (folder: string) => {
+    await updateGhostFolders(
+      (previous) => previous.includes(folder) ? null : [...previous, folder],
+      "追加フォルダ設定の保存に失敗しました",
+    );
+  }, [updateGhostFolders]);
 
   const removeGhostFolder = useCallback(async (folder: string) => {
-    const previous = ghostFoldersRef.current;
-    const updated = previous.filter((value) => value !== folder);
-    if (updated.length === previous.length) {
-      return;
-    }
+    await updateGhostFolders(
+      (previous) => {
+        const updated = previous.filter((value) => value !== folder);
+        return updated.length === previous.length ? null : updated;
+      },
+      "追加フォルダ設定の削除保存に失敗しました",
+    );
+  }, [updateGhostFolders]);
 
-    setGhostFolders(updated);
-    ghostFoldersRef.current = updated;
-
-    try {
-      await persistGhostFolders(updated);
-    } catch (error) {
-      console.error("追加フォルダ設定の削除保存に失敗しました", error);
-      setGhostFolders(previous);
-      ghostFoldersRef.current = previous;
-    }
-  }, [persistGhostFolders]);
-
-  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading };
+  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading, initialGhostCache };
 }

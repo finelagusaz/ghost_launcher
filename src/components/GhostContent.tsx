@@ -1,4 +1,6 @@
-import { Text, makeStyles, tokens } from "@fluentui/react-components";
+import { memo } from "react";
+import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
 import { SearchBox } from "./SearchBox";
 import type { GhostView } from "../types";
@@ -10,6 +12,7 @@ interface Props {
   loading: boolean;
   error: string | null;
   onSearchChange: (value: string) => void;
+  onOpenSettings: () => void;
 }
 
 const useStyles = makeStyles({
@@ -31,16 +34,21 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     padding: "24px",
     textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "12px",
   },
 });
 
-export function GhostContent({
+export const GhostContent = memo(function GhostContent({
   ghosts,
   sspPath,
   searchQuery,
   loading,
   error,
   onSearchChange,
+  onOpenSettings,
 }: Props) {
   const styles = useStyles();
 
@@ -48,6 +56,9 @@ export function GhostContent({
     return (
       <div className={styles.emptyState}>
         <Text>SSPフォルダを選択してください</Text>
+        <Button icon={<SettingsRegular />} appearance="outline" onClick={onOpenSettings}>
+          設定を開く
+        </Button>
       </div>
     );
   }
@@ -62,4 +73,4 @@ export function GhostContent({
       </div>
     </>
   );
-}
+});

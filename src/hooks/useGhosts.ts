@@ -3,21 +3,13 @@ import {
   readGhostCacheEntry,
   writeGhostCacheEntry,
 } from "../lib/ghostCacheRepository";
-import { getGhostsFingerprint, scanGhostsWithMeta } from "../lib/ghostScanClient";
+import { validateCache, executeScan } from "../lib/ghostScanOrchestrator";
 import {
   buildAdditionalFolders,
   buildRequestKey,
   buildScanErrorMessage,
 } from "../lib/ghostScanUtils";
-import type {
-  Ghost,
-  GhostCacheEntry,
-  GhostView,
-  ScanGhostsResponse,
-} from "../types";
-
-const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
-const SCAN_RETRY_ACTION_LABEL = "再読込";
+import type { Ghost, GhostCacheEntry, GhostCacheStoreV1, GhostView } from "../types";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -31,12 +23,23 @@ function toGhostView(ghost: Ghost): GhostView {
   };
 }
 
-export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
+export function useGhosts(sspPath: string | null, ghostFolders: string[], preloadedCache: GhostCacheStoreV1 | null = null) {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
+  const preloadedCacheRef = useRef(preloadedCache);
+  const preloadedCacheConsumedRef = useRef(false);
+  // 未消費の場合のみ prop から更新（初回 null → 設定ロード後に実値が来るため）
+  if (!preloadedCacheConsumedRef.current) {
+    preloadedCacheRef.current = preloadedCache;
+  }
+
+  // ghostFolders の参照安定化: 内容が同じなら useCallback を再生成しない
+  const ghostFoldersKey = JSON.stringify(ghostFolders);
+  const ghostFoldersRef = useRef(ghostFolders);
+  ghostFoldersRef.current = ghostFolders;
 
   const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (!sspPath) {
@@ -46,7 +49,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       return;
     }
 
-    const additionalFolders = buildAdditionalFolders(ghostFolders);
+    const additionalFolders = buildAdditionalFolders(ghostFoldersRef.current);
     const requestKey = buildRequestKey(sspPath, additionalFolders);
     const forceFullScan = options.forceFullScan === true;
     const inFlightKey = `${requestKey}::${forceFullScan ? "force" : "auto"}`;
@@ -65,8 +68,16 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
     try {
       setError(null);
 
+      // 1. キャッシュ表示（preloaded があればストア読み込みをスキップ）
       if (!forceFullScan) {
-        cachedEntry = await readGhostCacheEntry(requestKey);
+        const preloaded = preloadedCacheRef.current;
+        if (preloaded) {
+          cachedEntry = preloaded.entries[requestKey];
+          preloadedCacheConsumedRef.current = true;
+          preloadedCacheRef.current = null;
+        } else {
+          cachedEntry = await readGhostCacheEntry(requestKey);
+        }
 
         if (requestSeq !== requestSeqRef.current) {
           return;
@@ -80,52 +91,37 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
 
       setLoading(!usedCachedGhosts);
 
+      // 2. 指紋検証
       if (!forceFullScan && cachedEntry) {
-        try {
-          const fingerprint = await getGhostsFingerprint(sspPath, additionalFolders);
-          if (requestSeq !== requestSeqRef.current) {
-            return;
-          }
-
-          if (fingerprint === cachedEntry.fingerprint) {
-            return;
-          }
-        } catch {
-          // 指紋取得に失敗した場合はフルスキャンへフォールバックする。
+        const cacheValid = await validateCache(cachedEntry, sspPath, additionalFolders);
+        if (requestSeq !== requestSeqRef.current) {
+          return;
+        }
+        if (cacheValid) {
+          return;
         }
       }
 
-      let scanPromise = pendingScans.get(requestKey);
-      if (!scanPromise || forceFullScan) {
-        scanPromise = scanGhostsWithMeta(sspPath, additionalFolders);
-        pendingScans.set(requestKey, scanPromise);
-        scanPromise.finally(() => {
-          if (pendingScans.get(requestKey) === scanPromise) {
-            pendingScans.delete(requestKey);
-          }
-        });
-      }
-
-      const result = await scanPromise;
+      // 3. スキャン実行
+      const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
       if (requestSeq === requestSeqRef.current) {
         setGhosts(result.ghosts.map(toGhostView));
         setError(null);
       }
 
-      await writeGhostCacheEntry(requestKey, {
+      // 4. キャッシュ書き込み（fire-and-forget: UI 更新をブロックしない）
+      writeGhostCacheEntry(requestKey, {
         request_key: requestKey,
         fingerprint: result.fingerprint,
         ghosts: result.ghosts,
         cached_at: new Date().toISOString(),
+      }).catch((error) => {
+        console.error("ゴーストキャッシュの書き込みに失敗しました", error);
       });
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
         if (!usedCachedGhosts || forceFullScan) {
-          const scanErrorMessage = buildScanErrorMessage(e);
-          const actionableMessage = scanErrorMessage.includes(SCAN_RETRY_ACTION_LABEL)
-            ? scanErrorMessage
-            : `${scanErrorMessage}「${SCAN_RETRY_ACTION_LABEL}」を実行してください。`;
-          setError(actionableMessage);
+          setError(buildScanErrorMessage(e));
           setGhosts([]);
         }
       }
@@ -137,7 +133,8 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
         inFlightKeyRef.current = null;
       }
     }
-  }, [sspPath, ghostFolders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sspPath, ghostFoldersKey]);
 
   useEffect(() => {
     refresh();

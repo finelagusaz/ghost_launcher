@@ -1,11 +1,11 @@
 import { settingsStore } from "./settingsStore";
 import type { GhostCacheEntry, GhostCacheStoreV1 } from "../types";
 
-const GHOST_CACHE_KEY = "ghost_cache_v1";
+export const GHOST_CACHE_KEY = "ghost_cache_v1";
 const GHOST_CACHE_VERSION = 1 as const;
 let cacheWriteQueue: Promise<void> = Promise.resolve();
 
-function isGhostCacheStoreV1(value: unknown): value is GhostCacheStoreV1 {
+export function isGhostCacheStoreV1(value: unknown): value is GhostCacheStoreV1 {
   if (!value || typeof value !== "object") {
     return false;
   }

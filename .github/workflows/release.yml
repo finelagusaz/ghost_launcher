@@ -56,7 +56,6 @@ jobs:
           }
 
           Copy-Item $exeCandidates[0].FullName -Destination (Join-Path $stageDir $exeCandidates[0].Name) -Force
-          Get-Content README.md | Set-Content -Path (Join-Path $stageDir "readme.txt")
 
           if (Test-Path $zipName) {
             Remove-Item -Force $zipName
