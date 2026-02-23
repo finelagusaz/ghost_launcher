@@ -2,8 +2,8 @@
 name = "ghost-launcher"
 version = "0.1.0"
 description = "A ghost launcher for SSP (Ukagaka)"
-authors = ["you"]
-edition = "2021"
+authors = ["Fine Lagusaz"]
+edition = "2024"
 
 [lib]
 name = "ghost_launcher_lib"
