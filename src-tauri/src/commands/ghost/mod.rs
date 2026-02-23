@@ -12,7 +12,10 @@ pub fn scan_ghosts_with_meta(
 ) -> Result<ScanGhostsResponse, String> {
     let (ghosts, fingerprint) =
         scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
-    Ok(ScanGhostsResponse { ghosts, fingerprint })
+    Ok(ScanGhostsResponse {
+        ghosts,
+        fingerprint,
+    })
 }
 
 #[tauri::command]
@@ -42,8 +45,9 @@ mod tests {
                 .map_err(|error| format!("failed to get time: {}", error))?
                 .as_nanos();
             let path = std::env::temp_dir().join(format!("{}_{}", prefix, now));
-            fs::create_dir_all(&path)
-                .map_err(|error| format!("failed to create temp dir {}: {}", path.display(), error))?;
+            fs::create_dir_all(&path).map_err(|error| {
+                format!("failed to create temp dir {}: {}", path.display(), error)
+            })?;
             Ok(Self { path })
         }
 
@@ -175,7 +179,8 @@ mod tests {
     }
 
     #[test]
-    fn scan_ghosts_internal_falls_back_to_directory_name_without_name_field() -> Result<(), String> {
+    fn scan_ghosts_internal_falls_back_to_directory_name_without_name_field() -> Result<(), String>
+    {
         let workspace = TempDirGuard::new("ghost_launcher_scan_fallback_test")?;
         let ssp_root = workspace.path().join("ssp");
         let ssp_ghost = ssp_root.join("ghost");
@@ -187,8 +192,7 @@ mod tests {
             "charset,UTF-8\n// no name field\n",
         )?;
 
-        let (ghosts, _) =
-            scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[])?;
+        let (ghosts, _) = scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[])?;
         let fallback = ghosts
             .iter()
             .find(|ghost| ghost.directory_name == "fallback_dir")

@@ -56,7 +56,10 @@ fn push_parent_fingerprint_tokens(
                 parent_dir.display()
             ));
         }
-        tokens.push(format!("parent|{}|{}|missing", parent_label, normalized_parent));
+        tokens.push(format!(
+            "parent|{}|{}|missing",
+            parent_label, normalized_parent
+        ));
         return Ok(());
     }
 
@@ -148,7 +151,8 @@ pub(crate) fn build_fingerprint(
     let ghost_dir = Path::new(ssp_path).join("ghost");
 
     push_parent_fingerprint_tokens(&mut tokens, "ssp", &ghost_dir, true)?;
-    for (_, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+    for (_, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders)
+    {
         push_parent_fingerprint_tokens(&mut tokens, &normalized_folder, &folder_path, false)?;
     }
 
