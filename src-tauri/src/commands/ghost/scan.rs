@@ -2,7 +2,9 @@ use crate::utils::descript;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::fingerprint::{compute_fingerprint_hash, descript_metadata_for_token, metadata_modified_string};
+use super::fingerprint::{
+    compute_fingerprint_hash, descript_metadata_for_token, metadata_modified_string,
+};
 use super::path_utils::normalize_path;
 use super::types::Ghost;
 
@@ -144,10 +146,18 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     let mut tokens = vec!["fingerprint-version|1".to_string()];
     let normalized_ssp = normalize_path(&ghost_dir);
 
-    let mut ghosts =
-        scan_ghost_dir_with_fingerprint(&ghost_dir, "ssp", "ssp", &normalized_ssp, &mut tokens, true)?;
+    let mut ghosts = scan_ghost_dir_with_fingerprint(
+        &ghost_dir,
+        "ssp",
+        "ssp",
+        &normalized_ssp,
+        &mut tokens,
+        true,
+    )?;
 
-    for (source, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+    for (source, folder_path, normalized_folder) in
+        unique_sorted_additional_folders(additional_folders)
+    {
         if !folder_path.exists() {
             tokens.push(format!(
                 "parent|{}|{}|missing",

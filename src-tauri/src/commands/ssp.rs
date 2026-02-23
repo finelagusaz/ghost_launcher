@@ -3,7 +3,11 @@ use std::process::Command;
 
 /// SSP.exe を指定したゴーストで起動する
 #[tauri::command]
-pub fn launch_ghost(ssp_path: String, ghost_directory_name: String, ghost_source: String) -> Result<(), String> {
+pub fn launch_ghost(
+    ssp_path: String,
+    ghost_directory_name: String,
+    ghost_source: String,
+) -> Result<(), String> {
     let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
 
     if !ssp_exe.exists() {
