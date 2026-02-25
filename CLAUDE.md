@@ -21,6 +21,9 @@ npm run build
 # Rust バックエンドのコンパイル確認
 cd src-tauri && cargo check
 
+# Rust テストの実行
+cargo test --manifest-path src-tauri/Cargo.toml
+
 # アプリ全体をビルド
 npm run tauri build
 ```
@@ -78,23 +81,26 @@ npm run tauri build
 - **SRP**: 各モジュール・関数・コンポーネントは単一の責務を持つ。複数の責務が混在したら分割する
 - **YAGNI**: 現在の要件に必要なコードだけを書く。「将来必要になるかもしれない」機能・抽象化・設定項目は作らない
 - **既存パターン踏襲**: 新規コードは既存のファイル構成・命名規則・スタイルパターンに合わせる。独自の新しいパターンを導入する前に既存パターンの利用を検討する
+- **根本原因の修正**: バグ修正後に症状が別のテストやコードに移動した場合、根本原因に未達のサイン。「なぜ直ったか」を確認してから完了とする
 
 ## 作業フロー
 
 1. **作業内容を明確にする** — 要件や目的を確認し、不明点があればユーザーに質問する
-2. **調査する** — 関連する既存コード・パターン・依存関係を調べ、影響範囲を把握する。`.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
-3. **テストを実装する** — 期待する振る舞いをテストコードとして先に書く
+2. **調査する** — 関連する既存コード・パターン・依存関係を調べ、影響範囲を把握する。`.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する。Rust でファイルシステム操作を変更する場合は macOS と Windows の挙動差を考慮する（例: `entry.metadata()` は Windows FindNextFile キャッシュを参照し陳腐化する場合がある。`fs::metadata(path)` は常に最新値を返す）
+3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く
-5. **コミットする** — 実装完了 = コミット済み。`git status` が clean になるまでセッションを終了しない
-6. **検証する** — `npm run build`・`npm test`・`cargo test` の全てが通ることを確認する
+5. **検証する** — `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` の全てが通ることを確認する
+6. **コミットする** — 検証が完了し、実装完了 = コミット済みの状態にする。`git status` が clean になるまでセッションを終了しない
 7. **PR を作成する** — CI が通ることを確認し、GitHub Flow に従い PR を作成する
 
 ## コミット前チェックリスト
 
 - `git status` が "nothing to commit, working tree clean" になっている
 - `npm run build` が通る
-- `npm test` が通る（テストがある場合）
-- `cargo test` が通る（Rust を変更した場合）
+- `npm test` が通る
+- `npm run check:ui-guidelines` が通る
+- `npm run test:ui-guidelines-check` が通る
+- `cargo test --manifest-path src-tauri/Cargo.toml` が通る
 - 新規テストファイルを追加した場合:
   - CI ワークフローでそのテストが実行されるか（`ci-build.yml` に test ステップが存在するか）
   - `tsconfig.json` の `exclude` に追加が必要か
@@ -131,8 +137,9 @@ GitHub Flow に準拠する。
 
 1. `main` から作業ブランチを作成
 2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
-3. `npm run build`・`npm test`・`cargo test` がすべて通ることを確認してから PR を作成
+3. `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` がすべて通ることを確認してから PR を作成
 4. PR マージ後にブランチを削除
+5. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
 
 ## 言語
 
