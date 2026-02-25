@@ -1,6 +1,16 @@
 use std::path::Path;
 use std::process::Command;
 
+/// SSP フォルダのパスを検証する（ssp.exe の存在確認）
+#[tauri::command]
+pub fn validate_ssp_path(ssp_path: String) -> Result<(), String> {
+    let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
+    if !ssp_exe.exists() {
+        return Err(format!("ssp.exe が見つかりません: {}", ssp_exe.display()));
+    }
+    Ok(())
+}
+
 /// SSP.exe を指定したゴーストで起動する
 #[tauri::command]
 pub fn launch_ghost(
