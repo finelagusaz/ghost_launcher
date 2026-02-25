@@ -25,3 +25,6 @@ dist-ssr
 
 # Claude Code
 .claude/settings.local.json
+
+# 作業用一時ファイル
+workspace/
