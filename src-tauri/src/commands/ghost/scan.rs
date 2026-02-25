@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::fingerprint::{
-    compute_fingerprint_hash, descript_metadata_for_token, metadata_modified_string,
+    compute_fingerprint_hash, metadata_modified_string, push_absent_parent_token, push_entry_token,
 };
 use super::path_utils::normalize_path;
 use super::types::Ghost;
@@ -86,22 +86,11 @@ fn scan_ghost_dir_with_fingerprint(
             None => continue,
         };
 
-        // ディレクトリの modified time（fingerprint 用）— entry.metadata() 再利用
-        let dir_modified = metadata_modified_string(&entry_meta);
-
-        // descript.txt: metadata 1回で存在確認 + modified time（fingerprint 用）
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let (descript_state, descript_modified) = descript_metadata_for_token(&descript_path);
-
-        tokens.push(format!(
-            "entry|{}|{}|{}|{}|{}|{}",
-            parent_label,
-            normalized_parent,
-            directory_name,
-            dir_modified,
-            descript_state,
-            descript_modified
-        ));
+        // トークン生成と descript_state 取得を共通ヘルパーに委譲
+        let descript_state = push_entry_token(
+            tokens, parent_label, normalized_parent, &directory_name, &entry_meta, &descript_path,
+        );
 
         // descript.txt が存在する場合のみパースして Ghost を構築
         if descript_state != "missing" {
@@ -159,17 +148,11 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
         unique_sorted_additional_folders(additional_folders)
     {
         if !folder_path.exists() {
-            tokens.push(format!(
-                "parent|{}|{}|missing",
-                normalized_folder, normalized_folder
-            ));
+            push_absent_parent_token(&mut tokens, &normalized_folder, &normalized_folder, "missing");
             continue;
         }
         if !folder_path.is_dir() {
-            tokens.push(format!(
-                "parent|{}|{}|not-directory",
-                normalized_folder, normalized_folder
-            ));
+            push_absent_parent_token(&mut tokens, &normalized_folder, &normalized_folder, "not-directory");
             continue;
         }
         if let Ok(mut additional) = scan_ghost_dir_with_fingerprint(
@@ -187,7 +170,7 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     ghosts.sort_by_cached_key(|ghost| ghost.name.to_lowercase());
 
     // フィンガープリント計算
-    let fingerprint = compute_fingerprint_hash(&mut tokens);
+    let fingerprint = compute_fingerprint_hash(&tokens);
 
     Ok((ghosts, fingerprint))
 }

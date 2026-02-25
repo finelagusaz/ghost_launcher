@@ -1,6 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
+use sha2::{Digest, Sha256};
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use super::path_utils::normalize_path;
@@ -31,14 +30,50 @@ pub(crate) fn descript_metadata_for_token(descript_path: &Path) -> (String, Stri
     }
 }
 
+/// 追加フォルダが存在しない・ディレクトリでない場合の親エントリトークンを生成する。
+/// scan.rs と fingerprint.rs の共通ロジック。
+/// state: "missing" または "not-directory"
+pub(crate) fn push_absent_parent_token(
+    tokens: &mut Vec<String>,
+    parent_label: &str,
+    normalized_parent: &str,
+    state: &str,
+) {
+    tokens.push(format!("parent|{}|{}|{}", parent_label, normalized_parent, state));
+}
+
+/// ゴーストエントリ1件分のフィンガープリントトークンを生成して push する。
+/// scan.rs と fingerprint.rs の共通ロジック。
+/// 戻り値: descript_state（"missing" / "present" / "unreadable"）
+/// scan.rs が Ghost 構築判定に使用する。fingerprint.rs では戻り値を無視してよい。
+pub(crate) fn push_entry_token(
+    tokens: &mut Vec<String>,
+    parent_label: &str,
+    normalized_parent: &str,
+    directory_name: &str,
+    entry_meta: &fs::Metadata,
+    descript_path: &Path,
+) -> String {
+    let dir_modified = metadata_modified_string(entry_meta);
+    let (descript_state, descript_modified) = descript_metadata_for_token(descript_path);
+    tokens.push(format!(
+        "entry|{}|{}|{}|{}|{}|{}",
+        parent_label, normalized_parent, directory_name,
+        dir_modified, descript_state, descript_modified
+    ));
+    descript_state
+}
+
 /// トークン列からフィンガープリントハッシュを計算する
-pub(crate) fn compute_fingerprint_hash(tokens: &mut Vec<String>) -> String {
-    tokens.sort();
-    let mut hasher = DefaultHasher::new();
-    for token in tokens.iter() {
-        token.hash(&mut hasher);
+pub(crate) fn compute_fingerprint_hash(tokens: &[String]) -> String {
+    let mut sorted = tokens.to_vec();
+    sorted.sort();
+    let mut hasher = Sha256::new();
+    for token in sorted.iter() {
+        hasher.update(token.as_bytes());
+        hasher.update(b"\n"); // トークン間の区切り（境界混同防止）
     }
-    format!("{:016x}", hasher.finish())
+    hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 fn push_parent_fingerprint_tokens(
@@ -56,10 +91,7 @@ fn push_parent_fingerprint_tokens(
                 parent_dir.display()
             ));
         }
-        tokens.push(format!(
-            "parent|{}|{}|missing",
-            parent_label, normalized_parent
-        ));
+        push_absent_parent_token(tokens, parent_label, &normalized_parent, "missing");
         return Ok(());
     }
 
@@ -70,10 +102,7 @@ fn push_parent_fingerprint_tokens(
                 parent_dir.display()
             ));
         }
-        tokens.push(format!(
-            "parent|{}|{}|not-directory",
-            parent_label, normalized_parent
-        ));
+        push_absent_parent_token(tokens, parent_label, &normalized_parent, "not-directory");
         return Ok(());
     }
 
@@ -124,20 +153,9 @@ fn push_parent_fingerprint_tokens(
             None => continue,
         };
 
-        let dir_modified = metadata_modified_string(&entry_meta);
-
         let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let (descript_state, descript_modified) = descript_metadata_for_token(&descript_path);
-
-        tokens.push(format!(
-            "entry|{}|{}|{}|{}|{}|{}",
-            parent_label,
-            normalized_parent,
-            directory_name,
-            dir_modified,
-            descript_state,
-            descript_modified
-        ));
+        // 戻り値（descript_state）はフィンガープリント専用パスでは不要なので無視する
+        push_entry_token(tokens, parent_label, &normalized_parent, &directory_name, &entry_meta, &descript_path);
     }
 
     Ok(())
@@ -156,5 +174,5 @@ pub(crate) fn build_fingerprint(
         push_parent_fingerprint_tokens(&mut tokens, &normalized_folder, &folder_path, false)?;
     }
 
-    Ok(compute_fingerprint_hash(&mut tokens))
+    Ok(compute_fingerprint_hash(&tokens))
 }

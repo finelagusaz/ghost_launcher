@@ -34,11 +34,14 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Run frontend tests
+        run: npm test
+
       - name: Check UI guidelines
         run: npm run check:ui-guidelines
 
       - name: Test UI guideline checks
         run: npm run test:ui-guidelines-check
 
-      - name: Check Rust crate
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Test Rust crate
+        run: cargo test --manifest-path src-tauri/Cargo.toml

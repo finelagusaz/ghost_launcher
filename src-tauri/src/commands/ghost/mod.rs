@@ -217,6 +217,36 @@ mod tests {
     }
 
     #[test]
+    fn fingerprint_with_missing_additional_folder_matches_scan_fingerprint() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_missing_folder_fp_test")?;
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir(&ssp_ghost, "test_ghost")?;
+
+        // 存在しない追加フォルダ（missing ケース）
+        let nonexistent = workspace.path().join("nonexistent_folder");
+        // 存在するがファイル（not-directory ケース）
+        let not_a_dir = workspace.path().join("not_a_dir.txt");
+        fs::write(&not_a_dir, "")
+            .map_err(|error| format!("failed to create file: {}", error))?;
+
+        let additional_folders = vec![
+            nonexistent.to_string_lossy().to_string(),
+            not_a_dir.to_string_lossy().to_string(),
+        ];
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+
+        let standalone = build_fingerprint(&ssp_path, &additional_folders)?;
+        let (_, integrated) =
+            scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
+
+        assert_eq!(standalone, integrated);
+        Ok(())
+    }
+
+    #[test]
     fn integrated_fingerprint_matches_standalone_build_fingerprint() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_fp_consistency_test")?;
         let ssp_root = workspace.path().join("ssp");

@@ -11,6 +11,7 @@ pub fn run() {
             commands::ghost::scan_ghosts_with_meta,
             commands::ghost::get_ghosts_fingerprint,
             commands::ssp::launch_ghost,
+            commands::ssp::validate_ssp_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

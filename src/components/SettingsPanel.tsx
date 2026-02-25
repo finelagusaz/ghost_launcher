@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
@@ -74,6 +76,8 @@ export function SettingsPanel({
   onRemoveFolder,
 }: Props) {
   const styles = useStyles();
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
 
   const handleSelectFolder = async () => {
     const selected = await open({
@@ -81,8 +85,20 @@ export function SettingsPanel({
       multiple: false,
       title: "SSPフォルダを選択",
     });
-    if (selected) {
+    if (!selected) {
+      setValidationError(null);
+      return;
+    }
+
+    setValidating(true);
+    try {
+      await invoke("validate_ssp_path", { sspPath: selected });
       onPathChange(selected);
+      setValidationError(null);
+    } catch (e) {
+      setValidationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -119,10 +135,19 @@ export function SettingsPanel({
   return (
     <div className={styles.panel}>
       <div className={styles.row}>
-        <Field label="SSPフォルダ">
+        <Field
+          label="SSPフォルダ"
+          validationState={validationError ? "error" : undefined}
+          validationMessage={validationError ?? undefined}
+        >
           <Input readOnly value={sspPath ?? "未設定"} />
         </Field>
-        <Button icon={<FolderOpenRegular />} appearance="secondary" onClick={handleSelectFolder}>
+        <Button
+          icon={<FolderOpenRegular />}
+          appearance="secondary"
+          onClick={handleSelectFolder}
+          disabled={validating}
+        >
           選択
         </Button>
       </div>
@@ -130,7 +155,7 @@ export function SettingsPanel({
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
           <Text weight="semibold">追加ゴーストフォルダ</Text>
-          <Button icon={<AddRegular />} appearance="secondary" onClick={handleAddGhostFolder}>
+          <Button icon={<AddRegular />} appearance="secondary" onClick={handleAddGhostFolder} disabled={validating}>
             追加
           </Button>
         </div>
