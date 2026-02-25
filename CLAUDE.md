@@ -87,6 +87,34 @@ npm run tauri build
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く
 5. **検証する** — テストを実行し、既存テストの通過・ビルド成功を確認する
 
+## ブランチ戦略
+
+GitHub Flow に準拠する。
+
+### 基本ルール
+
+- `main` ブランチは常にデプロイ可能な状態を保つ
+- すべての作業は `main` から派生したブランチで行う
+- ブランチは PR マージ後に速やかに削除する
+- ブランチを作成する前に `git status` が "nothing to commit, working tree clean" であることを確認する
+
+### ブランチ命名規則
+
+| プレフィックス | 用途 | 例 |
+|---|---|---|
+| `feature/` | 新機能の追加 | `feature/ghost-folder-sorting` |
+| `fix/` | バグ修正・品質改善 | `fix/validation-cancel-error` |
+| `chore/` | 設定変更・メンテナンス | `chore/update-ci-cargo-test` |
+
+Issue 番号は任意で含めてよい（例: `fix/15-validation-cancel-error`）。番号のみのブランチ名（`fix/15`）は使わない。
+
+### PR 運用
+
+1. `main` から作業ブランチを作成
+2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
+3. `npm run build`・`npm test`・`cargo test` がすべて通ることを確認してから PR を作成
+4. PR マージ後にブランチを削除
+
 ## 言語
 
 UI テキストはすべて日本語です。Rust ファイル内のコードコメントも日本語です。
