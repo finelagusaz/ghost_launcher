@@ -139,15 +139,17 @@ fn push_parent_fingerprint_tokens(
             Err(_) => continue,
         };
 
-        // entry.metadata() は Windows では FindNextFile のキャッシュを利用（modified time 取得用）
-        let entry_meta = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
+        // fs::metadata は Windows で GetFileInformationByHandle を使い $STANDARD_INFORMATION を読む。
+        // entry.metadata()（FindNextFile キャッシュ）は Windows NTFS の遅延タイムスタンプ更新で
+        // 陳腐化する場合があるため使用しない。
+        let entry_meta = match fs::metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
         let directory_name = match path.file_name().and_then(|name| name.to_str()) {
             Some(name) => name.to_string(),
             None => continue,
