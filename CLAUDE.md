@@ -105,7 +105,7 @@ GitHub Flow に準拠する。
 | プレフィックス | 用途 | 例 |
 |---|---|---|
 | `feature/` | 新機能の追加・開発 | `feature/15-ghost-folder-sorting` |
-| `bugfix/` または `fix/` | バグ修正 | `fix/15-validation-cancel-error` |
+| `fix/` | バグ修正 | `fix/15-validation-cancel-error` |
 | `hotfix/` | 本番環境の緊急バグ修正 | `hotfix/16-crash-on-launch` |
 | `release/` | リリース準備 | `release/1.0.0` |
 | `test/` | テスト・実験的な作業 | `test/15-vitest-setup` |

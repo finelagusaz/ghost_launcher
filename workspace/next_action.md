@@ -175,7 +175,7 @@ git status                        # 未コミット変更がないことを確�
 ## ブランチ戦略（GitHub Flow）
 - ブランチ名: `{prefix}/{issue番号}-{英語で内容の説明}`
   - `feature/`  : 新機能の追加・開発   例: `feature/15-ghost-folder-sorting`
-  - `bugfix/` または `fix/` : バグ修正 例: `fix/15-validation-cancel-error`
+  - `fix/`     : バグ修正              例: `fix/15-validation-cancel-error`
   - `hotfix/`   : 本番の緊急バグ修正   例: `hotfix/16-crash-on-launch`
   - `release/`  : リリース準備          例: `release/1.0.0`
   - `test/`     : テスト・実験的な作業  例: `test/15-vitest-setup`
