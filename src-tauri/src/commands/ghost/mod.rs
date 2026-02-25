@@ -264,12 +264,6 @@ mod tests {
         let additional_folders = vec![additional.to_string_lossy().to_string()];
         let ssp_path = ssp_root.to_string_lossy().to_string();
 
-        // Windows の NTFS 遅延タイムスタンプ更新に対応するウォームアップ呼び出し。
-        // ディレクトリ作成直後の最初の読み取りで NTFS が遅延更新をフラッシュする場合があり、
-        // 2回目以降の読み取りでファイルシステム状態が安定する。
-        let _ = build_fingerprint(&ssp_path, &additional_folders);
-        let _ = scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders);
-
         let standalone = build_fingerprint(&ssp_path, &additional_folders)?;
         let (_, integrated) =
             scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
