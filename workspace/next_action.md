@@ -173,8 +173,14 @@ git status                        # 未コミット変更がないことを確�
       `git log --oneline origin/main | head -5` で確認
 
 ## ブランチ戦略（GitHub Flow）
-- ブランチ名: `fix/{内容の説明}` または `fix/{issue番号}-{内容の説明}`
-  - 例: `fix/validation-cancel-error`, `fix/15-review-feedback`
+- ブランチ名: `{prefix}/{issue番号}-{英語で内容の説明}`
+  - `feature/`  : 新機能の追加・開発   例: `feature/15-ghost-folder-sorting`
+  - `bugfix/` または `fix/` : バグ修正 例: `fix/15-validation-cancel-error`
+  - `hotfix/`   : 本番の緊急バグ修正   例: `hotfix/16-crash-on-launch`
+  - `release/`  : リリース準備          例: `release/1.0.0`
+  - `test/`     : テスト・実験的な作業  例: `test/15-vitest-setup`
+  - `doc/` または `docs/` : ドキュメント更新 例: `docs/15-update-spec`
+  - `refactor/` : リファクタリング・改善 例: `refactor/15-extract-token-helper`
   - 番号のみ（`fix/15`）は使わない
 - 作成元: origin/main（clean state を確認後）
 - PR マージ後はブランチを削除する
@@ -311,7 +317,7 @@ retrospective.md の洞察を次の開発サイクルで活かすために、CLA
     + ブランチ作成前提（git status clean）を計画書に明記
         ↓
 [8] 修正実装（GitHub Flow）
-    + ブランチ名: fix/{内容の説明} または fix/{issue番号}-{内容の説明}
+    + ブランチ名: {prefix}/{issue番号}-{英語で内容の説明}
     + ブランチ作成直後に依存ファイルの存在確認
         ↓
 [9] CI 検証

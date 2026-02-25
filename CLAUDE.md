@@ -100,13 +100,19 @@ GitHub Flow に準拠する。
 
 ### ブランチ命名規則
 
+形式: `{prefix}/{issue番号}-{英語で内容の説明}`
+
 | プレフィックス | 用途 | 例 |
 |---|---|---|
-| `feature/` | 新機能の追加 | `feature/ghost-folder-sorting` |
-| `fix/` | バグ修正・品質改善 | `fix/validation-cancel-error` |
-| `chore/` | 設定変更・メンテナンス | `chore/update-ci-cargo-test` |
+| `feature/` | 新機能の追加・開発 | `feature/15-ghost-folder-sorting` |
+| `bugfix/` または `fix/` | バグ修正 | `fix/15-validation-cancel-error` |
+| `hotfix/` | 本番環境の緊急バグ修正 | `hotfix/16-crash-on-launch` |
+| `release/` | リリース準備 | `release/1.0.0` |
+| `test/` | テスト・実験的な作業 | `test/15-vitest-setup` |
+| `doc/` または `docs/` | ドキュメントの更新・改善 | `docs/15-update-spec` |
+| `refactor/` | コードのリファクタリング・改善 | `refactor/15-extract-token-helper` |
 
-Issue 番号は任意で含めてよい（例: `fix/15-validation-cancel-error`）。番号のみのブランチ名（`fix/15`）は使わない。
+番号のみのブランチ名（`fix/15`）は使わない。
 
 ### PR 運用
 
