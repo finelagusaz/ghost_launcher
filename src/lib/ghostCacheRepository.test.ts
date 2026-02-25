@@ -76,32 +76,16 @@ describe("writeGhostCacheEntry", () => {
   });
 
   it("10件以内では削除しない", async () => {
+    // 9件 + 1件追加 = ちょうど上限。pruning が走らず key-0 は残るはず
     const entries: Record<string, GhostCacheEntry> = {};
-    for (let i = 0; i < 10; i++) {
-      const key = `key-${i}`;
-      entries[key] = makeEntry(new Date(2026, 0, i + 1).toISOString());
+    for (let i = 0; i < 9; i++) {
+      entries[`key-${i}`] = makeEntry(new Date(2026, 0, i + 1).toISOString());
     }
     await settingsStore.set(GHOST_CACHE_KEY, { version: 1, entries });
 
     const newest = makeEntry(new Date("2026-02-01T00:00:00Z").toISOString());
     await writeGhostCacheEntry("key-new", newest);
 
-    // key-0 は削除されていないこと（10件 + 1件 = 11件だが、10件制限で1件削除 → key-0 は最古なので消える…）
-    // 実際は 10件既存 + 1件追加で pruning が走り key-0 が削除される。
-    // このテストは「10件以内では削除しない」を確認するため、9件で仕込む
-    // → 修正: 9件で試す
-    resetSettingsStore();
-    vi.clearAllMocks();
-    const entries9: Record<string, GhostCacheEntry> = {};
-    for (let i = 0; i < 9; i++) {
-      const key = `key-${i}`;
-      entries9[key] = makeEntry(new Date(2026, 0, i + 1).toISOString());
-    }
-    await settingsStore.set(GHOST_CACHE_KEY, { version: 1, entries: entries9 });
-
-    await writeGhostCacheEntry("key-new", newest);
-
-    // 9件 + 1件 = 10件でちょうど上限。key-0 は削除されないはず
     const survived = await readGhostCacheEntry("key-0");
     expect(survived).toBeDefined();
   });
