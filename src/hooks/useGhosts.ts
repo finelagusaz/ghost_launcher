@@ -1,40 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  readGhostCacheEntry,
-  writeGhostCacheEntry,
-} from "../lib/ghostCacheRepository";
 import { validateCache, executeScan } from "../lib/ghostScanOrchestrator";
 import {
   buildAdditionalFolders,
   buildRequestKey,
   buildScanErrorMessage,
 } from "../lib/ghostScanUtils";
-import type { Ghost, GhostCacheEntry, GhostCacheStoreV1, GhostView } from "../types";
+
 
 interface RefreshOptions {
   forceFullScan?: boolean;
 }
 
-function toGhostView(ghost: Ghost): GhostView {
-  return {
-    ...ghost,
-    name_lower: ghost.name.toLowerCase(),
-    directory_name_lower: ghost.directory_name.toLowerCase(),
-  };
-}
-
-export function useGhosts(sspPath: string | null, ghostFolders: string[], preloadedCache: GhostCacheStoreV1 | null = null) {
-  const [ghosts, setGhosts] = useState<GhostView[]>([]);
-  const [loading, setLoading] = useState(false);
+export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
-  const preloadedCacheRef = useRef(preloadedCache);
-  const preloadedCacheConsumedRef = useRef(false);
-  // 未消費の場合のみ prop から更新（初回 null → 設定ロード後に実値が来るため）
-  if (!preloadedCacheConsumedRef.current) {
-    preloadedCacheRef.current = preloadedCache;
-  }
 
   // ghostFolders の参照安定化: 内容が同じなら useCallback を再生成しない
   const ghostFoldersKey = JSON.stringify(ghostFolders);
@@ -43,7 +24,6 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[], preloa
 
   const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (!sspPath) {
-      setGhosts([]);
       setError(null);
       setLoading(false);
       return;
@@ -63,66 +43,53 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[], preloa
     inFlightKeyRef.current = inFlightKey;
 
     let usedCachedGhosts = false;
-    let cachedEntry: GhostCacheEntry | undefined;
 
     try {
       setError(null);
+      setLoading(true);
 
-      // 1. キャッシュ表示（preloaded があればストア読み込みをスキップ）
-      if (!forceFullScan) {
-        const preloaded = preloadedCacheRef.current;
-        if (preloaded) {
-          cachedEntry = preloaded.entries[requestKey];
-          preloadedCacheConsumedRef.current = true;
-          preloadedCacheRef.current = null;
-        } else {
-          cachedEntry = await readGhostCacheEntry(requestKey);
-        }
+      const cachedFingerprint = localStorage.getItem(`fingerprint_${requestKey}`);
 
-        if (requestSeq !== requestSeqRef.current) {
-          return;
-        }
-
-        if (cachedEntry) {
-          usedCachedGhosts = true;
-          setGhosts(cachedEntry.ghosts.map(toGhostView));
-        }
-      }
-
-      setLoading(!usedCachedGhosts);
-
-      // 2. 指紋検証
-      if (!forceFullScan && cachedEntry) {
-        const cacheValid = await validateCache(cachedEntry, sspPath, additionalFolders);
-        if (requestSeq !== requestSeqRef.current) {
-          return;
-        }
-        if (cacheValid) {
-          return;
+      if (!forceFullScan && cachedFingerprint) {
+        // Check if SQLite has any rows
+        const { searchGhosts } = await import("../lib/ghostDatabase");
+        try {
+          const initResult = await searchGhosts("", 1, 0);
+          if (initResult.total > 0) {
+            const cacheValid = await validateCache(cachedFingerprint, sspPath, additionalFolders);
+            if (requestSeq !== requestSeqRef.current) return;
+            if (cacheValid) {
+              usedCachedGhosts = true;
+              return; // We're done! App.tsx's `useSearch` will fetch the list from SQLite
+            }
+          }
+        } catch (dbError) {
+          console.error("SQLite check failed during cache validation", dbError);
         }
       }
 
-      // 3. スキャン実行
+      // スキャン実行
       const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
+      
+      // SQLite に保存
+      try {
+        const { clearGhosts, insertGhostsBatch } = await import("../lib/ghostDatabase");
+        await clearGhosts();
+        await insertGhostsBatch(result.ghosts);
+      } catch (dbError) {
+        console.error("Failed to populate SQLite database:", dbError);
+      }
+
       if (requestSeq === requestSeqRef.current) {
-        setGhosts(result.ghosts.map(toGhostView));
         setError(null);
       }
 
-      // 4. キャッシュ書き込み（fire-and-forget: UI 更新をブロックしない）
-      writeGhostCacheEntry(requestKey, {
-        request_key: requestKey,
-        fingerprint: result.fingerprint,
-        ghosts: result.ghosts,
-        cached_at: new Date().toISOString(),
-      }).catch((error) => {
-        console.error("ゴーストキャッシュの書き込みに失敗しました", error);
-      });
+      // 指紋を記録して次回スキップできるようにする
+      localStorage.setItem(`fingerprint_${requestKey}`, result.fingerprint);
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
         if (!usedCachedGhosts || forceFullScan) {
           setError(buildScanErrorMessage(e));
-          setGhosts([]);
         }
       }
     } finally {
@@ -140,5 +107,5 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[], preloa
     refresh();
   }, [refresh]);
 
-  return { ghosts, loading, error, refresh };
+  return { loading, error, refresh };
 }

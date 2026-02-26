@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ghost {
     /// descript.txt の name フィールド（表示名）
     pub name: String,
@@ -12,8 +12,14 @@ pub struct Ghost {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanGhostsResponse {
     pub ghosts: Vec<Ghost>,
     pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchGhostsResponse {
+    pub ghosts: Vec<Ghost>,
+    pub total: u32,
 }

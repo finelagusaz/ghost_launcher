@@ -39,7 +39,10 @@ pub(crate) fn push_absent_parent_token(
     normalized_parent: &str,
     state: &str,
 ) {
-    tokens.push(format!("parent|{}|{}|{}", parent_label, normalized_parent, state));
+    tokens.push(format!(
+        "parent|{}|{}|{}",
+        parent_label, normalized_parent, state
+    ));
 }
 
 /// ゴーストエントリ1件分のフィンガープリントトークンを生成して push する。
@@ -58,8 +61,12 @@ pub(crate) fn push_entry_token(
     let (descript_state, descript_modified) = descript_metadata_for_token(descript_path);
     tokens.push(format!(
         "entry|{}|{}|{}|{}|{}|{}",
-        parent_label, normalized_parent, directory_name,
-        dir_modified, descript_state, descript_modified
+        parent_label,
+        normalized_parent,
+        directory_name,
+        dir_modified,
+        descript_state,
+        descript_modified
     ));
     descript_state
 }
@@ -73,7 +80,11 @@ pub(crate) fn compute_fingerprint_hash(tokens: &[String]) -> String {
         hasher.update(token.as_bytes());
         hasher.update(b"\n"); // トークン間の区切り（境界混同防止）
     }
-    hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect()
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
 }
 
 fn push_parent_fingerprint_tokens(
@@ -157,7 +168,14 @@ fn push_parent_fingerprint_tokens(
 
         let descript_path = path.join("ghost").join("master").join("descript.txt");
         // 戻り値（descript_state）はフィンガープリント専用パスでは不要なので無視する
-        push_entry_token(tokens, parent_label, &normalized_parent, &directory_name, &entry_meta, &descript_path);
+        push_entry_token(
+            tokens,
+            parent_label,
+            &normalized_parent,
+            &directory_name,
+            &entry_meta,
+            &descript_path,
+        );
     }
 
     Ok(())

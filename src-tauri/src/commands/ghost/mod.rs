@@ -1,9 +1,10 @@
+// mod.rs
 mod fingerprint;
 mod path_utils;
 mod scan;
 mod types;
 
-pub use types::ScanGhostsResponse;
+pub use types::{Ghost, ScanGhostsResponse};
 
 #[tauri::command]
 pub fn scan_ghosts_with_meta(
@@ -229,8 +230,7 @@ mod tests {
         let nonexistent = workspace.path().join("nonexistent_folder");
         // 存在するがファイル（not-directory ケース）
         let not_a_dir = workspace.path().join("not_a_dir.txt");
-        fs::write(&not_a_dir, "")
-            .map_err(|error| format!("failed to create file: {}", error))?;
+        fs::write(&not_a_dir, "").map_err(|error| format!("failed to create file: {}", error))?;
 
         let additional_folders = vec![
             nonexistent.to_string_lossy().to_string(),

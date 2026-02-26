@@ -91,7 +91,12 @@ fn scan_ghost_dir_with_fingerprint(
         let descript_path = path.join("ghost").join("master").join("descript.txt");
         // トークン生成と descript_state 取得を共通ヘルパーに委譲
         let descript_state = push_entry_token(
-            tokens, parent_label, normalized_parent, &directory_name, &entry_meta, &descript_path,
+            tokens,
+            parent_label,
+            normalized_parent,
+            &directory_name,
+            &entry_meta,
+            &descript_path,
         );
 
         // descript.txt が存在する場合のみパースして Ghost を構築
@@ -150,11 +155,21 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
         unique_sorted_additional_folders(additional_folders)
     {
         if !folder_path.exists() {
-            push_absent_parent_token(&mut tokens, &normalized_folder, &normalized_folder, "missing");
+            push_absent_parent_token(
+                &mut tokens,
+                &normalized_folder,
+                &normalized_folder,
+                "missing",
+            );
             continue;
         }
         if !folder_path.is_dir() {
-            push_absent_parent_token(&mut tokens, &normalized_folder, &normalized_folder, "not-directory");
+            push_absent_parent_token(
+                &mut tokens,
+                &normalized_folder,
+                &normalized_folder,
+                "not-directory",
+            );
             continue;
         }
         if let Ok(mut additional) = scan_ghost_dir_with_fingerprint(

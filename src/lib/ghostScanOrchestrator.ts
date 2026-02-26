@@ -1,5 +1,5 @@
 import { getGhostsFingerprint, scanGhostsWithMeta } from "./ghostScanClient";
-import type { GhostCacheEntry, ScanGhostsResponse } from "../types";
+import type { ScanGhostsResponse } from "../types";
 
 const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
 
@@ -8,13 +8,14 @@ const pendingScans = new Map<string, Promise<ScanGhostsResponse>>();
  * 一致なら true、不一致またはエラー時は false を返す。
  */
 export async function validateCache(
-  cachedEntry: GhostCacheEntry,
+  cachedFingerprint: string | null,
   sspPath: string,
   additionalFolders: string[],
 ): Promise<boolean> {
+  if (!cachedFingerprint) return false;
   try {
     const fingerprint = await getGhostsFingerprint(sspPath, additionalFolders);
-    return fingerprint === cachedEntry.fingerprint;
+    return fingerprint === cachedFingerprint;
   } catch {
     // 指紋取得に失敗した場合はフルスキャンへフォールバックする。
     return false;

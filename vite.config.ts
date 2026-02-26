@@ -29,4 +29,9 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  // 4. prevent Vite from scanning rust build output (src-tauri/target) during dep pre-bundling
+  optimizeDeps: {
+    exclude: [],
+    entries: ["src/**/*.{ts,tsx}", "index.html"],
+  },
 }));

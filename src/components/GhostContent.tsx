@@ -7,12 +7,15 @@ import type { GhostView } from "../types";
 
 interface Props {
   ghosts: GhostView[];
+  total: number;
   sspPath: string | null;
   searchQuery: string;
   loading: boolean;
+  searchLoading: boolean;
   error: string | null;
   onSearchChange: (value: string) => void;
   onOpenSettings: () => void;
+  onLoadMore: () => void;
 }
 
 const useStyles = makeStyles({
@@ -43,12 +46,15 @@ const useStyles = makeStyles({
 
 export const GhostContent = memo(function GhostContent({
   ghosts,
+  total,
   sspPath,
   searchQuery,
   loading,
+  searchLoading,
   error,
   onSearchChange,
   onOpenSettings,
+  onLoadMore,
 }: Props) {
   const styles = useStyles();
 
@@ -69,7 +75,16 @@ export const GhostContent = memo(function GhostContent({
         <SearchBox value={searchQuery} onChange={onSearchChange} />
       </div>
       <div className={styles.content}>
-        <GhostList ghosts={ghosts} sspPath={sspPath} loading={loading} error={error} />
+        <GhostList 
+          ghosts={ghosts} 
+          total={total}
+          sspPath={sspPath} 
+          loading={loading} 
+          searchLoading={searchLoading}
+          error={error} 
+          onLoadMore={onLoadMore}
+          searchQuery={searchQuery}
+        />
       </div>
     </>
   );

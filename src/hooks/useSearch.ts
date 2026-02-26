@@ -1,12 +1,48 @@
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import type { GhostView } from "../types";
+import { searchGhosts } from "../lib/ghostDatabase";
 
-export function useSearch(ghosts: GhostView[], query: string): GhostView[] {
-  return useMemo(() => {
-    if (!query.trim()) return ghosts;
-    const lowerQuery = query.toLowerCase();
-    return ghosts.filter(
-      (g) => g.name_lower.includes(lowerQuery) || g.directory_name_lower.includes(lowerQuery)
-    );
-  }, [ghosts, query]);
+export function useSearch(
+  query: string,
+  limit: number,
+  offset: number,
+  refreshTrigger: number
+): { ghosts: GhostView[]; total: number; loading: boolean; dbError: string | null } {
+  const [ghosts, setGhosts] = useState<GhostView[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function fetchGhosts() {
+      setLoading(true);
+      setDbError(null);
+      try {
+        const result = await searchGhosts(query, limit, offset);
+        if (isActive) {
+          setGhosts((prev) => offset === 0 ? result.ghosts : [...prev, ...result.ghosts]);
+          setTotal(result.total);
+        }
+      } catch (err) {
+        console.error("Failed to search ghosts from SQLite:", err);
+        if (isActive) {
+          setDbError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchGhosts();
+
+    return () => {
+      isActive = false;
+    };
+  }, [query, limit, offset, refreshTrigger]);
+
+  return { ghosts, total, loading, dbError };
 }
