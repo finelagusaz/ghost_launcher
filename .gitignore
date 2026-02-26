@@ -28,3 +28,6 @@ dist-ssr
 
 # 作業用一時ファイル
 workspace/
+dev_out*.txt
+pr_body.md
+commit_msg.txt
