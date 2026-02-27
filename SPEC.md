@@ -22,7 +22,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-05 | ゴーストキャッシュ         | スキャン結果を SQLite に永続化し、fingerprint を `localStorage` に保持して差分検知 |
 | F-06 | ゴースト検索               | SQLite に対する名前・ディレクトリ名の部分一致検索                                   |
 | F-07 | ゴースト起動               | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定）      |
-| F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、スライディングウィンドウで読込 |
+| F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
 | F-10 | ウィンドウ状態保存         | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化                    |
 
@@ -86,7 +86,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | **hooks/**                 |                                                                          |
 | `useSettings.ts`           | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化              |
 | `useGhosts.ts`             | ゴーストスキャン・キャッシュ管理・状態提供                               |
-| `useSearch.ts`             | SQLite 部分一致検索。ウィンドウ置換モデル（`loadedStart` + ghosts 配列） |
+| `useSearch.ts`             | SQLite 部分一致検索。バッファマージモデル（隣接/重複範囲をマージし旧データを保持） |
 | `useVirtualizedList.ts`    | 仮想スクロール計算。`totalCount` で固定スクロール空間を確保              |
 | `useElementHeight.ts`      | ResizeObserver による要素高さ追跡                                        |
 | `useSystemTheme.ts`        | OS テーマ（light/dark）検出・追従                                        |
@@ -376,8 +376,10 @@ stateDiagram-v2
             [*] --> RenderVisible
             RenderVisible --> GhostCard : 読込済み範囲内
             RenderVisible --> SkeletonCard : 読込済み範囲外
-            SkeletonCard --> DebounceFetch : 150ms 後に fetch
-            DebounceFetch --> GhostCard : 読込完了
+            RenderVisible --> PrefetchTrigger : 読込済み範囲の端に接近
+            PrefetchTrigger --> DebounceFetch : 80ms 後に fetch
+            SkeletonCard --> DebounceFetch : 80ms 後に fetch
+            DebounceFetch --> GhostCard : 読込完了（バッファマージ）
         }
     }
 ```
