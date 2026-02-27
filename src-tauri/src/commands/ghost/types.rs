@@ -17,9 +17,3 @@ pub struct ScanGhostsResponse {
     pub ghosts: Vec<Ghost>,
     pub fingerprint: String,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchGhostsResponse {
-    pub ghosts: Vec<Ghost>,
-    pub total: u32,
-}

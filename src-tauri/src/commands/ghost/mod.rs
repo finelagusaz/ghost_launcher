@@ -4,7 +4,7 @@ mod path_utils;
 mod scan;
 mod types;
 
-pub use types::{Ghost, ScanGhostsResponse};
+pub use types::ScanGhostsResponse;
 
 #[tauri::command]
 pub fn scan_ghosts_with_meta(
