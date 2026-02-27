@@ -38,9 +38,6 @@ export function useAppShellState({
 
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const increaseOffset = useCallback((limit: number) => {
-    setOffset((prev) => prev + limit);
-  }, []);
 
   return {
     settingsOpen,
@@ -48,7 +45,7 @@ export function useAppShellState({
     openSettings,
     closeSettings,
     offset,
+    setOffset,
     refreshTrigger,
-    increaseOffset,
   };
 }

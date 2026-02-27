@@ -31,7 +31,7 @@ describe("useAppShellState", () => {
     });
 
     act(() => {
-      result.current.increaseOffset(100);
+      result.current.setOffset(100);
     });
     expect(result.current.offset).toBe(100);
 

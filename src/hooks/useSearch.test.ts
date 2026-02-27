@@ -61,7 +61,7 @@ describe("useSearch", () => {
     expect(result.current.total).toBe(2);
   });
 
-  it("offset > 0 の場合は結果を追記する", async () => {
+  it("offset 変更時はウィンドウ置換（追記ではなく置換）する", async () => {
     vi.mocked(searchGhosts)
       .mockResolvedValueOnce({ ghosts: [mockGhosts[0]], total: 2 })
       .mockResolvedValueOnce({ ghosts: [mockGhosts[1]], total: 2 });
@@ -75,16 +75,17 @@ describe("useSearch", () => {
       expect(result.current.loading).toBe(false);
       expect(result.current.ghosts).toHaveLength(1);
     });
+    expect(result.current.loadedStart).toBe(0);
 
     rerender({ offset: 1 });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
-      expect(result.current.ghosts).toHaveLength(2);
+      expect(result.current.ghosts).toHaveLength(1);
     });
 
-    expect(result.current.ghosts[0].name).toBe("Reimu");
-    expect(result.current.ghosts[1].name).toBe("Marisa");
+    expect(result.current.ghosts[0].name).toBe("Marisa");
+    expect(result.current.loadedStart).toBe(1);
   });
 
   it("refreshTrigger 変化で検索を再実行する", async () => {
