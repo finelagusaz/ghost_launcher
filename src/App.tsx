@@ -71,9 +71,6 @@ function App() {
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const searchRequestKey = sspPath
-    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
-    : null;
   const LIMIT = 100;
 
   const {
@@ -90,6 +87,10 @@ function App() {
     deferredSearchQuery,
     ghostsLoading,
   });
+
+  const searchRequestKey = (refreshTrigger > 0 && sspPath)
+    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+    : null;
 
   const { ghosts: searchResultGhosts, total: searchTotal, loading: searchLoading, dbError } = useSearch(
     searchRequestKey,
