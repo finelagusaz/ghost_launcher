@@ -22,9 +22,11 @@ const ESTIMATED_ROW_HEIGHT = 100;
 const STACK_GAP = 8;
 const OVERSCAN_ROWS = 6;
 const DEFAULT_VIEWPORT_HEIGHT = 420;
-const FETCH_DEBOUNCE_MS = 150;
+const FETCH_DEBOUNCE_MS = 80;
 // 読込ウィンドウの前後パディング（表示範囲より余裕を持って読み込む）
 const WINDOW_PADDING = 100;
+// 読込済み範囲の端からこの距離以内に表示範囲が近づいたら先読みを開始する
+const PREFETCH_THRESHOLD = 100;
 
 const useStyles = makeStyles({
   root: {
@@ -95,7 +97,9 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   useEffect(() => {
     if (!shouldVirtualize || total === 0 || searchLoading) return;
 
-    const needsLoad = startIndex < loadedStart || endIndex > loadedEnd;
+    const needsLoad =
+      startIndex < loadedStart + PREFETCH_THRESHOLD ||
+      endIndex > loadedEnd - PREFETCH_THRESHOLD;
     if (!needsLoad) return;
 
     const timer = setTimeout(() => {
