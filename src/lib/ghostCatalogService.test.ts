@@ -1,0 +1,79 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { refreshGhostCatalog } from "./ghostCatalogService";
+import { hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
+import { getCachedFingerprint, setCachedFingerprint } from "./fingerprintCache";
+import { executeScan, validateCache } from "./ghostScanOrchestrator";
+
+vi.mock("./ghostDatabase", () => ({
+  hasGhosts: vi.fn(),
+  replaceGhostsByRequestKey: vi.fn(),
+}));
+
+vi.mock("./fingerprintCache", () => ({
+  getCachedFingerprint: vi.fn(),
+  setCachedFingerprint: vi.fn(),
+}));
+
+vi.mock("./ghostScanOrchestrator", () => ({
+  executeScan: vi.fn(),
+  validateCache: vi.fn(),
+}));
+
+describe("refreshGhostCatalog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("キャッシュが有効ならスキャンをスキップする", async () => {
+    vi.mocked(getCachedFingerprint).mockReturnValue("fp1");
+    vi.mocked(hasGhosts).mockResolvedValue(true);
+    vi.mocked(validateCache).mockResolvedValue(true);
+
+    const result = await refreshGhostCatalog({
+      sspPath: "C:/SSP",
+      ghostFolders: ["C:/Ghosts"],
+      forceFullScan: false,
+    });
+
+    expect(result.skipped).toBe(true);
+    expect(executeScan).not.toHaveBeenCalled();
+    expect(replaceGhostsByRequestKey).not.toHaveBeenCalled();
+  });
+
+  it("キャッシュが無効ならスキャンして保存する", async () => {
+    vi.mocked(getCachedFingerprint).mockReturnValue("fp1");
+    vi.mocked(hasGhosts).mockResolvedValue(true);
+    vi.mocked(validateCache).mockResolvedValue(false);
+    vi.mocked(executeScan).mockResolvedValue({
+      ghosts: [
+        { name: "A", directory_name: "a", path: "/a", source: "ssp" },
+      ],
+      fingerprint: "fp2",
+    });
+
+    const result = await refreshGhostCatalog({
+      sspPath: "C:/SSP",
+      ghostFolders: ["C:/Ghosts"],
+      forceFullScan: false,
+    });
+
+    expect(result.skipped).toBe(false);
+    expect(executeScan).toHaveBeenCalledTimes(1);
+    expect(replaceGhostsByRequestKey).toHaveBeenCalledTimes(1);
+    expect(setCachedFingerprint).toHaveBeenCalledTimes(1);
+  });
+
+  it("forceFullScan のときはキャッシュ判定を行わずスキャンする", async () => {
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3" });
+
+    await refreshGhostCatalog({
+      sspPath: "C:/SSP",
+      ghostFolders: [],
+      forceFullScan: true,
+    });
+
+    expect(getCachedFingerprint).not.toHaveBeenCalled();
+    expect(validateCache).not.toHaveBeenCalled();
+    expect(executeScan).toHaveBeenCalledTimes(1);
+  });
+});

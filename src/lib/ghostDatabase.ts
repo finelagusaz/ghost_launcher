@@ -68,6 +68,16 @@ export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghos
   }
 }
 
+
+export async function hasGhosts(requestKey: string): Promise<boolean> {
+  const db = await getDb();
+  const countResult = await db.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ?",
+    [requestKey]
+  );
+  const total = countResult.length > 0 ? countResult[0].count : 0;
+  return total > 0;
+}
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
   const db = await getDb();
 
