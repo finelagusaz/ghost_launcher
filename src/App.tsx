@@ -17,6 +17,7 @@ import { useSearch } from "./hooks/useSearch";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { buildAdditionalFolders, buildRequestKey } from "./lib/ghostScanUtils";
 
 const useStyles = makeStyles({
   app: {
@@ -70,6 +71,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const searchRequestKey = sspPath
+    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+    : null;
 
   const [offset, setOffset] = useState(0);
   const LIMIT = 100;
@@ -90,6 +94,7 @@ function App() {
   }, [deferredSearchQuery]);
 
   const { ghosts: searchResultGhosts, total: searchTotal, loading: searchLoading, dbError } = useSearch(
+    searchRequestKey,
     deferredSearchQuery,
     LIMIT,
     offset,

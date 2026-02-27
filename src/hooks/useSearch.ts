@@ -3,6 +3,7 @@ import type { GhostView } from "../types";
 import { searchGhosts } from "../lib/ghostDatabase";
 
 export function useSearch(
+  requestKey: string | null,
   query: string,
   limit: number,
   offset: number,
@@ -17,10 +18,18 @@ export function useSearch(
     let isActive = true;
 
     async function fetchGhosts() {
+      if (!requestKey) {
+        setGhosts([]);
+        setTotal(0);
+        setDbError(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setDbError(null);
       try {
-        const result = await searchGhosts(query, limit, offset);
+        const result = await searchGhosts(requestKey, query, limit, offset);
         if (isActive) {
           setGhosts((prev) => offset === 0 ? result.ghosts : [...prev, ...result.ghosts]);
           setTotal(result.total);
@@ -42,7 +51,7 @@ export function useSearch(
     return () => {
       isActive = false;
     };
-  }, [query, limit, offset, refreshTrigger]);
+  }, [requestKey, query, limit, offset, refreshTrigger]);
 
   return { ghosts, total, loading, dbError };
 }
