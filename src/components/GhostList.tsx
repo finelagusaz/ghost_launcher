@@ -157,7 +157,7 @@ export function GhostList({ ghosts, total, sspPath, searchQuery, loading, search
         </div>
         {shouldVirtualize && <div style={{ height: bottomSpacer }} />}
 
-        {/* センチネル要素：ビューポートに入ったとき追加読み込み */}
+        {/* センチネル要素：読込済み領域の末尾に配置し追加読み込みをトリガー */}
         {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
 
         {/* 追加読み込み中スピナー */}
