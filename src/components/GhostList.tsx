@@ -3,13 +3,17 @@ import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
 import { useElementHeight } from "../hooks/useElementHeight";
 import { useVirtualizedList } from "../hooks/useVirtualizedList";
-import type { Ghost } from "../types";
+import type { GhostView } from "../types";
 
 interface Props {
-  ghosts: Ghost[];
+  ghosts: GhostView[];
+  total: number;
   sspPath: string;
+  searchQuery: string;
   loading: boolean;
+  searchLoading: boolean;
   error: string | null;
+  onLoadMore: () => void;
 }
 
 const VIRTUALIZE_THRESHOLD = 80;
@@ -54,18 +58,44 @@ const useStyles = makeStyles({
   },
 });
 
-export function GhostList({ ghosts, sspPath, loading, error }: Props) {
+export function GhostList({ ghosts, total, sspPath, searchQuery, loading, searchLoading, error, onLoadMore }: Props) {
   const styles = useStyles();
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
 
-  const ghostsFingerprint = `${ghosts.length}:${ghosts[0]?.path}`;
-
+  // 検索クエリ変更→スクロール位置をトップに戻す
   useEffect(() => {
     const viewport = viewportRef.current;
     if (viewport && viewport.scrollTop !== 0) {
       viewport.scrollTop = 0;
     }
-  }, [ghostsFingerprint]);
+  }, [searchQuery]);
+
+  // IntersectionObserver でセンチネル要素を監視して追加読み込みをトリガー
+  // スクロールイベントと完全に分離することでカード選択との干渉を防ぐ
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onLoadMoreRef.current();
+        }
+      },
+      {
+        root: viewportRef.current,
+        rootMargin: "200px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // ghosts.length と total を deps に含めて、全件ロード済みの場合にオブザーバを更新
+  }, [ghosts.length, total]);
 
   const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
   const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
@@ -79,6 +109,9 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
       gap: STACK_GAP,
     },
   );
+
+  // センチネルを表示するかどうか（まだ読み込める件数が残っている場合のみ）
+  const hasMore = ghosts.length < total;
 
   if (loading) {
     return (
@@ -109,7 +142,7 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
   return (
     <div className={styles.root}>
       <Text className={styles.count} aria-live="polite">
-        {ghosts.length} 体のゴースト
+        {total} 体のゴースト
       </Text>
       <div
         className={styles.viewport}
@@ -123,6 +156,16 @@ export function GhostList({ ghosts, sspPath, loading, error }: Props) {
           ))}
         </div>
         {shouldVirtualize && <div style={{ height: bottomSpacer }} />}
+
+        {/* センチネル要素：ビューポートに入ったとき追加読み込み */}
+        {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+
+        {/* 追加読み込み中スピナー */}
+        {searchLoading && ghosts.length > 0 && (
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <Spinner size="small" />
+          </div>
+        )}
       </div>
     </div>
   );

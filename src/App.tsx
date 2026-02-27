@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState, useRef } from "react";
 import {
   Button,
   Dialog,
@@ -17,6 +17,7 @@ import { useSearch } from "./hooks/useSearch";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { buildAdditionalFolders, buildRequestKey } from "./lib/ghostScanUtils";
 
 const useStyles = makeStyles({
   app: {
@@ -65,13 +66,46 @@ function App() {
     addGhostFolder,
     removeGhostFolder,
     loading: settingsLoading,
-    initialGhostCache,
   } = useSettings();
-  const { ghosts, loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders, initialGhostCache);
+  const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const filteredGhosts = useSearch(ghosts, deferredSearchQuery);
+  const searchRequestKey = sspPath
+    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+    : null;
+
+  const [offset, setOffset] = useState(0);
+  const LIMIT = 100;
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const prevLoadingRef = useRef(true);
+
+  useEffect(() => {
+    if (prevLoadingRef.current && !ghostsLoading) {
+      // scan completed
+      setRefreshTrigger((v) => v + 1);
+      setOffset(0);
+    }
+    prevLoadingRef.current = ghostsLoading;
+  }, [ghostsLoading]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [deferredSearchQuery]);
+
+  const { ghosts: searchResultGhosts, total: searchTotal, loading: searchLoading, dbError } = useSearch(
+    searchRequestKey,
+    deferredSearchQuery,
+    LIMIT,
+    offset,
+    refreshTrigger
+  );
+
+  const handleLoadMore = useCallback(() => {
+    if (!searchLoading && searchResultGhosts.length < searchTotal) {
+      setOffset((prev) => prev + LIMIT);
+    }
+  }, [searchLoading, searchResultGhosts.length, searchTotal]);
 
   const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
   const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
@@ -101,13 +135,16 @@ function App() {
           onOpenSettings={handleOpenSettings}
         />
         <GhostContent
-          ghosts={filteredGhosts}
+          ghosts={searchResultGhosts}
+          total={searchTotal}
           sspPath={sspPath}
           searchQuery={searchQuery}
           loading={ghostsLoading}
-          error={error}
+          searchLoading={searchLoading}
+          error={error ?? dbError}
           onSearchChange={setSearchQuery}
           onOpenSettings={handleOpenSettings}
+          onLoadMore={handleLoadMore}
         />
       </div>
 

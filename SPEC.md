@@ -6,24 +6,25 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 - **対象ユーザー**: 伺か/SSP を利用しているユーザー
 - **動作環境**: Windows（WebView2 ランタイム + VC++ ランタイム + SSP 本体が必要）
+  - ※ SSP自体がWindows専用であるため、本アプリのクロスプラットフォーム展開は想定せず、Windows限定とする。
 - **技術構成**: Tauri 2（Rust バックエンド）+ React 19 / TypeScript フロントエンド + Fluent UI v9
 
 ---
 
 ## 2. 機能一覧
 
-| ID | 機能名 | 概要 |
-|----|--------|------|
-| F-01 | SSP フォルダ設定 | `ssp.exe` を含むフォルダをダイアログで選択・永続化 |
-| F-02 | 追加フォルダ管理 | SSP 外のゴーストフォルダを追加・削除・永続化 |
-| F-03 | ゴーストスキャン | SSP フォルダ + 追加フォルダ内のゴーストを走査し `descript.txt` からメタデータを解析 |
-| F-04 | フィンガープリント差分検知 | ディレクトリ構成・更新時刻のハッシュでスキャン結果の変化を検出 |
-| F-05 | ゴーストキャッシュ | スキャン結果を `settings.json`（LazyStore）に永続化し、次回起動時に即時表示 |
-| F-06 | ゴースト検索 | 名前・ディレクトリ名の部分一致によるクライアントサイドフィルタリング |
-| F-07 | ゴースト起動 | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定） |
-| F-08 | 仮想スクロール | 80件以上のゴーストリスト描画を仮想化で最適化 |
-| F-09 | テーマ追従 | OS のライト/ダークテーマに自動追従（Fluent UI） |
-| F-10 | ウィンドウ状態保存 | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化 |
+| ID   | 機能名                     | 概要                                                                                |
+| ---- | -------------------------- | ----------------------------------------------------------------------------------- |
+| F-01 | SSP フォルダ設定           | `ssp.exe` を含むフォルダをダイアログで選択・永続化                                  |
+| F-02 | 追加フォルダ管理           | SSP 外のゴーストフォルダを追加・削除・永続化                                        |
+| F-03 | ゴーストスキャン           | SSP フォルダ + 追加フォルダ内のゴーストを走査し `descript.txt` からメタデータを解析 |
+| F-04 | フィンガープリント差分検知 | ディレクトリ構成・更新時刻のハッシュでスキャン結果の変化を検出                      |
+| F-05 | ゴーストキャッシュ         | スキャン結果を `settings.json`（LazyStore）に永続化し、次回起動時に即時表示         |
+| F-06 | ゴースト検索               | 名前・ディレクトリ名の部分一致によるクライアントサイドフィルタリング                |
+| F-07 | ゴースト起動               | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定）      |
+| F-08 | 仮想スクロール             | 80件以上のゴーストリスト描画を仮想化で最適化                                        |
+| F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
+| F-10 | ウィンドウ状態保存         | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化                    |
 
 ---
 
@@ -56,46 +57,46 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 3.2 バックエンド（Rust）モジュール構成
 
-| ファイル | 責務 |
-|---------|------|
-| `lib.rs` | Tauri アプリビルダー。コマンド・プラグイン登録 |
-| `main.rs` | エントリポイント（`ghost_launcher_lib::run()` 呼び出し） |
-| `commands/ghost/mod.rs` | `scan_ghosts_with_meta`・`get_ghosts_fingerprint` Tauri コマンド公開 |
-| `commands/ghost/scan.rs` | ゴーストディレクトリ走査＋フィンガープリントトークン同時収集 |
-| `commands/ghost/fingerprint.rs` | フィンガープリント専用計算（`build_fingerprint`）＋ハッシュ生成 |
-| `commands/ghost/path_utils.rs` | パス正規化（`\` → `/`、小文字化） |
-| `commands/ghost/types.rs` | `Ghost`・`ScanGhostsResponse` 型定義 |
-| `commands/ssp.rs` | `launch_ghost` コマンド（`ssp.exe /g {ghost}` を起動） |
-| `utils/descript.rs` | `descript.txt` パーサー（UTF-8 BOM / charset フィールド / Shift_JIS フォールバック） |
+| ファイル                        | 責務                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| `lib.rs`                        | Tauri アプリビルダー。コマンド・プラグイン登録                                       |
+| `main.rs`                       | エントリポイント（`ghost_launcher_lib::run()` 呼び出し）                             |
+| `commands/ghost/mod.rs`         | `scan_ghosts_with_meta`・`get_ghosts_fingerprint` Tauri コマンド公開                 |
+| `commands/ghost/scan.rs`        | ゴーストディレクトリ走査＋フィンガープリントトークン同時収集                         |
+| `commands/ghost/fingerprint.rs` | フィンガープリント専用計算（`build_fingerprint`）＋ハッシュ生成                      |
+| `commands/ghost/path_utils.rs`  | パス正規化（`\` → `/`、小文字化）                                                    |
+| `commands/ghost/types.rs`       | `Ghost`・`ScanGhostsResponse` 型定義                                                 |
+| `commands/ssp.rs`               | `launch_ghost` コマンド（`ssp.exe /g {ghost}` を起動）                               |
+| `utils/descript.rs`             | `descript.txt` パーサー（UTF-8 BOM / charset フィールド / Shift_JIS フォールバック） |
 
 ### 3.3 フロントエンド（React/TypeScript）モジュール構成
 
-| ファイル | 責務 |
-|---------|------|
-| `main.tsx` | ルートレンダリング。FluentProvider でテーマ設定 |
-| `App.tsx` | アプリ全体のレイアウト・状態管理の統合 |
-| `types/index.ts` | 共有型定義（`Ghost`, `GhostView`, `ScanGhostsResponse`, キャッシュ型） |
-| **lib/** | |
-| `settingsStore.ts` | `LazyStore("settings.json")` のシングルトン |
-| `ghostScanClient.ts` | Tauri `invoke` ラッパー（`scanGhostsWithMeta`, `getGhostsFingerprint`） |
-| `ghostScanOrchestrator.ts` | キャッシュ検証・重複排除付きスキャン実行 |
-| `ghostScanUtils.ts` | パス正規化・リクエストキー生成・エラーメッセージ構築 |
-| `ghostCacheRepository.ts` | ゴーストキャッシュの読み書き（キュー化による直列書き込み） |
-| `ghostLaunchUtils.ts` | 起動エラーメッセージ構築・ソースフォルダラベル取得 |
-| **hooks/** | |
-| `useSettings.ts` | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化 |
-| `useGhosts.ts` | ゴーストスキャン・キャッシュ管理・状態提供 |
-| `useSearch.ts` | `name` / `directory_name` による部分一致フィルタ |
-| `useVirtualizedList.ts` | 仮想スクロール計算（startIndex/endIndex/spacer） |
-| `useElementHeight.ts` | ResizeObserver による要素高さ追跡 |
-| `useSystemTheme.ts` | OS テーマ（light/dark）検出・追従 |
-| **components/** | |
-| `AppHeader.tsx` | タイトル・再読込ボタン・設定ボタン |
-| `SettingsPanel.tsx` | SSP フォルダ選択・追加フォルダ管理 UI |
-| `GhostContent.tsx` | ゴースト一覧エリア（検索ボックス + リスト）のコンテナ |
-| `GhostList.tsx` | ゴーストリスト表示（仮想スクロール対応・状態分岐） |
-| `GhostCard.tsx` | 個別ゴースト表示カード（名前・ディレクトリ名・ソースバッジ・起動ボタン） |
-| `SearchBox.tsx` | 検索入力フィールド |
+| ファイル                   | 責務                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `main.tsx`                 | ルートレンダリング。FluentProvider でテーマ設定                          |
+| `App.tsx`                  | アプリ全体のレイアウト・状態管理の統合                                   |
+| `types/index.ts`           | 共有型定義（`Ghost`, `GhostView`, `ScanGhostsResponse`, キャッシュ型）   |
+| **lib/**                   |                                                                          |
+| `settingsStore.ts`         | `LazyStore("settings.json")` のシングルトン                              |
+| `ghostScanClient.ts`       | Tauri `invoke` ラッパー（`scanGhostsWithMeta`, `getGhostsFingerprint`）  |
+| `ghostScanOrchestrator.ts` | キャッシュ検証・重複排除付きスキャン実行                                 |
+| `ghostScanUtils.ts`        | パス正規化・リクエストキー生成・エラーメッセージ構築                     |
+| `ghostCacheRepository.ts`  | ゴーストキャッシュの読み書き（キュー化による直列書き込み）               |
+| `ghostLaunchUtils.ts`      | 起動エラーメッセージ構築・ソースフォルダラベル取得                       |
+| **hooks/**                 |                                                                          |
+| `useSettings.ts`           | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化              |
+| `useGhosts.ts`             | ゴーストスキャン・キャッシュ管理・状態提供                               |
+| `useSearch.ts`             | `name` / `directory_name` による部分一致フィルタ                         |
+| `useVirtualizedList.ts`    | 仮想スクロール計算（startIndex/endIndex/spacer）                         |
+| `useElementHeight.ts`      | ResizeObserver による要素高さ追跡                                        |
+| `useSystemTheme.ts`        | OS テーマ（light/dark）検出・追従                                        |
+| **components/**            |                                                                          |
+| `AppHeader.tsx`            | タイトル・再読込ボタン・設定ボタン                                       |
+| `SettingsPanel.tsx`        | SSP フォルダ選択・追加フォルダ管理 UI                                    |
+| `GhostContent.tsx`         | ゴースト一覧エリア（検索ボックス + リスト）のコンテナ                    |
+| `GhostList.tsx`            | ゴーストリスト表示（仮想スクロール対応・状態分岐）                       |
+| `GhostCard.tsx`            | 個別ゴースト表示カード（名前・ディレクトリ名・ソースバッジ・起動ボタン） |
+| `SearchBox.tsx`            | 検索入力フィールド                                                       |
 
 ---
 
@@ -103,20 +104,20 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 4.1 Ghost（Rust / TypeScript 共通）
 
-| フィールド | 型 | 説明 |
-|-----------|----|------|
-| `name` | `String` | `descript.txt` の `name` フィールド（未定義時はディレクトリ名にフォールバック） |
-| `directory_name` | `String` | ゴーストのディレクトリ名 |
-| `path` | `String` | ゴーストのフルパス |
-| `source` | `String` | `"ssp"`（SSP 内ゴースト）またはフォルダのフルパス（追加フォルダ） |
+| フィールド       | 型       | 説明                                                                            |
+| ---------------- | -------- | ------------------------------------------------------------------------------- |
+| `name`           | `String` | `descript.txt` の `name` フィールド（未定義時はディレクトリ名にフォールバック） |
+| `directory_name` | `String` | ゴーストのディレクトリ名                                                        |
+| `path`           | `String` | ゴーストのフルパス                                                              |
+| `source`         | `String` | `"ssp"`（SSP 内ゴースト）またはフォルダのフルパス（追加フォルダ）               |
 
 ### 4.2 GhostView（フロントエンド拡張）
 
 `Ghost` に加えて以下を持つ:
 
-| フィールド | 型 | 説明 |
-|-----------|----|------|
-| `name_lower` | `string` | `name` の小文字版（検索用） |
+| フィールド             | 型       | 説明                                  |
+| ---------------------- | -------- | ------------------------------------- |
+| `name_lower`           | `string` | `name` の小文字版（検索用）           |
 | `directory_name_lower` | `string` | `directory_name` の小文字版（検索用） |
 
 ### 4.3 GhostCacheStoreV1（永続化キャッシュ）
@@ -128,7 +129,9 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
     "<request_key>": {
       "request_key": "c:/ssp::c:/extra_ghosts",
       "fingerprint": "0123456789abcdef",
-      "ghosts": [ /* Ghost[] */ ],
+      "ghosts": [
+        /* Ghost[] */
+      ],
       "cached_at": "2026-02-24T12:00:00.000Z"
     }
   }
@@ -137,11 +140,11 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 4.4 設定ストア（settings.json）
 
-| キー | 型 | 説明 |
-|------|----|------|
-| `ssp_path` | `string` | SSP インストールフォルダパス |
-| `ghost_folders` | `string[]` | 追加ゴーストフォルダの配列 |
-| `ghost_cache_v1` | `GhostCacheStoreV1` | ゴーストキャッシュ |
+| キー             | 型                  | 説明                         |
+| ---------------- | ------------------- | ---------------------------- |
+| `ssp_path`       | `string`            | SSP インストールフォルダパス |
+| `ghost_folders`  | `string[]`          | 追加ゴーストフォルダの配列   |
+| `ghost_cache_v1` | `GhostCacheStoreV1` | ゴーストキャッシュ           |
 
 ---
 
@@ -176,30 +179,31 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 6.1 `scan_ghosts_with_meta`
 
-| 項目 | 内容 |
-|------|------|
-| 引数 | `ssp_path: String`, `additional_folders: Vec<String>` |
-| 戻り値 | `ScanGhostsResponse { ghosts: Vec<Ghost>, fingerprint: String }` |
-| 処理 | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴースト一覧とフィンガープリントを同時に返す |
-| ソート | `name` の大文字小文字無視の辞書順 |
-| エラー | SSP の `ghost/` フォルダ不在時にエラー。追加フォルダの不在・読取不能は無視して続行 |
+| 項目   | 内容                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------ |
+| 引数   | `ssp_path: String`, `additional_folders: Vec<String>`                                            |
+| 戻り値 | `ScanGhostsResponse { ghosts: Vec<Ghost>, fingerprint: String }`                                 |
+| 処理   | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴースト一覧とフィンガープリントを同時に返す |
+| ソート | `name` の大文字小文字無視の辞書順                                                                |
+| エラー | SSP の `ghost/` フォルダ不在時にエラー。追加フォルダの不在・読取不能は無視して続行               |
 
 ### 6.2 `get_ghosts_fingerprint`
 
-| 項目 | 内容 |
-|------|------|
-| 引数 | `ssp_path: String`, `additional_folders: Vec<String>` |
-| 戻り値 | `String`（64桁16進数ハッシュ、SHA-256） |
-| 処理 | ゴーストディレクトリ構成の変化検知用フィンガープリントを返す。ゴースト内容は読まず、ディレクトリとファイルの存在・更新時刻のみで計算 |
+| 項目   | 内容                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 引数   | `ssp_path: String`, `additional_folders: Vec<String>`                                                                                |
+| 戻り値 | `String`（64桁16進数ハッシュ、SHA-256）                                                                                              |
+| 処理   | ゴーストディレクトリ構成の変化検知用フィンガープリントを返す。ゴースト内容は読まず、ディレクトリとファイルの存在・更新時刻のみで計算 |
 
 ### 6.3 `launch_ghost`
 
-| 項目 | 内容 |
-|------|------|
-| 引数 | `ssp_path: String`, `ghost_directory_name: String`, `ghost_source: String` |
-| 戻り値 | `()` |
-| 処理 | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す |
-| エラー | `ssp.exe` 不在時・起動失敗時にエラー |
+| 項目   | 内容                                                                                                                                                            |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 引数   | `ssp_path: String`, `ghost_directory_name: String`, `ghost_source: String`                                                                                      |
+| 戻り値 | `()`                                                                                                                                                            |
+| 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
+| 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
+| エラー | `ssp.exe` 不在時・起動失敗時にエラー                                                                                                                            |
 
 ---
 
@@ -209,14 +213,14 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 フィンガープリントは以下のトークン文字列の集合から計算される:
 
-| トークン形式 | 説明 |
-|-------------|------|
-| `fingerprint-version\|1` | バージョンヘッダ |
-| `parent\|{label}\|{normalized_path}\|{modified_nanos}` | 親ディレクトリの更新時刻 |
-| `parent\|{label}\|{normalized_path}\|missing` | 存在しない追加フォルダ |
-| `parent\|{label}\|{normalized_path}\|not-directory` | ディレクトリでない追加フォルダ |
-| `entries\|{label}\|{normalized_path}\|unreadable` | 読取不能なディレクトリ |
-| `entry\|{label}\|{normalized_path}\|{dir_name}\|{dir_modified}\|{descript_state}\|{descript_modified}` | 個別ゴーストエントリ |
+| トークン形式                                                                                           | 説明                           |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| `fingerprint-version\|1`                                                                               | バージョンヘッダ               |
+| `parent\|{label}\|{normalized_path}\|{modified_nanos}`                                                 | 親ディレクトリの更新時刻       |
+| `parent\|{label}\|{normalized_path}\|missing`                                                          | 存在しない追加フォルダ         |
+| `parent\|{label}\|{normalized_path}\|not-directory`                                                    | ディレクトリでない追加フォルダ |
+| `entries\|{label}\|{normalized_path}\|unreadable`                                                      | 読取不能なディレクトリ         |
+| `entry\|{label}\|{normalized_path}\|{dir_name}\|{dir_modified}\|{descript_state}\|{descript_modified}` | 個別ゴーストエントリ           |
 
 ### 7.2 ハッシュ計算
 
@@ -401,6 +405,9 @@ stateDiagram-v2
 └──────────────────────────────────────┘
 ```
 
+> **Note (ウィンドウ初期表示タイミング):**
+> 起動時の目障りなチラつき（デフォルト位置に表示された直後に保存された位置へジャンプする現象）を防止するため、`tauri.conf.json` では `"visible": false` を設定している。ウィンドウは表示状態・位置を復元する `tauri-plugin-window-state` の処理が完了したタイミングで自動的に可視化される。
+
 ### 10.2 レスポンシブ対応
 
 - 最大幅: 960px（中央寄せ）
@@ -445,96 +452,16 @@ stateDiagram-v2
 
 ## 13. エラーハンドリング方針
 
-| 場面 | 挙動 |
-|------|------|
-| SSP の `ghost/` フォルダ不在 | Rust 側でエラー返却 → フロントエンドでエラー表示 |
-| 追加フォルダ不在・読取不能 | 無視して続行（フィンガープリントにはトークンとして記録） |
-| `descript.txt` 不在 | そのゴーストをスキップ |
-| `descript.txt` に `name` 未定義 | ディレクトリ名をフォールバック表示名とする |
-| `ssp.exe` 不在 | 起動時エラー表示（`role="alert"`） |
-| スキャンエラー（キャッシュ表示済み） | キャッシュ表示を維持し、エラーを抑制 |
-| スキャンエラー（キャッシュなし） | エラーメッセージ表示 + ゴーストリストクリア |
-| 設定保存失敗 | コンソールエラー + UI ロールバック |
-| キャッシュ書き込み失敗 | コンソールエラーのみ（UI 影響なし） |
+| 場面                                 | 挙動                                                     |
+| ------------------------------------ | -------------------------------------------------------- |
+| SSP の `ghost/` フォルダ不在         | Rust 側でエラー返却 → フロントエンドでエラー表示         |
+| 追加フォルダ不在・読取不能           | 無視して続行（フィンガープリントにはトークンとして記録） |
+| `descript.txt` 不在                  | そのゴーストをスキップ                                   |
+| `descript.txt` に `name` 未定義      | ディレクトリ名をフォールバック表示名とする               |
+| `ssp.exe` 不在                       | 起動時エラー表示（`role="alert"`）                       |
+| スキャンエラー（キャッシュ表示済み） | キャッシュ表示を維持し、エラーを抑制                     |
+| スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |
+| 設定保存失敗                         | コンソールエラー + UI ロールバック                       |
+| キャッシュ書き込み失敗               | コンソールエラーのみ（UI 影響なし）                      |
 
 ---
-
-## 14. 確認事項と回答
-
-以下はコードリーディングの過程で生じた疑問・不明点と、オーナーへの確認結果です。
-
-### C-01: ウィンドウの初期表示タイミング
-
-- **質問**: `tauri.conf.json` で `"visible": false` が設定されているが、ウィンドウの表示はどのように行われるか？
-- **回答**: **`tauri-plugin-window-state` が復元完了後に自動表示する。** `visible: false` は起動時のチラつき（デフォルト位置に一瞬表示されてから保存位置にジャンプする現象）を防ぐための意図的な設定。
-- **状態**: 確認済み・現状維持
-
-### C-02: クロスプラットフォーム対応の意図
-
-- **質問**: `launch_ghost` は `ssp.exe` をハードコードしており Windows 専用だが、`bundle.targets` は `"all"` である。
-- **回答**: **Windows 限定。** SSP 自体が Windows 専用であるため、本アプリも Windows 限定とする。
-- **状態**: 確認済み・現状維持
-
-### C-03: CSP（Content Security Policy）の設定
-
-- **質問**: `tauri.conf.json` で `"csp": null` に設定されているが、プロダクションでもこのままか？
-- **回答**: **意識していなかった。** 外部リソースを読み込まずローカル完結のアプリであるが、セキュリティ強化のため適切な CSP 設定を今後検討する。
-- **状態**: 要検討（将来改善）
-
-### C-04: フィンガープリントのハッシュ安定性
-
-- **質問**: `DefaultHasher`（SipHash）は Rust バージョン間で安定性が保証されないが、許容するか？
-- **回答**: **安定ハッシュに切り替えたい。** SHA-256 等のバージョン間で安定したハッシュアルゴリズムへの移行を行う。
-- **状態**: 要対応（改善タスク）
-
-### C-05: キャッシュエントリの肥大化
-
-- **質問**: `GhostCacheStoreV1` に古いエントリを削除する仕組みがないが、上限や有効期限は必要か？
-- **回答**: **将来的に導入したい。** 有効期限やエントリ数上限の仕組みを導入する。
-- **状態**: 要対応（将来改善）
-
-### C-06: SSP パス設定時のバリデーション
-
-- **質問**: SSP パス保存時に `ssp.exe` や `ghost/` の存在確認を行っていないが、バリデーションを追加するか？
-- **回答**: **保存時バリデーションを追加したい。** フォルダ選択時に `ssp.exe` の存在を確認し、不正なパスの場合は警告を表示する。
-- **状態**: 要対応（改善タスク）
-
-### C-07: フロントエンドのテスト基盤
-
-- **質問**: React コンポーネントやカスタムフックのユニットテスト基盤がないが、導入予定はあるか？
-- **回答**: **導入予定あり。** vitest 等のフロントエンドテスト基盤を導入する。
-- **状態**: 要対応（将来改善）
-
-### C-08: Cargo.toml の `publish = true`
-
-- **質問**: デスクトップアプリの Rust クレートで `publish = true` が設定されているが、crates.io 公開を意図しているか？
-- **回答**: **意図せず、`publish = false` に修正すべき。**
-- **状態**: 要修正
-
-### C-09: 複数の SSP インスタンス起動制御
-
-- **質問**: `launch_ghost` は `Command::spawn()` でプロセス終了を待たないが、重複起動防止は SSP 側に任せているか？
-- **回答**: **SSP 側に任せている。** SSP 自体が重複起動を制御するため、ランチャー側での制御は不要。
-- **状態**: 確認済み・現状維持
-
-### C-10: `scan_ghosts_with_meta` と `build_fingerprint` のロジック重複
-
-- **質問**: `scan.rs` と `fingerprint.rs` にフィンガープリントトークン生成の実質同一ロジックがあるが、意図的な重複か？
-- **回答**: **統合したい。** トークン生成ロジックを共通化し、DRY 原則に沿ったリファクタリングを行う。
-- **状態**: 要対応（改善タスク）
-
----
-
-## 15. 改善タスク一覧
-
-確認事項から導出された改善タスクの一覧:
-
-| 優先度 | タスク                            | 関連 | 概要                                                              |
-|--------|-----------------------------------|------|-------------------------------------------------------------------|
-| 高     | `publish = false` に修正          | C-08 | `Cargo.toml` の `publish` を `false` に変更                       |
-| 高     | 安定ハッシュへの移行              | C-04 | `DefaultHasher` → SHA-256 等の安定ハッシュに切り替え              |
-| 高     | フィンガープリントロジック統合    | C-10 | `scan.rs` と `fingerprint.rs` のトークン生成ロジックを共通化      |
-| 中     | SSP パス保存時バリデーション      | C-06 | フォルダ選択時に `ssp.exe` / `ghost/` の存在確認を追加            |
-| 中     | CSP 設定の検討                    | C-03 | `tauri.conf.json` に適切な CSP を設定                             |
-| 低     | キャッシュエントリの有効期限/上限 | C-05 | 古いキャッシュエントリの自動削除機能を追加                        |
-| 低     | フロントエンドテスト基盤導入      | C-07 | vitest 等によるユニットテスト・インテグレーションテスト基盤を構築 |

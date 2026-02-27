@@ -4,6 +4,32 @@ mod utils;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations(
+                    "sqlite:ghosts.db",
+                    vec![tauri_plugin_sql::Migration {
+                        version: 1,
+                        description: "create_ghosts_table",
+                        sql: "CREATE TABLE IF NOT EXISTS ghosts (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
+                            directory_name TEXT NOT NULL,
+                            path TEXT NOT NULL,
+                            source TEXT NOT NULL,
+                            name_lower TEXT NOT NULL,
+                            directory_name_lower TEXT NOT NULL
+                        );",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
+                    }, tauri_plugin_sql::Migration {
+                        version: 2,
+                        description: "add_request_key_to_ghosts",
+                        sql: "ALTER TABLE ghosts ADD COLUMN request_key TEXT NOT NULL DEFAULT '';\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key ON ghosts(request_key);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_name_lower ON ghosts(request_key, name_lower);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_directory_name_lower ON ghosts(request_key, directory_name_lower);",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
+                    }],
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())

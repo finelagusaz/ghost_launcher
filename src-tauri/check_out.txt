@@ -1,0 +1,215 @@
+    Checking ghost-launcher v0.1.0 (C:\workspace\ghost_launcher\src-tauri)
+error[E0624]: method `execute` is private
+   --> src\commands\ghost\mod.rs:41:10
+    |
+ 41 |       pool.execute("DELETE FROM ghosts", vec![])
+    |            ^^^^^^^ private method
+    |
+   ::: C:\Users\Eoh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-plugin-sql-2.3.2\src\wrapper.rs:146:5
+    |
+146 | /     pub(crate) async fn execute(
+147 | |         &self,
+148 | |         _query: String,
+149 | |         _values: Vec<JsonValue>,
+150 | |     ) -> Result<(u64, LastInsertId), crate::Error> {
+    | |__________________________________________________- private method defined here
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:41:5
+   |
+41 | /     pool.execute("DELETE FROM ghosts", vec![])
+42 | |         .await
+   | |______________^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:43:19
+   |
+43 |         .map_err(|e| e.to_string())?;
+   |                   ^  - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+43 |         .map_err(|e: /* Type */| e.to_string())?;
+   |                    ++++++++++++
+
+error[E0624]: method `execute` is private
+   --> src\commands\ghost\mod.rs:62:14
+    |
+ 62 |           pool.execute(&sql, params).await.map_err(|e| e.to_string())?;
+    |                ^^^^^^^ private method
+    |
+   ::: C:\Users\Eoh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-plugin-sql-2.3.2\src\wrapper.rs:146:5
+    |
+146 | /     pub(crate) async fn execute(
+147 | |         &self,
+148 | |         _query: String,
+149 | |         _values: Vec<JsonValue>,
+150 | |     ) -> Result<(u64, LastInsertId), crate::Error> {
+    | |__________________________________________________- private method defined here
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:62:9
+   |
+62 |         pool.execute(&sql, params).await.map_err(|e| e.to_string())?;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:62:51
+   |
+62 |         pool.execute(&sql, params).await.map_err(|e| e.to_string())?;
+   |                                                   ^  - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+62 |         pool.execute(&sql, params).await.map_err(|e: /* Type */| e.to_string())?;
+   |                                                    ++++++++++++
+
+error[E0624]: method `select` is private
+   --> src\commands\ghost\mod.rs:83:85
+    |
+ 83 |       let count_res: Vec<std::collections::HashMap<String, serde_json::Value>> = pool.select(
+    |                                                                                       ^^^^^^ private method
+    |
+   ::: C:\Users\Eoh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-plugin-sql-2.3.2\src\wrapper.rs:214:5
+    |
+214 | /     pub(crate) async fn select(
+215 | |         &self,
+216 | |         _query: String,
+217 | |         _values: Vec<JsonValue>,
+218 | |     ) -> Result<Vec<IndexMap<String, JsonValue>>, crate::Error> {
+    | |_______________________________________________________________- private method defined here
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:83:80
+   |
+83 |       let count_res: Vec<std::collections::HashMap<String, serde_json::Value>> = pool.select(
+   |  ________________________________________________________________________________^
+84 | |         "SELECT COUNT(*) as count FROM ghosts WHERE name_lower LIKE ? OR directory_name_lower LIKE ?",
+85 | |         vec![serde_json::Value::String(like_pattern.clone()), serde_json::Value::String(like_pattern.clone())]
+86 | |     ).await.map_err(|e| e.to_string())?;
+   | |___________^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:86:22
+   |
+86 |     ).await.map_err(|e| e.to_string())?;
+   |                      ^  - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+86 |     ).await.map_err(|e: /* Type */| e.to_string())?;
+   |                       ++++++++++++
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:88:44
+   |
+88 |     let total = count_res.get(0).and_then(|row| row.get("count")).and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+   |                                            ^^^  --- type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+88 |     let total = count_res.get(0).and_then(|row: /* Type */| row.get("count")).and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+   |                                               ++++++++++++
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:88:77
+   |
+88 |     let total = count_res.get(0).and_then(|row| row.get("count")).and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+   |                                                                             ^  - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+88 |     let total = count_res.get(0).and_then(|row| row.get("count")).and_then(|v: /* Type */| v.as_i64()).unwrap_or(0) as u32;
+   |                                                                              ++++++++++++
+
+error[E0624]: method `select` is private
+   --> src\commands\ghost\mod.rs:90:80
+    |
+ 90 |       let rows: Vec<std::collections::HashMap<String, serde_json::Value>> = pool.select(
+    |                                                                                  ^^^^^^ private method
+    |
+   ::: C:\Users\Eoh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-plugin-sql-2.3.2\src\wrapper.rs:214:5
+    |
+214 | /     pub(crate) async fn select(
+215 | |         &self,
+216 | |         _query: String,
+217 | |         _values: Vec<JsonValue>,
+218 | |     ) -> Result<Vec<IndexMap<String, JsonValue>>, crate::Error> {
+    | |_______________________________________________________________- private method defined here
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:90:75
+   |
+90 |       let rows: Vec<std::collections::HashMap<String, serde_json::Value>> = pool.select(
+   |  ___________________________________________________________________________^
+91 | |         "SELECT name, directory_name, path, source FROM ghosts WHERE name_lower LIKE ? OR directory_name_lower LIKE ? ORDER BY name_lower...
+92 | |         vec![
+93 | |             serde_json::Value::String(like_pattern.clone()),
+...  |
+98 | |     ).await.map_err(|e| e.to_string())?;
+   | |___________^ cannot infer type
+
+error[E0282]: type annotations needed
+  --> src\commands\ghost\mod.rs:98:22
+   |
+98 |     ).await.map_err(|e| e.to_string())?;
+   |                      ^  - type must be known at this point
+   |
+help: consider giving this closure parameter an explicit type
+   |
+98 |     ).await.map_err(|e: /* Type */| e.to_string())?;
+   |                       ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src\commands\ghost\mod.rs:102:20
+    |
+102 |         let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    |                    ^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src\commands\ghost\mod.rs:102:46
+    |
+102 |         let name = row.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    |                                              ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+102 |         let name = row.get("name").and_then(|v: /* Type */| v.as_str()).unwrap_or("").to_string();
+    |                                               ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src\commands\ghost\mod.rs:103:66
+    |
+103 |         let directory_name = row.get("directory_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    |                                                                  ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+103 |         let directory_name = row.get("directory_name").and_then(|v: /* Type */| v.as_str()).unwrap_or("").to_string();
+    |                                                                   ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src\commands\ghost\mod.rs:104:46
+    |
+104 |         let path = row.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    |                                              ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+104 |         let path = row.get("path").and_then(|v: /* Type */| v.as_str()).unwrap_or("").to_string();
+    |                                               ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src\commands\ghost\mod.rs:105:50
+    |
+105 |         let source = row.get("source").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    |                                                  ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+105 |         let source = row.get("source").and_then(|v: /* Type */| v.as_str()).unwrap_or("").to_string();
+    |                                                   ++++++++++++
+
+Some errors have detailed explanations: E0282, E0624.
+For more information about an error, try `rustc --explain E0282`.
+error: could not compile `ghost-launcher` (lib) due to 19 previous errors
