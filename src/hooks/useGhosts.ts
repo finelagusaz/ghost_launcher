@@ -54,7 +54,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
         // Check if SQLite has any rows
         const { searchGhosts } = await import("../lib/ghostDatabase");
         try {
-          const initResult = await searchGhosts("", 1, 0);
+          const initResult = await searchGhosts(requestKey, "", 1, 0);
           if (initResult.total > 0) {
             const cacheValid = await validateCache(cachedFingerprint, sspPath, additionalFolders);
             if (requestSeq !== requestSeqRef.current) return;
@@ -71,21 +71,22 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       // スキャン実行
       const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
       
-      // SQLite に保存
+      // SQLite に保存（失敗時は fingerprint を更新しない）
+      const { replaceGhostsByRequestKey } = await import("../lib/ghostDatabase");
       try {
-        const { clearGhosts, insertGhostsBatch } = await import("../lib/ghostDatabase");
-        await clearGhosts();
-        await insertGhostsBatch(result.ghosts);
+        await replaceGhostsByRequestKey(requestKey, result.ghosts);
       } catch (dbError) {
         console.error("Failed to populate SQLite database:", dbError);
+        throw new Error("SQLiteへの保存に失敗しました");
       }
+
+      // 指紋を記録して次回スキップできるようにする（DB保存成功時のみ）
+      localStorage.setItem(`fingerprint_${requestKey}`, result.fingerprint);
 
       if (requestSeq === requestSeqRef.current) {
         setError(null);
       }
 
-      // 指紋を記録して次回スキップできるようにする
-      localStorage.setItem(`fingerprint_${requestKey}`, result.fingerprint);
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
         if (!usedCachedGhosts || forceFullScan) {

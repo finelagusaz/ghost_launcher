@@ -21,6 +21,11 @@ pub fn run() {
                             directory_name_lower TEXT NOT NULL
                         );",
                         kind: tauri_plugin_sql::MigrationKind::Up,
+                    }, tauri_plugin_sql::Migration {
+                        version: 2,
+                        description: "add_request_key_to_ghosts",
+                        sql: "ALTER TABLE ghosts ADD COLUMN request_key TEXT NOT NULL DEFAULT '';\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key ON ghosts(request_key);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_name_lower ON ghosts(request_key, name_lower);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_directory_name_lower ON ghosts(request_key, directory_name_lower);",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
                     }],
                 )
                 .build(),
