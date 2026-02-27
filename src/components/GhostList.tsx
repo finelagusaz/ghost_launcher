@@ -65,6 +65,9 @@ export function GhostList({ ghosts, total, sspPath, searchQuery, loading, search
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
 
+  // センチネルを表示するかどうか（まだ読み込める件数が残っている場合のみ）
+  const hasMore = ghosts.length < total;
+
   // 検索クエリ変更→スクロール位置をトップに戻す
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -94,8 +97,11 @@ export function GhostList({ ghosts, total, sspPath, searchQuery, loading, search
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-    // ghosts.length と total を deps に含めて、全件ロード済みの場合にオブザーバを更新
-  }, [ghosts.length, total]);
+    // hasMore が false→true（初回ロード完了）で observer を作成し、
+    // true→false（全件ロード完了）で cleanup する。
+    // ghosts.length を含めると追加読み込みのたびに observer が再生成され
+    // 即座にコールバックが発火するカスケードが起きるため含めない。
+  }, [hasMore]);
 
   const shouldVirtualize = ghosts.length >= VIRTUALIZE_THRESHOLD;
   const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
@@ -110,8 +116,6 @@ export function GhostList({ ghosts, total, sspPath, searchQuery, loading, search
     },
   );
 
-  // センチネルを表示するかどうか（まだ読み込める件数が残っている場合のみ）
-  const hasMore = ghosts.length < total;
 
   if (loading) {
     return (
@@ -151,9 +155,15 @@ export function GhostList({ ghosts, total, sspPath, searchQuery, loading, search
       >
         {shouldVirtualize && <div style={{ height: topSpacer }} />}
         <div className={styles.stack}>
-          {(shouldVirtualize ? visibleGhosts : ghosts).map((ghost) => (
-            <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
-          ))}
+          {(shouldVirtualize ? visibleGhosts : ghosts).length > 0 ? (
+            (shouldVirtualize ? visibleGhosts : ghosts).map((ghost) => (
+              <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
+            ))
+          ) : hasMore ? (
+            <div style={{ textAlign: "center", padding: "16px 0" }}>
+              <Spinner size="small" label="読み込み中..." />
+            </div>
+          ) : null}
         </div>
         {shouldVirtualize && <div style={{ height: bottomSpacer }} />}
 

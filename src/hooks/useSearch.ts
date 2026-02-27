@@ -31,7 +31,9 @@ export function useSearch(
       try {
         const result = await searchGhosts(requestKey, query, limit, offset);
         if (isActive) {
-          setGhosts((prev) => offset === 0 ? result.ghosts : [...prev, ...result.ghosts]);
+          setGhosts((prev) =>
+            offset === 0 ? result.ghosts : [...prev, ...result.ghosts],
+          );
           setTotal(result.total);
         }
       } catch (err) {

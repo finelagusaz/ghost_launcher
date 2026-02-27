@@ -24,7 +24,9 @@ function calcIndices(
   overscanRows: number,
 ): [number, number] {
   const visibleRowCount = Math.max(1, Math.ceil(viewportHeight / rowHeight));
-  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscanRows);
+  // scrollTop がアイテム数を超えた場合でも末尾のアイテムを表示し続けるようクランプする
+  const maxStart = Math.max(0, itemCount - visibleRowCount);
+  const start = Math.min(maxStart, Math.max(0, Math.floor(scrollTop / rowHeight) - overscanRows));
   const end = Math.min(itemCount, start + visibleRowCount + overscanRows * 2);
   return [start, end];
 }
