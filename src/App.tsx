@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useState, useRef } from "react";
+import { useCallback, useDeferredValue, useState } from "react";
 import {
   Button,
   Dialog,
@@ -14,6 +14,7 @@ import {
 import { useSettings } from "./hooks/useSettings";
 import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
+import { useAppShellState } from "./hooks/useAppShellState";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -69,29 +70,26 @@ function App() {
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const searchRequestKey = sspPath
     ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
     : null;
-
-  const [offset, setOffset] = useState(0);
   const LIMIT = 100;
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const prevLoadingRef = useRef(true);
 
-  useEffect(() => {
-    if (prevLoadingRef.current && !ghostsLoading) {
-      // scan completed
-      setRefreshTrigger((v) => v + 1);
-      setOffset(0);
-    }
-    prevLoadingRef.current = ghostsLoading;
-  }, [ghostsLoading]);
-
-  useEffect(() => {
-    setOffset(0);
-  }, [deferredSearchQuery]);
+  const {
+    settingsOpen,
+    setSettingsOpen,
+    openSettings,
+    closeSettings,
+    offset,
+    refreshTrigger,
+    increaseOffset,
+  } = useAppShellState({
+    settingsLoading,
+    sspPath,
+    deferredSearchQuery,
+    ghostsLoading,
+  });
 
   const { ghosts: searchResultGhosts, total: searchTotal, loading: searchLoading, dbError } = useSearch(
     searchRequestKey,
@@ -103,19 +101,13 @@ function App() {
 
   const handleLoadMore = useCallback(() => {
     if (!searchLoading && searchResultGhosts.length < searchTotal) {
-      setOffset((prev) => prev + LIMIT);
+      increaseOffset(LIMIT);
     }
-  }, [searchLoading, searchResultGhosts.length, searchTotal]);
+  }, [searchLoading, searchResultGhosts.length, searchTotal, increaseOffset]);
 
   const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
-  const handleOpenSettings = useCallback(() => setSettingsOpen(true), []);
-  const handleCloseSettings = useCallback(() => setSettingsOpen(false), []);
-
-  useEffect(() => {
-    if (!settingsLoading && !sspPath) {
-      setSettingsOpen(true);
-    }
-  }, [settingsLoading, sspPath]);
+  const handleOpenSettings = openSettings;
+  const handleCloseSettings = closeSettings;
 
   if (settingsLoading) {
     return (

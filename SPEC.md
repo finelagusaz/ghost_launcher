@@ -19,8 +19,8 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-02 | 追加フォルダ管理           | SSP 外のゴーストフォルダを追加・削除・永続化                                        |
 | F-03 | ゴーストスキャン           | SSP フォルダ + 追加フォルダ内のゴーストを走査し `descript.txt` からメタデータを解析 |
 | F-04 | フィンガープリント差分検知 | ディレクトリ構成・更新時刻のハッシュでスキャン結果の変化を検出                      |
-| F-05 | ゴーストキャッシュ         | スキャン結果を `settings.json`（LazyStore）に永続化し、次回起動時に即時表示         |
-| F-06 | ゴースト検索               | 名前・ディレクトリ名の部分一致によるクライアントサイドフィルタリング                |
+| F-05 | ゴーストキャッシュ         | スキャン結果を SQLite に永続化し、fingerprint を `localStorage` に保持して差分検知 |
+| F-06 | ゴースト検索               | SQLite に対する名前・ディレクトリ名の部分一致検索                                   |
 | F-07 | ゴースト起動               | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定）      |
 | F-08 | 仮想スクロール             | 80件以上のゴーストリスト描画を仮想化で最適化                                        |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
@@ -51,8 +51,8 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 └──────────────────────────────────────────────────────┘
          │                           │
          ▼                           ▼
-   ファイルシステム              settings.json
-   (ghost/ ディレクトリ)        (LazyStore 永続化)
+   ファイルシステム              SQLite + localStorage
+   (ghost/ ディレクトリ)        (ゴースト一覧 + fingerprint)
 ```
 
 ### 3.2 バックエンド（Rust）モジュール構成
@@ -239,18 +239,27 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 8.1 キャッシュフロー
 
-1. **起動時**: `settings.json` から `ghost_cache_v1` を一括読み込み（`useSettings` の `initialGhostCache`）
-2. **表示**: キャッシュが存在すれば即時表示（ローディング表示をスキップ）
-3. **検証**: バックグラウンドで `get_ghosts_fingerprint` を呼び出し、キャッシュの fingerprint と比較
-4. **一致**: スキャン不要（キャッシュをそのまま利用）
-5. **不一致/エラー**: フルスキャンを実行し、結果で上書き
-6. **書き込み**: キャッシュ書き込みは fire-and-forget（UI 更新をブロックしない）、キュー化で直列実行
+1. **refresh開始**: `requestKey` を生成し、同一キーの in-flight リクエストを抑止
+2. **キャッシュ検証準備**: `localStorage[fingerprint_${requestKey}]` と SQLite のデータ有無を確認
+3. **検証**: `get_ghosts_fingerprint` を呼び出し fingerprint 一致を判定
+4. **一致**: スキャン不要（`useSearch` が SQLite から一覧を取得）
+5. **不一致/未保持/強制更新**: フルスキャンを実行
+6. **保存**: スキャン結果を SQLite へ置換保存し、成功時のみ fingerprint を更新
 
-### 8.2 強制リフレッシュ
+### 8.2 責務分離方針
+
+- `hooks/useGhosts.ts`
+  - React 状態（loading / error）と画面からの `refresh` トリガのみを担当
+- `lib/ghostCatalogService.ts`
+  - キャッシュ判定、スキャン実行、SQLite 保存、fingerprint 更新のユースケース手順を担当
+- `lib/fingerprintCache.ts`
+  - `localStorage` への fingerprint 読み書き抽象化を担当
+
+### 8.3 強制リフレッシュ
 
 ヘッダーの「再読込」ボタンはキャッシュ検証をスキップし、即座にフルスキャンを実行する。
 
-### 8.3 重複排除
+### 8.4 重複排除
 
 同一 `requestKey` に対する並行スキャンリクエストは共有される（`pendingScans` Map）。
 
