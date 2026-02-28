@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Dialog,
@@ -60,12 +61,15 @@ const useStyles = makeStyles({
 
 function App() {
   const styles = useStyles();
+  const { t } = useTranslation();
   const {
     sspPath,
     saveSspPath,
     ghostFolders,
     addGhostFolder,
     removeGhostFolder,
+    language,
+    saveLanguage,
     loading: settingsLoading,
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
@@ -113,7 +117,7 @@ function App() {
   if (settingsLoading) {
     return (
       <div className={styles.loading}>
-        <Spinner label="読み込み中..." />
+        <Spinner label={t("app.loading")} />
       </div>
     );
   }
@@ -149,7 +153,7 @@ function App() {
       >
         <DialogSurface className={styles.dialogSurface}>
           <DialogBody>
-            <DialogTitle>設定</DialogTitle>
+            <DialogTitle>{t("app.settings.title")}</DialogTitle>
             <DialogContent>
               <SettingsPanel
                 sspPath={sspPath}
@@ -157,11 +161,13 @@ function App() {
                 ghostFolders={ghostFolders}
                 onAddFolder={addGhostFolder}
                 onRemoveFolder={removeGhostFolder}
+                language={language}
+                onLanguageChange={saveLanguage}
               />
             </DialogContent>
             <DialogActions>
               <Button appearance="secondary" onClick={handleCloseSettings}>
-                閉じる
+                {t("app.settings.close")}
               </Button>
             </DialogActions>
           </DialogBody>

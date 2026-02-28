@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
 import { SkeletonCard } from "./SkeletonCard";
@@ -66,6 +67,7 @@ const useStyles = makeStyles({
 
 export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore }: Props) {
   const styles = useStyles();
+  const { t } = useTranslation();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
@@ -113,7 +115,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   if (loading) {
     return (
       <div className={styles.state}>
-        <Spinner label="読み込み中..." />
+        <Spinner label={t("list.loading")} />
       </div>
     );
   }
@@ -131,7 +133,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   if (total === 0 && ghosts.length === 0) {
     return (
       <div className={styles.state}>
-        <Text>ゴーストが見つかりません</Text>
+        <Text>{t("list.empty")}</Text>
       </div>
     );
   }
@@ -141,7 +143,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
     return (
       <div className={styles.root}>
         <Text className={styles.count} aria-live="polite">
-          {total} 体のゴースト
+          {t("list.count", { count: total })}
         </Text>
         <div className={styles.viewport} ref={viewportRef}>
           <div className={styles.stack}>
@@ -169,7 +171,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   return (
     <div className={styles.root}>
       <Text className={styles.count} aria-live="polite">
-        {total} 体のゴースト
+        {t("list.count", { count: total })}
       </Text>
       <div
         className={styles.viewport}

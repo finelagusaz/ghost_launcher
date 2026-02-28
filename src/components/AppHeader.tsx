@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ArrowClockwiseRegular, SettingsRegular } from "@fluentui/react-icons";
 
@@ -42,6 +43,7 @@ const useStyles = makeStyles({
 
 export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings }: Props) {
   const styles = useStyles();
+  const { t } = useTranslation();
 
   return (
     <header className={styles.header}>
@@ -58,11 +60,11 @@ export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRef
             onClick={onRefresh}
             disabled={ghostsLoading}
           >
-            再読込
+            {t("header.refresh")}
           </Button>
         )}
         <Button icon={<SettingsRegular />} appearance="secondary" onClick={onOpenSettings}>
-          設定
+          {t("header.settings")}
         </Button>
       </div>
     </header>

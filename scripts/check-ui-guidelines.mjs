@@ -27,14 +27,17 @@ export const checks = [
   {
     id: "searchbox-labeled",
     file: "src/components/SearchBox.tsx",
-    message: "検索入力に明示ラベルが必要です (`Field label=\"ゴースト検索\"`)。",
-    test: (source) => /<Field\b[^>]*\blabel\s*=\s*"ゴースト検索"[^>]*>/.test(source),
+    message: "検索入力には Field コンポーネントの label プロパティが必要です。",
+    // 文字列リテラル・t() どちらでも label= があれば OK
+    test: (source) => /<Field\b[^>]*\blabel\s*=/.test(source),
   },
   {
     id: "settings-delete-aria-label",
     file: "src/components/SettingsPanel.tsx",
     message: "削除ボタンには対象フォルダ名を含む aria-label が必要です。",
-    test: (source) => /aria-label\s*=\s*\{\s*`追加フォルダを削除\s*:\s*\$\{folder\}`\s*\}/.test(source),
+    // テンプレートリテラル（`...${folder}...`）または t() に folder を渡す形式を許可
+    test: (source) =>
+      /aria-label\s*=\s*\{(?:\s*`追加フォルダを削除\s*:\s*\$\{folder\}`\s*|t\([^)]*\{[^}]*\bfolder\b[^}]*\}[^)]*\))\}/.test(source),
   },
   {
     id: "ghostlist-alert-role",
