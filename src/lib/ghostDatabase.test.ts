@@ -61,6 +61,37 @@ describe("ghostDatabase - getDb", () => {
   });
 });
 
+describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
+  it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
+    const { insertGhostsBatch } = await import("./ghostDatabase");
+    const ghosts = [
+      { name: "Ａｌｉｃｅ", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp" },
+    ];
+    await insertGhostsBatch("rk1", ghosts);
+
+    const insertCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("INSERT INTO ghosts")
+    );
+    expect(insertCall).toBeDefined();
+    // params: [requestKey, name, directory_name, path, source, name_lower, directory_name_lower]
+    const params = insertCall![1] as string[];
+    expect(params[5]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
+    expect(params[6]).toBe("alice");
+  });
+});
+
+describe("ghostDatabase - searchGhosts NFKC正規化", () => {
+  it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
+    mockSelect.mockResolvedValue([{ count: 0 }]);
+    const { searchGhosts } = await import("./ghostDatabase");
+    await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
+
+    const countCall = mockSelect.mock.calls[0];
+    // params: [requestKey, likePattern, likePattern]
+    expect(countCall[1][1]).toBe("%alice%");
+  });
+});
+
 describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("BEGIN/COMMIT/ROLLBACK を使わない（コネクションプール安全）", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
