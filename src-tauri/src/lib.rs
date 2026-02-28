@@ -38,6 +38,7 @@ pub fn run() {
             commands::ghost::get_ghosts_fingerprint,
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,
+            commands::locale::read_user_locale,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

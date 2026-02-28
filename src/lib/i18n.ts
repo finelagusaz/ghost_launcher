@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import ja from "../locales/ja.json";
 import en from "../locales/en.json";
 
@@ -26,4 +27,35 @@ i18n.use(initReactI18next).init({
   initImmediate: false,
 });
 
-export { i18n };
+/** JSON 文字列を検証し、文字列値のみを抽出する。非文字列値は無視する */
+function extractStringValues(json: string): Record<string, string> {
+  const data: unknown = JSON.parse(json);
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    throw new Error("言語ファイルはオブジェクト形式である必要があります");
+  }
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      result[key] = value;
+    }
+    // 非文字列値は無視（悪意あるコードの混入対策）
+  }
+  return result;
+}
+
+/**
+ * 実行ファイル横の locales/{lang}.json を読み込み、バンドル翻訳にキー単位でマージする。
+ * ファイルが存在しない場合・エラー時はスキップ（バンドル翻訳のまま続行）。
+ */
+export async function applyUserLocale(lang: Language): Promise<void> {
+  try {
+    const content = await invoke<string | null>("read_user_locale", { lang });
+    if (typeof content !== "string") return;
+    const userResources = extractStringValues(content);
+    i18n.addResources(lang, "translation", userResources);
+  } catch (err) {
+    console.warn("[i18n] ユーザー言語ファイルの読み込みをスキップしました:", err);
+  }
+}
+
+export { i18n, extractStringValues };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
-import { i18n, LANGUAGE_STORE_KEY, SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
+import { i18n, applyUserLocale, LANGUAGE_STORE_KEY, SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
@@ -23,6 +23,7 @@ export function useSettings() {
         ghostFoldersRef.current = loadedFolders;
         if (lang && (SUPPORTED_LANGUAGES as readonly string[]).includes(lang)) {
           await i18n.changeLanguage(lang);
+          await applyUserLocale(lang);
           setLanguageState(lang);
         }
       } catch {
@@ -48,6 +49,7 @@ export function useSettings() {
 
   const saveLanguage = useCallback(async (lang: Language) => {
     await i18n.changeLanguage(lang);
+    await applyUserLocale(lang);
     setLanguageState(lang);
     try {
       await settingsStore.set(LANGUAGE_STORE_KEY, lang);
