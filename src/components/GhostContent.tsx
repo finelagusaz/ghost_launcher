@@ -8,6 +8,7 @@ import type { GhostView } from "../types";
 interface Props {
   ghosts: GhostView[];
   total: number;
+  loadedStart: number;
   sspPath: string | null;
   searchQuery: string;
   loading: boolean;
@@ -15,7 +16,7 @@ interface Props {
   error: string | null;
   onSearchChange: (value: string) => void;
   onOpenSettings: () => void;
-  onLoadMore: () => void;
+  onLoadMore: (targetOffset: number) => void;
 }
 
 const useStyles = makeStyles({
@@ -47,6 +48,7 @@ const useStyles = makeStyles({
 export const GhostContent = memo(function GhostContent({
   ghosts,
   total,
+  loadedStart,
   sspPath,
   searchQuery,
   loading,
@@ -75,13 +77,14 @@ export const GhostContent = memo(function GhostContent({
         <SearchBox value={searchQuery} onChange={onSearchChange} />
       </div>
       <div className={styles.content}>
-        <GhostList 
-          ghosts={ghosts} 
+        <GhostList
+          ghosts={ghosts}
           total={total}
-          sspPath={sspPath} 
-          loading={loading} 
+          loadedStart={loadedStart}
+          sspPath={sspPath}
+          loading={loading}
           searchLoading={searchLoading}
-          error={error} 
+          error={error}
           onLoadMore={onLoadMore}
           searchQuery={searchQuery}
         />

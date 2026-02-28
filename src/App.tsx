@@ -71,10 +71,7 @@ function App() {
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const searchRequestKey = sspPath
-    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
-    : null;
-  const LIMIT = 100;
+  const LIMIT = 500;
 
   const {
     settingsOpen,
@@ -82,8 +79,8 @@ function App() {
     openSettings,
     closeSettings,
     offset,
+    setOffset,
     refreshTrigger,
-    increaseOffset,
   } = useAppShellState({
     settingsLoading,
     sspPath,
@@ -91,7 +88,11 @@ function App() {
     ghostsLoading,
   });
 
-  const { ghosts: searchResultGhosts, total: searchTotal, loading: searchLoading, dbError } = useSearch(
+  const searchRequestKey = (refreshTrigger > 0 && sspPath)
+    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+    : null;
+
+  const { ghosts: searchResultGhosts, total: searchTotal, loadedStart, loading: searchLoading, dbError } = useSearch(
     searchRequestKey,
     deferredSearchQuery,
     LIMIT,
@@ -99,11 +100,11 @@ function App() {
     refreshTrigger
   );
 
-  const handleLoadMore = useCallback(() => {
-    if (!searchLoading && searchResultGhosts.length < searchTotal) {
-      increaseOffset(LIMIT);
+  const handleLoadMore = useCallback((targetOffset: number) => {
+    if (!searchLoading) {
+      setOffset(targetOffset);
     }
-  }, [searchLoading, searchResultGhosts.length, searchTotal, increaseOffset]);
+  }, [searchLoading, setOffset]);
 
   const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
   const handleOpenSettings = openSettings;
@@ -129,6 +130,7 @@ function App() {
         <GhostContent
           ghosts={searchResultGhosts}
           total={searchTotal}
+          loadedStart={loadedStart}
           sspPath={sspPath}
           searchQuery={searchQuery}
           loading={ghostsLoading}

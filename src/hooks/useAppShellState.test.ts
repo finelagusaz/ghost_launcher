@@ -31,7 +31,7 @@ describe("useAppShellState", () => {
     });
 
     act(() => {
-      result.current.increaseOffset(100);
+      result.current.setOffset(100);
     });
     expect(result.current.offset).toBe(100);
 
@@ -50,6 +50,35 @@ describe("useAppShellState", () => {
     rerender(createProps({ ghostsLoading: false }));
 
     expect(result.current.refreshTrigger).toBe(1);
+  });
+
+  it("ghostsLoading が true のまま変わらない場合 refreshTrigger は 0 のまま", () => {
+    const { result, rerender } = renderHook((props) => useAppShellState(props), {
+      initialProps: createProps({ ghostsLoading: true }),
+    });
+
+    rerender(createProps({ ghostsLoading: true }));
+    rerender(createProps({ ghostsLoading: true }));
+
+    expect(result.current.refreshTrigger).toBe(0);
+  });
+
+  it("再読込シナリオ: true→false→true→false で refreshTrigger が 2 になる", () => {
+    const { result, rerender } = renderHook((props) => useAppShellState(props), {
+      initialProps: createProps({ ghostsLoading: true }),
+    });
+
+    // 初回読込完了
+    rerender(createProps({ ghostsLoading: false }));
+    expect(result.current.refreshTrigger).toBe(1);
+
+    // 再読込開始
+    rerender(createProps({ ghostsLoading: true }));
+    expect(result.current.refreshTrigger).toBe(1);
+
+    // 再読込完了
+    rerender(createProps({ ghostsLoading: false }));
+    expect(result.current.refreshTrigger).toBe(2);
   });
 
   it("openSettings/closeSettings で設定ダイアログ状態を変更できる", () => {

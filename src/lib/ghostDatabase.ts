@@ -7,6 +7,8 @@ export async function getDb(): Promise<Database> {
   if (!dbInstance) {
     console.log("[ghostDatabase] Loading SQLite database...");
     dbInstance = await Database.load("sqlite:ghosts.db");
+    await dbInstance.execute("PRAGMA journal_mode=WAL");
+    await dbInstance.execute("PRAGMA busy_timeout=5000");
     console.log("[ghostDatabase] Database loaded successfully");
   }
   return dbInstance;
@@ -50,22 +52,15 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
   console.log(`[ghostDatabase] Inserted ${inserted} ghosts into SQLite for requestKey=${requestKey}`);
 }
 
+// tauri-plugin-sql は sqlx コネクションプール（max_connections=10）を使用するため、
+// 複数の execute() 呼び出しが異なるコネクションに到達しうる。
+// 明示的トランザクション（BEGIN/COMMIT/ROLLBACK）はコネクション間で共有されず
+// SQLITE_BUSY を引き起こすため、各操作を auto-commit で実行する。
+// キャッシュ DB のため、中断時はフルスキャンで復旧可能。
 export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghost[]): Promise<void> {
-  const db = await getDb();
-  await db.execute("BEGIN IMMEDIATE TRANSACTION");
-  try {
-    await db.execute("DELETE FROM ghosts WHERE request_key = ?", [requestKey]);
-    await insertGhostsBatch(requestKey, ghosts);
-    await db.execute("COMMIT");
-    console.log(`[ghostDatabase] Replaced ghosts for requestKey=${requestKey}`);
-  } catch (error) {
-    try {
-      await db.execute("ROLLBACK");
-    } catch (rollbackError) {
-      console.error("[ghostDatabase] ROLLBACK failed", rollbackError);
-    }
-    throw error;
-  }
+  await clearGhostsByRequestKey(requestKey);
+  await insertGhostsBatch(requestKey, ghosts);
+  console.log(`[ghostDatabase] Replaced ghosts for requestKey=${requestKey}`);
 }
 
 
