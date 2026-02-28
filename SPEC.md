@@ -448,12 +448,25 @@ stateDiagram-v2
 - トリガー: `main` への push・PR
 - 実行環境: `windows-latest`
 - ステップ: `npm run build` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo check`
+- 備考: E2E テストはリリースビルドと tauri-driver が必要なため CI には含まない。ローカルで手動実行する。
 
 ### 11.2 リリース（`release.yml`）
 
 - トリガー: `v*` タグ push
 - 実行環境: `windows-latest`
 - ステップ: `npx tauri build --no-bundle` → ポータブル ZIP 作成 → GitHub Release 作成（自動リリースノート）
+
+### 11.3 E2E テスト（ローカル手動実行）
+
+| 項目         | 内容                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------ |
+| フレームワーク | Playwright（テストランナー） + selenium-webdriver（WebDriver クライアント） + tauri-driver |
+| 対象環境     | Windows ローカル（リリースビルド済みバイナリが必要）                                 |
+| 実行コマンド | `npm run e2e:setup`（初回のみ）→ `npm run tauri build` → `npm run e2e`              |
+| 設定ファイル | `playwright.tauri.config.ts`（testDir: `e2e/`, testMatch: `**/*.e2e.ts`）           |
+| テストファイル | `e2e/ghost-list.e2e.ts`（起動・設定・検索・スクロール）、`e2e/i18n.e2e.ts`（言語切り替え・NFKC 正規化） |
+| スキップ方針 | SSP パス未設定・ゴースト非存在などの環境依存ケースは `test.skip()` で自動スキップ    |
+| セレクタ方針 | 日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように `or` で結合）  |
 
 ---
 

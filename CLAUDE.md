@@ -28,6 +28,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 # アプリ全体をビルド
 npm run tauri build
+
+# E2E テストのセットアップ（初回のみ・tauri-driver と EdgeDriver を用意）
+npm run e2e:setup
+
+# E2E テストの実行（事前に npm run tauri build が必要）
+npm run e2e
 ```
 
 ## ディレクトリ構成
@@ -47,6 +53,11 @@ ghost_launcher/
 │       ├── utils/
 │       │   └── descript.rs     # descript.txt パーサー
 │       └── lib.rs              # Tauri アプリビルダー
+├── e2e/                        # E2E テスト（Playwright + selenium-webdriver + tauri-driver）
+│   ├── helpers/
+│   │   └── harness.ts          # tauri-driver 起動・WebDriver セッション管理
+│   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
+│   └── i18n.e2e.ts             # 言語切り替え・NFKC 正規化の E2E テスト
 ├── docs/
 │   └── ui-guidelines.md        # UI デザインガイドライン
 ├── workspace/
@@ -82,6 +93,8 @@ ghost_launcher/
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`utils/descript.rs`）。
 
 **Rust テストの一時ディレクトリ**: テスト用の一時ディレクトリは `TempDirGuard` パターンで管理し、テスト終了時に確実に削除します。
+
+**E2E テスト**: `playwright` + `selenium-webdriver` + `tauri-driver` を組み合わせて実機の Tauri アプリを操作します。`e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当。セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）。SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップします。E2E テストはリリースビルドが前提であり CI には含まれません。
 
 ## 開発方針
 
@@ -126,6 +139,9 @@ ghost_launcher/
   - CI ワークフローでそのテストが実行されるか（`ci-build.yml` に test ステップが存在するか）
   - `tsconfig.json` の `exclude` に追加が必要か
   - `vitest.config.ts` の `include` が検出するか
+- UI 操作・言語表示・フォーム入力に関わる変更をした場合:
+  - E2E テスト（`npm run e2e`）をローカルで手動実行して動作を確認する
+  - E2E テストは CI に含まれないため、手動確認が唯一の統合テスト手段
 
 ## ブランチ戦略
 
