@@ -8,8 +8,7 @@ interface UseVirtualizedListOptions {
   totalCount?: number;
 }
 
-interface VirtualizedListResult<T> {
-  visibleItems: T[];
+interface VirtualizedListResult {
   startIndex: number;
   endIndex: number;
   topSpacer: number;
@@ -32,10 +31,10 @@ function calcIndices(
   return [start, end];
 }
 
-export function useVirtualizedList<T>(
-  items: T[],
+export function useVirtualizedList(
+  items: unknown[],
   options: UseVirtualizedListOptions,
-): VirtualizedListResult<T> {
+): VirtualizedListResult {
   const { viewportHeight, estimatedRowHeight, overscanRows, gap = 0, totalCount } = options;
   const rowHeight = estimatedRowHeight + gap;
   const itemCount = totalCount ?? items.length;
@@ -84,11 +83,9 @@ export function useVirtualizedList<T>(
 
   const [startIndex, endIndex] = indices;
   const topSpacer = startIndex * rowHeight;
-  const visibleItems = items.slice(startIndex, endIndex);
   const bottomSpacer = (itemCount - endIndex) * rowHeight;
 
   return {
-    visibleItems,
     startIndex,
     endIndex,
     topSpacer,
