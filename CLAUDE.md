@@ -94,6 +94,8 @@ ghost_launcher/
 
 **Rust テストの一時ディレクトリ**: テスト用の一時ディレクトリは `TempDirGuard` パターンで管理し、テスト終了時に確実に削除します。
 
+**スカッシュマージのマージ済み確認**: スカッシュマージでは元コミットが main の祖先に入らないため、`git log main..branch` は「未マージ」と誤検知する。内容が main に取り込まれているかは `git diff main..branch --stat` で判断する。差分がほぼゼロなら実質マージ済み。
+
 **E2E テスト**: `playwright` + `selenium-webdriver` + `tauri-driver` を組み合わせて実機の Tauri アプリを操作します。`e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当。セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）。SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップします。E2E テストはリリースビルドが前提であり CI には含まれません。
 
 ## 開発方針
@@ -174,9 +176,10 @@ GitHub Flow に準拠する。
 
 1. `main` から作業ブランチを作成
 2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
-3. `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` がすべて通ることを確認してから PR を作成
-4. PR マージ後にブランチを削除
-5. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
+3. **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
+4. `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` がすべて通ることを確認してから PR を作成
+5. PR マージ後にブランチを削除
+6. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
 
 ## コミュニケーション方針
 
