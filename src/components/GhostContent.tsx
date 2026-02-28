@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
@@ -59,13 +60,14 @@ export const GhostContent = memo(function GhostContent({
   onLoadMore,
 }: Props) {
   const styles = useStyles();
+  const { t } = useTranslation();
 
   if (!sspPath) {
     return (
       <div className={styles.emptyState}>
-        <Text>SSPフォルダを選択してください</Text>
+        <Text>{t("content.noSspPath")}</Text>
         <Button icon={<SettingsRegular />} appearance="outline" onClick={onOpenSettings}>
-          設定を開く
+          {t("content.openSettings")}
         </Button>
       </div>
     );

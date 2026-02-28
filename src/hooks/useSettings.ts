@@ -1,23 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
+import { i18n, applyUserLocale, LANGUAGE_STORE_KEY, SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
   const [ghostFolders, setGhostFolders] = useState<string[]>([]);
+  const [language, setLanguageState] = useState<Language>(() => i18n.language as Language);
   const [loading, setLoading] = useState(true);
   const ghostFoldersRef = useRef<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [path, folders] = await Promise.all([
+        const [path, folders, lang] = await Promise.all([
           settingsStore.get<string>("ssp_path"),
           settingsStore.get<string[]>("ghost_folders"),
+          settingsStore.get<Language>(LANGUAGE_STORE_KEY),
         ]);
         setSspPath(path ?? null);
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;
+        if (lang && (SUPPORTED_LANGUAGES as readonly string[]).includes(lang)) {
+          await i18n.changeLanguage(lang);
+          await applyUserLocale(lang);
+          setLanguageState(lang);
+        }
       } catch {
         setSspPath(null);
         setGhostFolders([]);
@@ -36,6 +44,18 @@ export function useSettings() {
       setSspPath(path);
     } catch (error) {
       console.error("SSPフォルダ設定の保存に失敗しました", error);
+    }
+  }, []);
+
+  const saveLanguage = useCallback(async (lang: Language) => {
+    await i18n.changeLanguage(lang);
+    await applyUserLocale(lang);
+    setLanguageState(lang);
+    try {
+      await settingsStore.set(LANGUAGE_STORE_KEY, lang);
+      await settingsStore.save();
+    } catch (error) {
+      console.error("言語設定の保存に失敗しました", error);
     }
   }, []);
 
@@ -83,5 +103,5 @@ export function useSettings() {
     );
   }, [updateGhostFolders]);
 
-  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, loading };
+  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, language, saveLanguage, loading };
 }

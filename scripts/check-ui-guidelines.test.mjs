@@ -21,6 +21,15 @@ test("searchbox-labeled: Fieldタグ上のlabel属性があれば成功", () => 
   assert.equal(searchLabelCheck.test(source), true);
 });
 
+test("searchbox-labeled: t()によるlabel属性があれば成功", () => {
+  const source = `
+    <Field label={t("search.label")}>
+      <Input />
+    </Field>
+  `;
+  assert.equal(searchLabelCheck.test(source), true);
+});
+
 test("searchbox-labeled: 子要素aria-labelのみでは失敗", () => {
   const source = `
     <Field>
@@ -33,6 +42,15 @@ test("searchbox-labeled: 子要素aria-labelのみでは失敗", () => {
 test("settings-delete-aria-label: folderを含むテンプレート文字列なら成功", () => {
   const source = `
     <Button aria-label={\`追加フォルダを削除: \${folder}\`}>
+      削除
+    </Button>
+  `;
+  assert.equal(deleteAriaLabelCheck.test(source), true);
+});
+
+test("settings-delete-aria-label: t()にfolderを渡す形式なら成功", () => {
+  const source = `
+    <Button aria-label={t("settings.folders.deleteAriaLabel", { folder })}>
       削除
     </Button>
   `;

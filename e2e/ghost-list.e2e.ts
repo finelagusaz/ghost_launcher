@@ -21,13 +21,32 @@ async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<v
   await driver.wait(until.elementLocated(By.css("[class*='shell']")), timeoutMs);
 }
 
-/** SSP パス未設定時の空状態テキストを検出する */
+/** SSP パス未設定時の空状態テキストを検出する（日英対応） */
 async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
   try {
-    const el = await driver.findElement(By.xpath("//*[contains(text(), 'SSPフォルダを選択してください')]"));
+    const el = await driver.findElement(
+      By.xpath("//*[contains(text(), 'SSPフォルダを選択してください') or contains(text(), 'Please select an SSP folder')]"),
+    );
     return el.getText();
   } catch {
     return null;
+  }
+}
+
+/** 言語に依存しない方法で設定ボタンを見つけてクリックする */
+async function clickSettingsButton(driver: WebDriver): Promise<void> {
+  try {
+    // 空状態の「設定を開く」または "Open settings"
+    const btn = await driver.findElement(
+      By.xpath("//button[contains(., '設定を開く') or contains(., 'Open settings')]"),
+    );
+    await btn.click();
+  } catch {
+    // ヘッダーのアイコンボタン（aria-label 日英どちらか）
+    const btn = await driver.findElement(
+      By.css("button[aria-label='設定'], button[aria-label='Settings']"),
+    );
+    await btn.click();
   }
 }
 
@@ -50,11 +69,14 @@ test("SSP パス未設定時に設定誘導が表示される", async ({ harness
   // 初回起動なら SSP パス未設定のはず
   // 既に設定済みの環境ではスキップ
   if (text) {
-    expect(text).toContain("SSPフォルダを選択してください");
+    expect(
+      text.includes("SSPフォルダを選択してください") ||
+      text.includes("Please select an SSP folder"),
+    ).toBe(true);
 
-    // 「設定を開く」ボタンが存在する
+    // 「設定を開く」または "Open settings" ボタンが存在する
     const settingsButton = await driver.findElement(
-      By.xpath("//button[contains(., '設定を開く')]"),
+      By.xpath("//button[contains(., '設定を開く') or contains(., 'Open settings')]"),
     );
     expect(await settingsButton.isDisplayed()).toBe(true);
   }
@@ -64,42 +86,25 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
   const { driver } = harness;
   await waitForAppReady(driver);
 
-  // ヘッダーの設定ボタン、または空状態の「設定を開く」ボタンをクリック
-  let settingsButton: Awaited<ReturnType<WebDriver["findElement"]>>;
-  try {
-    settingsButton = await driver.findElement(
-      By.xpath("//button[contains(., '設定を開く')]"),
-    );
-  } catch {
-    // ヘッダーの設定アイコンボタン（aria-label="設定"）
-    settingsButton = await driver.findElement(
-      By.css("button[aria-label='設定']"),
-    );
-  }
-  await settingsButton.click();
+  await clickSettingsButton(driver);
 
-  // ダイアログタイトル「設定」が表示される
+  // ダイアログタイトル「設定」または "Settings" が表示される
   const dialogTitle = await driver.wait(
-    until.elementLocated(By.xpath("//*[contains(@class, 'fui-DialogTitle') or @role='dialog']//h2[text()='設定'] | //h2[text()='設定']")),
+    until.elementLocated(By.xpath("//h2[text()='設定' or text()='Settings']")),
     5_000,
   );
   expect(await dialogTitle.isDisplayed()).toBe(true);
 
-  // 「閉じる」ボタンでダイアログを閉じる
+  // 「閉じる」または "Close" ボタンでダイアログを閉じる
   const closeButton = await driver.findElement(
-    By.xpath("//button[contains(., '閉じる')]"),
+    By.xpath("//button[text()='閉じる' or text()='Close']"),
   );
   await closeButton.click();
 
-  // ダイアログが閉じたことを確認（タイトルが非表示になる）
+  // ダイアログが閉じたことを確認
   await driver.wait(async () => {
-    try {
-      const el = await driver.findElement(By.xpath("//h2[text()='設定']"));
-      return !(await el.isDisplayed());
-    } catch {
-      // 要素が見つからない = 閉じた
-      return true;
-    }
+    const dialogs = await driver.findElements(By.css("[role='dialog']"));
+    return dialogs.length === 0;
   }, 5_000);
 });
 
@@ -124,9 +129,9 @@ test("ゴースト一覧: SSP パス設定後にゴーストカードが表示�
   expect(cards).not.toBeNull();
   expect(cards!.length).toBeGreaterThan(0);
 
-  // 最初のカードに「起動」ボタンがある
+  // 最初のカードに起動ボタン（日英）がある
   const launchButton = await cards![0].findElement(
-    By.xpath(".//button[contains(., '起動')]"),
+    By.xpath(".//button[text()='起動' or text()='Launch']"),
   );
   expect(await launchButton.isDisplayed()).toBe(true);
 });
@@ -152,9 +157,9 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   const cardsBefore = await driver.findElements(By.css("[class*='card']"));
   const countBefore = cardsBefore.length;
 
-  // 検索ボックスを探してテキストを入力
+  // 検索ボックスを探してテキストを入力（日英どちらかのプレースホルダ）
   const searchInput = await driver.findElement(
-    By.css("input[placeholder='ゴースト名で検索']"),
+    By.css("input[placeholder='ゴースト名で検索'], input[placeholder='Search by ghost name']"),
   );
   // 存在しないゴースト名で検索してフィルタリングを確認
   await searchInput.sendKeys("zzz_nonexistent_ghost_name_zzz");

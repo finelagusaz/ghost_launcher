@@ -1,15 +1,18 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
   Field,
   Input,
+  Select,
   Text,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
 import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
+import { SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 
 interface Props {
   sspPath: string | null;
@@ -17,6 +20,8 @@ interface Props {
   ghostFolders: string[];
   onAddFolder: (folder: string) => void;
   onRemoveFolder: (folder: string) => void;
+  language: Language;
+  onLanguageChange: (lang: Language) => void;
 }
 
 const useStyles = makeStyles({
@@ -74,8 +79,11 @@ export function SettingsPanel({
   ghostFolders,
   onAddFolder,
   onRemoveFolder,
+  language,
+  onLanguageChange,
 }: Props) {
   const styles = useStyles();
+  const { t } = useTranslation();
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
 
@@ -83,7 +91,7 @@ export function SettingsPanel({
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "SSPフォルダを選択",
+      title: t("settings.ssp.dialogTitle"),
     });
     if (!selected) {
       setValidationError(null);
@@ -106,7 +114,7 @@ export function SettingsPanel({
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "ゴーストフォルダを追加",
+      title: t("settings.folders.addDialogTitle"),
     });
     if (selected) {
       onAddFolder(selected);
@@ -116,12 +124,12 @@ export function SettingsPanel({
   const handleRemoveFolder = async (folder: string) => {
     try {
       const approved = await confirm(
-        `このフォルダを一覧対象から削除しますか？\n${folder}`,
+        t("settings.folders.deleteConfirm", { folder }),
         {
-          title: "追加フォルダの削除",
+          title: t("settings.folders.deleteTitle"),
           kind: "warning",
-          okLabel: "削除",
-          cancelLabel: "キャンセル",
+          okLabel: t("settings.folders.deleteOk"),
+          cancelLabel: t("settings.folders.deleteCancel"),
         },
       );
       if (approved) {
@@ -134,13 +142,26 @@ export function SettingsPanel({
 
   return (
     <div className={styles.panel}>
+      <Field label={t("settings.language.label")}>
+        <Select
+          value={language}
+          onChange={(_: unknown, data: { value: string }) => onLanguageChange(data.value as Language)}
+        >
+          {SUPPORTED_LANGUAGES.map((lang) => (
+            <option key={lang} value={lang}>
+              {t(`settings.language.${lang}`)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
       <div className={styles.row}>
         <Field
-          label="SSPフォルダ"
+          label={t("settings.ssp.label")}
           validationState={validationError ? "error" : undefined}
           validationMessage={validationError ?? undefined}
         >
-          <Input readOnly value={sspPath ?? "未設定"} />
+          <Input readOnly value={sspPath ?? t("settings.ssp.unset")} />
         </Field>
         <Button
           icon={<FolderOpenRegular />}
@@ -148,20 +169,20 @@ export function SettingsPanel({
           onClick={handleSelectFolder}
           disabled={validating}
         >
-          選択
+          {t("settings.ssp.select")}
         </Button>
       </div>
 
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <Text weight="semibold">追加ゴーストフォルダ</Text>
+          <Text weight="semibold">{t("settings.folders.label")}</Text>
           <Button icon={<AddRegular />} appearance="secondary" onClick={handleAddGhostFolder} disabled={validating}>
-            追加
+            {t("settings.folders.add")}
           </Button>
         </div>
-        <Text className={styles.helper}>追加フォルダ内のゴーストを一覧に含めます。</Text>
+        <Text className={styles.helper}>{t("settings.folders.helper")}</Text>
         {ghostFolders.length === 0 && (
-          <Text className={styles.empty}>追加フォルダなし</Text>
+          <Text className={styles.empty}>{t("settings.folders.empty")}</Text>
         )}
         <div className={styles.folderList}>
           {ghostFolders.map((folder) => (
@@ -170,10 +191,10 @@ export function SettingsPanel({
               <Button
                 icon={<DeleteRegular />}
                 appearance="outline"
-                aria-label={`追加フォルダを削除: ${folder}`}
+                aria-label={t("settings.folders.deleteAriaLabel", { folder })}
                 onClick={() => void handleRemoveFolder(folder)}
               >
-                削除
+                {t("settings.folders.delete")}
               </Button>
             </div>
           ))}

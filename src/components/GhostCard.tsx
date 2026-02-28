@@ -1,8 +1,10 @@
 import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { Badge, Button, Card, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
-import { buildLaunchErrorMessage, getSourceFolderLabel } from "../lib/ghostLaunchUtils";
+import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
+import { formatErrorDetail } from "../lib/ghostScanUtils";
 import type { Ghost } from "../types";
 
 interface Props {
@@ -83,6 +85,7 @@ const useStyles = makeStyles({
 
 export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
+  const { t } = useTranslation();
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sourceFolderLabel = ghost.source !== "ssp" ? getSourceFolderLabel(ghost.source) : null;
@@ -97,7 +100,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
         ghostSource: ghost.source,
       });
     } catch (e) {
-      setError(buildLaunchErrorMessage(e));
+      setError(t("card.launchError", { detail: formatErrorDetail(e) }));
     } finally {
       setLaunching(false);
     }
@@ -126,7 +129,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
           onClick={handleLaunch}
           disabled={launching}
         >
-          {launching ? "起動中..." : "起動"}
+          {launching ? t("card.launching") : t("card.launch")}
         </Button>
       </div>
       {error && (

@@ -41,8 +41,8 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
       params.push(ghost.directory_name);
       params.push(ghost.path);
       params.push(ghost.source);
-      params.push(ghost.name.toLowerCase());
-      params.push(ghost.directory_name.toLowerCase());
+      params.push(ghost.name.normalize("NFKC").toLowerCase());
+      params.push(ghost.directory_name.normalize("NFKC").toLowerCase());
     }
 
     sql += placeholders.join(", ");
@@ -76,7 +76,7 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
   const db = await getDb();
 
-  const likePattern = `%${query.toLowerCase()}%`;
+  const likePattern = `%${query.normalize("NFKC").toLowerCase()}%`;
 
   // SQLite では ? プレースホルダを使う ($1/$2 は PostgreSQL 構文)
   const countResult = await db.select<{ count: number }[]>(
