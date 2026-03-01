@@ -20,6 +20,42 @@ beforeEach(() => {
   mockLoad.mockClear();
 });
 
+describe("ghostDatabase - スキーマ修復 (repairGhostDbSchema)", () => {
+  it("craftman カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
+    // PRAGMA table_info の応答として craftman を含まないカラム一覧を返す
+    mockSelect.mockResolvedValueOnce([{ name: "id" }, { name: "name" }, { name: "directory_name" }]);
+    const { repairGhostDbSchema } = await import("./ghostDatabase");
+    await repairGhostDbSchema();
+
+    const nonPragmaCalls = mockExecute.mock.calls
+      .map((c) => c[0] as string)
+      .filter((sql) => !sql.startsWith("PRAGMA"));
+    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
+  });
+
+  it("craftman カラムが存在する場合は修復を実行しない", async () => {
+    // PRAGMA table_info の応答として craftman を含むカラム一覧を返す
+    mockSelect.mockResolvedValueOnce([
+      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
+    ]);
+    const { repairGhostDbSchema } = await import("./ghostDatabase");
+    await repairGhostDbSchema();
+
+    const executeCalls = mockExecute.mock.calls.map((c) => c[0] as string);
+    expect(executeCalls).not.toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+  });
+
+  it("テーブルが存在しない場合（PRAGMA が空を返す場合）は修復を実行しない", async () => {
+    // mockSelect のデフォルトは [] なのでそのまま使う
+    const { repairGhostDbSchema } = await import("./ghostDatabase");
+    await repairGhostDbSchema();
+
+    const executeCalls = mockExecute.mock.calls.map((c) => c[0] as string);
+    expect(executeCalls).not.toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+  });
+});
+
 describe("ghostDatabase - getDb", () => {
 
   it("初回接続時に PRAGMA journal_mode=WAL を設定する", async () => {

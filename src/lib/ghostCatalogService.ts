@@ -1,4 +1,4 @@
-import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
+import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey, repairGhostDbSchema } from "./ghostDatabase";
 import { getCachedFingerprint, pruneFingerprintCache, setCachedFingerprint } from "./fingerprintCache";
 import { executeScan, validateCache } from "./ghostScanOrchestrator";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
@@ -18,6 +18,9 @@ export async function refreshGhostCatalog({
   ghostFolders,
   forceFullScan,
 }: RefreshGhostCatalogParams): Promise<RefreshGhostCatalogResult> {
+  // migration が適用されなかった場合の防衛線。craftman カラム欠落を自動修復する。
+  await repairGhostDbSchema();
+
   const additionalFolders = buildAdditionalFolders(ghostFolders);
   const requestKey = buildRequestKey(sspPath, additionalFolders);
 

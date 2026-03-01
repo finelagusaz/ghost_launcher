@@ -6,12 +6,29 @@ let dbInstance: Database | null = null;
 export async function getDb(): Promise<Database> {
   if (!dbInstance) {
     console.log("[ghostDatabase] Loading SQLite database...");
-    dbInstance = await Database.load("sqlite:ghosts.db");
-    await dbInstance.execute("PRAGMA journal_mode=WAL");
-    await dbInstance.execute("PRAGMA busy_timeout=5000");
+    const db = await Database.load("sqlite:ghosts.db");
+    await db.execute("PRAGMA journal_mode=WAL");
+    await db.execute("PRAGMA busy_timeout=5000");
+    dbInstance = db;
     console.log("[ghostDatabase] Database loaded successfully");
   }
   return dbInstance;
+}
+
+// migration が適用されなかった場合の防衛線。ghostCatalogService の先頭で呼び出す。
+// craftman カラムが欠落していれば ALTER TABLE で追加し、キャッシュをリセットする。
+// hasGhosts() が false を返すようになるため、次のスキャンで自動的に再構築される。
+export async function repairGhostDbSchema(): Promise<void> {
+  const db = await getDb();
+  const columns = await db.select<{ name: string }[]>("PRAGMA table_info(ghosts)");
+  if (columns.length === 0) return; // テーブル未作成（migration が処理する）
+  const hasCraftman = columns.some((col) => col.name === "craftman");
+  if (!hasCraftman) {
+    console.warn("[ghostDatabase] craftman カラムが欠落しています。スキーマを修復します...");
+    await db.execute("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+    await db.execute("DELETE FROM ghosts");
+    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
+  }
 }
 
 export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {
