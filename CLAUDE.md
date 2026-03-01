@@ -104,6 +104,8 @@ ghost_launcher/
 
 **vitest モックのリセット**: `vi.mockClear()` は呼び出し履歴（calls/results）をクリアするが `mockResolvedValue` などの実装は残る。テスト間でモック実装が汚染される場合は `vi.mockReset()` を使う。モジュールレベル変数（フラグ・シングルトン等）をリセットしたい場合は `beforeEach` で `vi.resetModules()` を呼び、dynamic import（`await import('./module')`）でモジュールを再取得する。
 
+**非同期 singleton の初期化**: 複数のセットアップステップを持つ singleton は、全ステップ完了後にインスタンスを変数へ代入する。途中で代入すると後続のセットアップが失敗した場合に不完全なインスタンスが固定される（例: `getDb()` で PRAGMA 実行前に `dbInstance = db` と代入しない）。
+
 ## 開発方針
 
 - **KISS**: シンプルさを最優先する。1つの関数は1つのことだけを行い、短く保つ。到達不能なフォールバックや使われない汎用化は書かない
