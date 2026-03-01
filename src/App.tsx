@@ -71,6 +71,7 @@ function App() {
     language,
     saveLanguage,
     loading: settingsLoading,
+    languageApplying,
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
@@ -114,7 +115,9 @@ function App() {
   const handleOpenSettings = openSettings;
   const handleCloseSettings = closeSettings;
 
-  if (settingsLoading) {
+  const fatalSettingsLoading = settingsLoading;
+
+  if (fatalSettingsLoading) {
     return (
       <div className={styles.loading}>
         <Spinner label={t("app.loading")} />
@@ -163,6 +166,7 @@ function App() {
                 onRemoveFolder={removeGhostFolder}
                 language={language}
                 onLanguageChange={saveLanguage}
+                languageApplying={languageApplying}
               />
             </DialogContent>
             <DialogActions>
