@@ -87,7 +87,7 @@ locales/
 ### 注意事項
 
 - ファイルサイズの上限は **1 MB** です
-- アプリ起動後に JSON を編集した場合は、アプリを再起動してください
+- アプリ起動後に JSON を編集した場合は、設定パネルで言語を選び直すと反映されます（同じ言語のままの場合は、一度別の言語に切り替えてから戻してください）
 - 文字コードは UTF-8 で保存してください
 
 ---
@@ -177,5 +177,5 @@ A minimal example with commonly customized keys:
 ### Notes
 
 - Maximum file size is **1 MB**
-- If you edit the JSON after the app has started, restart the app to apply changes
+- If you edit the JSON while the app is running, re-select the language in the settings panel to apply changes (if you are already using that language, switch to another language and back)
 - Save the file in **UTF-8** encoding
