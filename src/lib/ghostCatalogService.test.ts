@@ -91,6 +91,7 @@ describe("refreshGhostCatalog", () => {
     });
 
     expect(cleanupOldGhostCaches).toHaveBeenCalledTimes(1);
+    expect(cleanupOldGhostCaches).toHaveBeenCalledWith("c:/ssp::");
     expect(pruneFingerprintCache).toHaveBeenCalledWith(["rk-current"]);
   });
 });

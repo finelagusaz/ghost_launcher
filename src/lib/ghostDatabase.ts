@@ -93,7 +93,9 @@ export async function cleanupOldGhostCaches(
   for (const row of rows) {
     const lastUpdated = Date.parse(row.last_updated);
     const ttlExpired = Number.isNaN(lastUpdated) ? false : lastUpdated < ttlCutoff;
-    const keep = keepByGeneration.has(row.request_key) && !ttlExpired;
+    const keep =
+      (keepByGeneration.has(row.request_key) && !ttlExpired) ||
+      row.request_key === currentRequestKey;
     if (keep) {
       keepRequestKeys.push(row.request_key);
     } else {
@@ -112,7 +114,6 @@ export async function cleanupOldGhostCaches(
   }
   return keepRequestKeys;
 }
-
 
 export async function hasGhosts(requestKey: string): Promise<boolean> {
   const db = await getDb();
