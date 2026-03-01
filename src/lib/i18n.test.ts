@@ -5,16 +5,10 @@ import ja from "../locales/ja.json";
 import en from "../locales/en.json";
 
 describe("i18n", () => {
-  it("SUPPORTED_LANGUAGES に ja と en が含まれる", () => {
-    expect(SUPPORTED_LANGUAGES).toContain("ja");
-    expect(SUPPORTED_LANGUAGES).toContain("en");
-  });
-
-  it("SUPPORTED_LANGUAGES に zh-CN, zh-TW, ko, ru が含まれる", () => {
-    expect(SUPPORTED_LANGUAGES).toContain("zh-CN");
-    expect(SUPPORTED_LANGUAGES).toContain("zh-TW");
-    expect(SUPPORTED_LANGUAGES).toContain("ko");
-    expect(SUPPORTED_LANGUAGES).toContain("ru");
+  it("SUPPORTED_LANGUAGES に全サポート言語が含まれる", () => {
+    for (const lang of ["ja", "en", "zh-CN", "zh-TW", "ko", "ru"]) {
+      expect(SUPPORTED_LANGUAGES).toContain(lang);
+    }
   });
 
   it("LANGUAGE_STORE_KEY が定義されている", () => {
@@ -37,16 +31,17 @@ describe("i18n", () => {
     expect(keys).toContain("search.label");
   });
 
-  it("ja に切り替えると日本語が返る", async () => {
-    await i18n.changeLanguage("ja");
-    expect(i18n.t("card.launch")).toBe("起動");
-    expect(i18n.t("list.empty")).toBe("ゴーストが見つかりません");
-  });
-
-  it("en に切り替えると英語が返る", async () => {
-    await i18n.changeLanguage("en");
-    expect(i18n.t("card.launch")).toBe("Launch");
-    expect(i18n.t("list.empty")).toBe("No ghosts found");
+  it.each([
+    ["ja",    "起動",      "ゴーストが見つかりません"],
+    ["en",    "Launch",    "No ghosts found"],
+    ["zh-CN", "启动",      "未找到幽灵"],
+    ["zh-TW", "啟動",      "找不到幽靈"],
+    ["ko",    "실행",      "고스트를 찾을 수 없습니다"],
+    ["ru",    "Запустить", "Духи не найдены"],
+  ])("%s に切り替えると card.launch と list.empty が正しく返る", async (lang, launch, empty) => {
+    await i18n.changeLanguage(lang);
+    expect(i18n.t("card.launch")).toBe(launch);
+    expect(i18n.t("list.empty")).toBe(empty);
   });
 
   it("list.count の補間が正しく動作する", async () => {
@@ -63,30 +58,6 @@ describe("i18n", () => {
     const msg = i18n.t("card.launchError", { detail: " (error)" });
     expect(msg).toContain("起動に失敗しました");
     expect(msg).toContain(" (error)");
-  });
-
-  it("zh-CN に切り替えると簡体字が返る", async () => {
-    await i18n.changeLanguage("zh-CN");
-    expect(i18n.t("card.launch")).toBe("启动");
-    expect(i18n.t("list.empty")).toBe("未找到幽灵");
-  });
-
-  it("zh-TW に切り替えると繁体字が返る", async () => {
-    await i18n.changeLanguage("zh-TW");
-    expect(i18n.t("card.launch")).toBe("啟動");
-    expect(i18n.t("list.empty")).toBe("找不到幽靈");
-  });
-
-  it("ko に切り替えると韓国語が返る", async () => {
-    await i18n.changeLanguage("ko");
-    expect(i18n.t("card.launch")).toBe("실행");
-    expect(i18n.t("list.empty")).toBe("고스트를 찾을 수 없습니다");
-  });
-
-  it("ru に切り替えるとロシア語が返る", async () => {
-    await i18n.changeLanguage("ru");
-    expect(i18n.t("card.launch")).toBe("Запустить");
-    expect(i18n.t("list.empty")).toBe("Духи не найдены");
   });
 });
 
@@ -157,7 +128,7 @@ describe("detectOsLanguage", () => {
   const originalLanguage = Object.getOwnPropertyDescriptor(navigator, "language");
 
   afterEach(() => {
-    if (originalLanguage) {
+    if (originalLanguage?.configurable) {
       Object.defineProperty(navigator, "language", originalLanguage);
     }
   });

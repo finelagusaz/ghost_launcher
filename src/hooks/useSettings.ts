@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
-import { i18n, applyUserLocale, LANGUAGE_STORE_KEY, SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
+import { i18n, applyUserLocale, LANGUAGE_STORE_KEY, isSupportedLanguage, type Language } from "../lib/i18n";
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function useSettings() {
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;
-        if (lang && (SUPPORTED_LANGUAGES as readonly string[]).includes(lang)) {
+        if (lang && isSupportedLanguage(lang)) {
           await i18n.changeLanguage(lang);
           await applyUserLocale(lang);
           setLanguageState(lang);

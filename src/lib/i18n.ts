@@ -12,14 +12,18 @@ export const SUPPORTED_LANGUAGES = ["ja", "en", "zh-CN", "zh-TW", "ko", "ru"] as
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
 export const LANGUAGE_STORE_KEY = "language";
 
+export function isSupportedLanguage(value: string): value is Language {
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
+}
+
 function detectOsLanguage(): Language {
   const full = navigator.language;        // "zh-TW", "ko-KR" など
   const base = full.split("-")[0];        // "zh", "ko" など
 
   // 完全一致を優先（zh-TW, zh-CN など）
-  if ((SUPPORTED_LANGUAGES as readonly string[]).includes(full)) return full as Language;
+  if (isSupportedLanguage(full)) return full;
   // 基本言語コードで一致（ko-KR → ko など）
-  if ((SUPPORTED_LANGUAGES as readonly string[]).includes(base)) return base as Language;
+  if (isSupportedLanguage(base)) return base;
   // zh 単体は簡体字にフォールバック
   if (base === "zh") return "zh-CN";
   return "en";
