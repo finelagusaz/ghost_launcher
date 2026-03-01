@@ -167,11 +167,17 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
 
 describe("ghostDatabase - searchGhosts NFKC正規化", () => {
   it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
+    // searchGhosts 内部で repairGhostDbSchema が呼ばれるため PRAGMA table_info 用のモックが必要
+    mockSelect.mockResolvedValueOnce([
+      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
+      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" }, { name: "thumbnail_kind" },
+    ]);
     mockSelect.mockResolvedValue([{ count: 0 }]);
     const { searchGhosts } = await import("./ghostDatabase");
     await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
 
-    const countCall = mockSelect.mock.calls[0];
+    // calls[0] = PRAGMA table_info (repairGhostDbSchema), calls[1] = COUNT
+    const countCall = mockSelect.mock.calls[1];
     // params: [requestKey, likePattern, likePattern]
     expect(countCall[1][1]).toBe("%alice%");
   });

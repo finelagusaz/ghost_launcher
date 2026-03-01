@@ -15,14 +15,18 @@ export async function getDb(): Promise<Database> {
   return dbInstance;
 }
 
-// migration が適用されなかった場合の防衛線。ghostCatalogService の先頭で呼び出す。
-// craftman カラムが欠落していれば ALTER TABLE で追加し、キャッシュをリセットする。
-// hasGhosts() が false を返すようになるため、次のスキャンで自動的に再構築される。
-// セッション内で1回だけ実行する（PRAGMA table_info の繰り返し呼び出しを防ぐ）。
-let schemaRepaired = false;
-export async function repairGhostDbSchema(): Promise<void> {
-  if (schemaRepaired) return;
-  schemaRepaired = true;
+// migration が適用されなかった場合の防衛線。ghostCatalogService および searchGhosts から呼び出す。
+// 欠落カラムがあれば ALTER TABLE で追加し、キャッシュをリセットする。
+// Promise ベースのガード: 並行呼び出しが同一 Promise を await し、修復完了を待つ。
+let repairPromise: Promise<void> | null = null;
+export function repairGhostDbSchema(): Promise<void> {
+  if (!repairPromise) {
+    repairPromise = performSchemaRepair();
+  }
+  return repairPromise;
+}
+
+async function performSchemaRepair(): Promise<void> {
   const db = await getDb();
   const columns = await db.select<{ name: string }[]>("PRAGMA table_info(ghosts)");
   if (columns.length === 0) return; // テーブル未作成（migration が処理する）
@@ -170,6 +174,10 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   return total > 0;
 }
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
+  // HMR でモジュールが入れ替わった場合、refreshGhostCatalog 経由の修復が
+  // まだ走っていない状態で SELECT が呼ばれる可能性がある。Promise ガードなので
+  // 修復済みなら即座に resolve される。
+  await repairGhostDbSchema();
   const db = await getDb();
 
   const likePattern = `%${query.normalize("NFKC").toLowerCase()}%`;
