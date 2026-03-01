@@ -3,16 +3,26 @@ import { initReactI18next } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import ja from "../locales/ja.json";
 import en from "../locales/en.json";
+import zhCN from "../locales/zh-CN.json";
+import zhTW from "../locales/zh-TW.json";
+import ko from "../locales/ko.json";
+import ru from "../locales/ru.json";
 
-export const SUPPORTED_LANGUAGES = ["ja", "en"] as const;
+export const SUPPORTED_LANGUAGES = ["ja", "en", "zh-CN", "zh-TW", "ko", "ru"] as const;
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
 export const LANGUAGE_STORE_KEY = "language";
 
 function detectOsLanguage(): Language {
-  const lang = navigator.language.split("-")[0];
-  return (SUPPORTED_LANGUAGES as readonly string[]).includes(lang)
-    ? (lang as Language)
-    : "en";
+  const full = navigator.language;        // "zh-TW", "ko-KR" など
+  const base = full.split("-")[0];        // "zh", "ko" など
+
+  // 完全一致を優先（zh-TW, zh-CN など）
+  if ((SUPPORTED_LANGUAGES as readonly string[]).includes(full)) return full as Language;
+  // 基本言語コードで一致（ko-KR → ko など）
+  if ((SUPPORTED_LANGUAGES as readonly string[]).includes(base)) return base as Language;
+  // zh 単体は簡体字にフォールバック
+  if (base === "zh") return "zh-CN";
+  return "en";
 }
 
 // バンドルリソースを使う同期初期化（initImmediate: false で同期完了を保証）
@@ -20,6 +30,10 @@ i18n.use(initReactI18next).init({
   resources: {
     ja: { translation: ja },
     en: { translation: en },
+    "zh-CN": { translation: zhCN },
+    "zh-TW": { translation: zhTW },
+    ko: { translation: ko },
+    ru: { translation: ru },
   },
   lng: detectOsLanguage(),
   fallbackLng: "en",
@@ -58,4 +72,4 @@ export async function applyUserLocale(lang: Language): Promise<void> {
   }
 }
 
-export { i18n, extractStringValues };
+export { i18n, extractStringValues, detectOsLanguage };
