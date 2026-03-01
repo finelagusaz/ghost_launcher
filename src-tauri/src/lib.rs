@@ -1,5 +1,7 @@
 mod commands;
 
+use tauri::Manager;
+
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
 //   CURRENT_TIMESTAMP や datetime('now') などの関数は SQLite が拒否する（起動時クラッシュ）。
@@ -56,7 +58,7 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
 
 #[cfg(test)]
 mod tests {
-    use super::migrations;
+    use super::{has_migration_conflict, migrations};
     use rusqlite::Connection;
 
     // マイグレーション SQL が SQLite で実際に実行できることを検証する。
@@ -71,6 +73,136 @@ mod tests {
                 .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
         }
     }
+
+    #[test]
+    fn 全マイグレーション適用済みなら競合なし() {
+        let conn = Connection::open_in_memory().unwrap();
+        // _sqlx_migrations テーブルを作成し全バージョンを登録
+        conn.execute_batch(
+            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
+        )
+        .unwrap();
+        for m in migrations() {
+            conn.execute_batch(m.sql).unwrap();
+            conn.execute(
+                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
+                [m.version as i64],
+            )
+            .unwrap();
+        }
+        assert!(!has_migration_conflict(&conn));
+    }
+
+    #[test]
+    fn 未適用マイグレーションのカラムが既に存在すれば競合検出() {
+        let conn = Connection::open_in_memory().unwrap();
+        // migration 1-3 を適用し記録
+        conn.execute_batch(
+            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
+        )
+        .unwrap();
+        let mut sorted = migrations();
+        sorted.sort_by_key(|m| m.version);
+        for m in sorted.iter().take(3) {
+            conn.execute_batch(m.sql).unwrap();
+            conn.execute(
+                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
+                [m.version as i64],
+            )
+            .unwrap();
+        }
+        // migration 4 の内容（craftman）をマイグレーション外で追加
+        conn.execute_batch("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''")
+            .unwrap();
+        assert!(has_migration_conflict(&conn));
+    }
+
+    #[test]
+    fn 未適用マイグレーションのカラムが存在しなければ競合なし() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
+        )
+        .unwrap();
+        let mut sorted = migrations();
+        sorted.sort_by_key(|m| m.version);
+        for m in sorted.iter().take(3) {
+            conn.execute_batch(m.sql).unwrap();
+            conn.execute(
+                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
+                [m.version as i64],
+            )
+            .unwrap();
+        }
+        // craftman を追加せず、migration 4 が未適用 → カラムがないので競合なし
+        assert!(!has_migration_conflict(&conn));
+    }
+}
+
+/// マイグレーション適用前に ghosts.db の整合性を検証する。
+/// 未適用マイグレーションが ADD COLUMN しようとするカラムが既に存在する場合、
+/// DB ファイルを削除して再作成を促す。ghosts.db はキャッシュなので安全。
+fn sanitize_ghost_db(app: &tauri::App) {
+    let Ok(app_data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let db_path = app_data_dir.join("ghosts.db");
+    if !db_path.exists() {
+        return;
+    }
+
+    let should_delete = match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => has_migration_conflict(&conn),
+        Err(_) => true, // DB を開けない場合は削除して再作成
+    };
+
+    if should_delete {
+        for filename in ["ghosts.db", "ghosts.db-wal", "ghosts.db-shm"] {
+            let _ = std::fs::remove_file(app_data_dir.join(filename));
+        }
+    }
+}
+
+/// 未適用マイグレーションの ADD COLUMN が既存カラムと競合するか判定する。
+fn has_migration_conflict(conn: &rusqlite::Connection) -> bool {
+    let max_version: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let pending: Vec<_> = migrations()
+        .into_iter()
+        .filter(|m| m.version as i64 > max_version)
+        .collect();
+    if pending.is_empty() {
+        return false;
+    }
+
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(ghosts)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+    if columns.is_empty() {
+        return false;
+    }
+
+    // 未適用マイグレーションが追加しようとするカラムが既に存在するか
+    for m in &pending {
+        for fragment in m.sql.split("ADD COLUMN ").skip(1) {
+            if let Some(col_name) = fragment.split_whitespace().next() {
+                if columns.iter().any(|c| c == col_name) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -84,7 +216,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .setup(|app| {
+            sanitize_ghost_db(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            commands::db::reset_ghost_db,
             commands::ghost::scan_ghosts_with_meta,
             commands::ghost::get_ghosts_fingerprint,
             commands::ssp::launch_ghost,

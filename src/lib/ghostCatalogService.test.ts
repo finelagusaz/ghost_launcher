@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { refreshGhostCatalog } from "./ghostCatalogService";
-import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey, repairGhostDbSchema } from "./ghostDatabase";
+import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
 import { getCachedFingerprint, pruneFingerprintCache, setCachedFingerprint } from "./fingerprintCache";
 import { executeScan, validateCache } from "./ghostScanOrchestrator";
 
@@ -8,7 +8,6 @@ vi.mock("./ghostDatabase", () => ({
   hasGhosts: vi.fn(),
   replaceGhostsByRequestKey: vi.fn(),
   cleanupOldGhostCaches: vi.fn(),
-  repairGhostDbSchema: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./fingerprintCache", () => ({
@@ -26,7 +25,6 @@ describe("refreshGhostCatalog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(cleanupOldGhostCaches).mockResolvedValue([]);
-    vi.mocked(repairGhostDbSchema).mockResolvedValue(undefined);
   });
 
   it("キャッシュが有効ならスキャンをスキップする", async () => {

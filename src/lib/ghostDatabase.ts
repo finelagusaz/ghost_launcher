@@ -1,62 +1,35 @@
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
 import { Ghost, GhostView } from "../types";
 
 let dbInstance: Database | null = null;
 
+async function loadDb(): Promise<Database> {
+  const db = await Database.load("sqlite:ghosts.db");
+  await db.execute("PRAGMA journal_mode=WAL");
+  await db.execute("PRAGMA busy_timeout=5000");
+  return db;
+}
+
 export async function getDb(): Promise<Database> {
   if (!dbInstance) {
     console.log("[ghostDatabase] Loading SQLite database...");
-    const db = await Database.load("sqlite:ghosts.db");
-    await db.execute("PRAGMA journal_mode=WAL");
-    await db.execute("PRAGMA busy_timeout=5000");
-    dbInstance = db;
+    try {
+      dbInstance = await loadDb();
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("migration") || msg.includes("duplicate column")) {
+        console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
+        await invoke("reset_ghost_db");
+        dbInstance = await loadDb();
+        console.log("[ghostDatabase] DB をリセットして再接続しました");
+      } else {
+        throw e;
+      }
+    }
     console.log("[ghostDatabase] Database loaded successfully");
   }
   return dbInstance;
-}
-
-// migration が適用されなかった場合の防衛線。ghostCatalogService および searchGhosts から呼び出す。
-// 欠落カラムがあれば ALTER TABLE で追加し、キャッシュをリセットする。
-// Promise ベースのガード: 並行呼び出しが同一 Promise を await し、修復完了を待つ。
-let repairPromise: Promise<void> | null = null;
-export function repairGhostDbSchema(): Promise<void> {
-  if (!repairPromise) {
-    repairPromise = performSchemaRepair();
-  }
-  return repairPromise;
-}
-
-async function performSchemaRepair(): Promise<void> {
-  const db = await getDb();
-  const columns = await db.select<{ name: string }[]>("PRAGMA table_info(ghosts)");
-  if (columns.length === 0) return; // テーブル未作成（migration が処理する）
-  const hasCraftman = columns.some((col) => col.name === "craftman");
-  if (!hasCraftman) {
-    console.warn("[ghostDatabase] craftman カラムが欠落しています。スキーマを修復します...");
-    await db.execute("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
-    await db.execute("DELETE FROM ghosts");
-    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
-  }
-  const hasThumbnailPath = columns.some((col) => col.name === "thumbnail_path");
-  const hasThumbnailSelfAlpha = columns.some((col) => col.name === "thumbnail_use_self_alpha");
-  if (!hasThumbnailPath || !hasThumbnailSelfAlpha) {
-    console.warn("[ghostDatabase] thumbnail カラムが欠落しています。スキーマを修復します...");
-    if (!hasThumbnailPath) {
-      await db.execute("ALTER TABLE ghosts ADD COLUMN thumbnail_path TEXT NOT NULL DEFAULT ''");
-    }
-    if (!hasThumbnailSelfAlpha) {
-      await db.execute("ALTER TABLE ghosts ADD COLUMN thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0");
-    }
-    await db.execute("DELETE FROM ghosts");
-    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
-  }
-  const hasThumbnailKind = columns.some((col) => col.name === "thumbnail_kind");
-  if (!hasThumbnailKind) {
-    console.warn("[ghostDatabase] thumbnail_kind カラムが欠落しています。スキーマを修復します...");
-    await db.execute("ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT ''");
-    await db.execute("DELETE FROM ghosts");
-    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
-  }
 }
 
 export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {
@@ -69,7 +42,7 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
   if (ghosts.length === 0) return;
   const db = await getDb();
 
-  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。11列×90行=990で安全圏。
+  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。12列中プレースホルダ11個×90行=990で安全圏。
   const chunkSize = 90;
   let inserted = 0;
   for (let i = 0; i < ghosts.length; i += chunkSize) {
@@ -174,10 +147,6 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   return total > 0;
 }
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
-  // HMR でモジュールが入れ替わった場合、refreshGhostCatalog 経由の修復が
-  // まだ走っていない状態で SELECT が呼ばれる可能性がある。Promise ガードなので
-  // 修復済みなら即座に resolve される。
-  await repairGhostDbSchema();
   const db = await getDb();
 
   const likePattern = `%${query.normalize("NFKC").toLowerCase()}%`;

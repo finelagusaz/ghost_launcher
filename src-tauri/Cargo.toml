@@ -27,6 +27,4 @@ encoding_rs = { workspace = true }
 ghost-meta = { path = "../crates/ghost-meta", features = ["thumbnail", "serde"] }
 sha2 = "0.10"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-
-[dev-dependencies]
 rusqlite = { version = "0.31", features = ["bundled"] }

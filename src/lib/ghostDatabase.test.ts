@@ -20,88 +20,28 @@ beforeEach(() => {
   mockLoad.mockClear();
 });
 
-describe("ghostDatabase - スキーマ修復 (repairGhostDbSchema)", () => {
-  it("craftman カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
-    // PRAGMA table_info の応答として craftman を含まないカラム一覧を返す
-    mockSelect.mockResolvedValueOnce([{ name: "id" }, { name: "name" }, { name: "directory_name" }]);
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
+describe("ghostDatabase - getDb マイグレーションエラー回復", () => {
+  it("migration エラー時に reset_ghost_db を呼んで再接続する", async () => {
+    mockLoad
+      .mockRejectedValueOnce(new Error("while executing migration 4: duplicate column name: craftman"))
+      .mockResolvedValueOnce({ execute: mockExecute, select: mockSelect });
 
-    const nonPragmaCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
-    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
+    const { invoke: mockInvoke } = await import("@tauri-apps/api/core");
+    const { getDb } = await import("./ghostDatabase");
+    const db = await getDb();
+
+    expect(db).toBeDefined();
+    expect(mockInvoke).toHaveBeenCalledWith("reset_ghost_db");
+    expect(mockLoad).toHaveBeenCalledTimes(2);
   });
 
-  it("craftman カラムが存在する場合は修復を実行しない", async () => {
-    // PRAGMA table_info の応答として全必須カラムを含む一覧を返す
-    mockSelect.mockResolvedValueOnce([
-      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" }, { name: "thumbnail_kind" },
-    ]);
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
+  it("migration 以外のエラーはそのまま throw する", async () => {
+    mockLoad.mockRejectedValueOnce(new Error("disk I/O error"));
 
-    const executeCalls = mockExecute.mock.calls.map((c) => c[0] as string);
-    expect(executeCalls).not.toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
-  });
-
-  it("thumbnail_path カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
-    mockSelect.mockResolvedValueOnce([
-      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      // thumbnail_path 欠落
-      { name: "thumbnail_use_self_alpha" },
-    ]);
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
-
-    const nonPragmaCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN thumbnail_path TEXT NOT NULL DEFAULT ''");
-    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
-  });
-
-  it("thumbnail_use_self_alpha カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
-    mockSelect.mockResolvedValueOnce([
-      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      { name: "thumbnail_path" },
-      // thumbnail_use_self_alpha 欠落
-    ]);
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
-
-    const nonPragmaCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0");
-    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
-  });
-
-  it("thumbnail_kind カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
-    mockSelect.mockResolvedValueOnce([
-      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" },
-      // thumbnail_kind 欠落
-    ]);
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
-
-    const nonPragmaCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT ''");
-    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
-  });
-
-  it("テーブルが存在しない場合（PRAGMA が空を返す場合）は修復を実行しない", async () => {
-    // mockSelect のデフォルトは [] なのでそのまま使う
-    const { repairGhostDbSchema } = await import("./ghostDatabase");
-    await repairGhostDbSchema();
-
-    const executeCalls = mockExecute.mock.calls.map((c) => c[0] as string);
-    expect(executeCalls).not.toContain("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+    const { invoke: mockInvoke } = await import("@tauri-apps/api/core");
+    const { getDb } = await import("./ghostDatabase");
+    await expect(getDb()).rejects.toThrow("disk I/O error");
+    expect(mockInvoke).not.toHaveBeenCalledWith("reset_ghost_db");
   });
 });
 
@@ -167,17 +107,12 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
 
 describe("ghostDatabase - searchGhosts NFKC正規化", () => {
   it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
-    // searchGhosts 内部で repairGhostDbSchema が呼ばれるため PRAGMA table_info 用のモックが必要
-    mockSelect.mockResolvedValueOnce([
-      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" }, { name: "thumbnail_kind" },
-    ]);
     mockSelect.mockResolvedValue([{ count: 0 }]);
     const { searchGhosts } = await import("./ghostDatabase");
     await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
 
-    // calls[0] = PRAGMA table_info (repairGhostDbSchema), calls[1] = COUNT
-    const countCall = mockSelect.mock.calls[1];
+    // calls[0] = COUNT
+    const countCall = mockSelect.mock.calls[0];
     // params: [requestKey, likePattern, likePattern]
     expect(countCall[1][1]).toBe("%alice%");
   });

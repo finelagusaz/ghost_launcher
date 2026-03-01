@@ -1,3 +1,5 @@
+export type ThumbnailKind = "surface" | "thumbnail" | "";
+
 export interface Ghost {
   name: string;
   craftman: string;
@@ -6,7 +8,7 @@ export interface Ghost {
   source: string;
   thumbnail_path: string;
   thumbnail_use_self_alpha: boolean;
-  thumbnail_kind: string;
+  thumbnail_kind: ThumbnailKind;
 }
 
 export interface GhostView extends Ghost {
