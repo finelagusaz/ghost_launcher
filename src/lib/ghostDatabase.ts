@@ -62,6 +62,33 @@ function buildGhostDiffFingerprint(ghost: Ghost): string {
   ].join(GHOST_KEY_SEPARATOR);
 }
 
+const GHOST_INSERT_SQL_PREFIX =
+  "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
+
+const GHOST_INSERT_PLACEHOLDER = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+
+function buildGhostInsertRow(requestKey: string, ghost: Ghost): { identityKey: string; params: (string | number)[] } {
+  const identityKey = buildGhostIdentityKey(ghost);
+  return {
+    identityKey,
+    params: [
+      requestKey,
+      identityKey,
+      buildGhostDiffFingerprint(ghost),
+      ghost.name,
+      ghost.craftman,
+      ghost.directory_name,
+      ghost.path,
+      ghost.source,
+      normalizeForKey(ghost.name),
+      normalizeForKey(ghost.directory_name),
+      ghost.thumbnail_path,
+      ghost.thumbnail_use_self_alpha ? 1 : 0,
+      ghost.thumbnail_kind,
+    ],
+  };
+}
+
 export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Promise<void> {
   if (ghosts.length === 0) return;
   const db = await getDb();
@@ -71,30 +98,16 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
   let inserted = 0;
   for (let i = 0; i < ghosts.length; i += chunkSize) {
     const chunk = ghosts.slice(i, i + chunkSize);
-
-    let sql = "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
     const placeholders: string[] = [];
     const params: (string | number)[] = [];
 
     for (const ghost of chunk) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
-      params.push(requestKey);
-      params.push(buildGhostIdentityKey(ghost));
-      params.push(buildGhostDiffFingerprint(ghost));
-      params.push(ghost.name);
-      params.push(ghost.craftman);
-      params.push(ghost.directory_name);
-      params.push(ghost.path);
-      params.push(ghost.source);
-      params.push(normalizeForKey(ghost.name));
-      params.push(normalizeForKey(ghost.directory_name));
-      params.push(ghost.thumbnail_path);
-      params.push(ghost.thumbnail_use_self_alpha ? 1 : 0);
-      params.push(ghost.thumbnail_kind);
+      const row = buildGhostInsertRow(requestKey, ghost);
+      placeholders.push(GHOST_INSERT_PLACEHOLDER);
+      params.push(...row.params);
     }
 
-    sql += placeholders.join(", ");
-    await db.execute(sql, params);
+    await db.execute(GHOST_INSERT_SQL_PREFIX + placeholders.join(", "), params);
     inserted += chunk.length;
   }
   console.log(`[ghostDatabase] Inserted ${inserted} ghosts into SQLite for requestKey=${requestKey}`);
@@ -106,6 +119,16 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
 // SQLITE_BUSY を引き起こすため、各操作を auto-commit で実行する。
 // キャッシュ DB のため、中断時はフルスキャンで復旧可能。
 export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghost[]): Promise<void> {
+  // NOT IN の変数上限: SQLITE_MAX_VARIABLE_NUMBER(999) から request_key の 1 を引いた最大。
+  // 998 件超はゴーストが極めて多いレアケースのため全削除→再挿入にフォールバックする。
+  const NOT_IN_MAX = 998;
+  if (ghosts.length > NOT_IN_MAX) {
+    await clearGhostsByRequestKey(requestKey);
+    await insertGhostsBatch(requestKey, ghosts);
+    console.log(`[ghostDatabase] Replaced ghosts (full reset) for requestKey=${requestKey}`);
+    return;
+  }
+
   const db = await getDb();
 
   // tauri-plugin-sql はトランザクション境界を共有できないため、
@@ -115,32 +138,17 @@ export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghos
 
   for (let i = 0; i < ghosts.length; i += chunkSize) {
     const chunk = ghosts.slice(i, i + chunkSize);
-    let sql = "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
     const placeholders: string[] = [];
     const params: (string | number)[] = [];
 
     for (const ghost of chunk) {
-      const ghostIdentityKey = buildGhostIdentityKey(ghost);
-      const rowFingerprint = buildGhostDiffFingerprint(ghost);
-      keepKeys.push(ghostIdentityKey);
-
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
-      params.push(requestKey);
-      params.push(ghostIdentityKey);
-      params.push(rowFingerprint);
-      params.push(ghost.name);
-      params.push(ghost.craftman);
-      params.push(ghost.directory_name);
-      params.push(ghost.path);
-      params.push(ghost.source);
-      params.push(normalizeForKey(ghost.name));
-      params.push(normalizeForKey(ghost.directory_name));
-      params.push(ghost.thumbnail_path);
-      params.push(ghost.thumbnail_use_self_alpha ? 1 : 0);
-      params.push(ghost.thumbnail_kind);
+      const row = buildGhostInsertRow(requestKey, ghost);
+      keepKeys.push(row.identityKey);
+      placeholders.push(GHOST_INSERT_PLACEHOLDER);
+      params.push(...row.params);
     }
 
-    sql += placeholders.join(", ");
+    let sql = GHOST_INSERT_SQL_PREFIX + placeholders.join(", ");
     sql += " ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET ";
     sql += "row_fingerprint = excluded.row_fingerprint, ";
     sql += "name = excluded.name, craftman = excluded.craftman, directory_name = excluded.directory_name, ";

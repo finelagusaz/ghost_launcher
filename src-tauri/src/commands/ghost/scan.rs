@@ -27,15 +27,16 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
     let craftman = meta.craftman.unwrap_or_default();
     let directory_name = meta.directory_name;
     let path = meta.path.to_string_lossy().into_owned();
+    let alpha_str = if thumbnail_use_self_alpha { "1" } else { "0" };
     let diff_fingerprint = {
         let mut hasher = Sha256::new();
         for fragment in [
-            &name,
-            &craftman,
-            &path,
-            &thumbnail_path,
-            if thumbnail_use_self_alpha { "1" } else { "0" },
-            &thumbnail_kind,
+            name.as_str(),
+            craftman.as_str(),
+            path.as_str(),
+            thumbnail_path.as_str(),
+            alpha_str,
+            thumbnail_kind.as_str(),
         ] {
             hasher.update(fragment.as_bytes());
             hasher.update([0x1f]);
