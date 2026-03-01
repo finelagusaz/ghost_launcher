@@ -146,22 +146,52 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   const total = countResult.length > 0 ? countResult[0].count : 0;
   return total > 0;
 }
+
+const GHOST_SELECT_COLUMNS =
+  "name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+
+export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
+  const db = await getDb();
+  const rows = await db.select<GhostView[]>(
+    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
+    [requestKey, limit]
+  );
+
+  console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}) → rows=${rows.length}`);
+  return rows;
+}
+
+export async function countGhostsByQuery(requestKey: string, query: string): Promise<number> {
+  const db = await getDb();
+  const normalizedQuery = query.normalize("NFKC").toLowerCase();
+
+  let countResult: { count: number }[];
+  if (normalizedQuery === "") {
+    countResult = await db.select<{ count: number }[]>(
+      "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ?",
+      [requestKey]
+    );
+  } else {
+    const likePattern = `%${normalizedQuery}%`;
+    countResult = await db.select<{ count: number }[]>(
+      "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?)",
+      [requestKey, likePattern, likePattern]
+    );
+  }
+
+  return countResult.length > 0 ? countResult[0].count : 0;
+}
+
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
   const db = await getDb();
 
-  const likePattern = `%${query.normalize("NFKC").toLowerCase()}%`;
-
-  // SQLite では ? プレースホルダを使う ($1/$2 は PostgreSQL 構文)
-  const countResult = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?)",
-    [requestKey, likePattern, likePattern]
-  );
-
-  const total = countResult.length > 0 ? countResult[0].count : 0;
+  const normalizedQuery = query.normalize("NFKC").toLowerCase();
+  const likePattern = `%${normalizedQuery}%`;
+  const total = await countGhostsByQuery(requestKey, query);
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
 
   const rows = await db.select<GhostView[]>(
-    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
+    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
     [requestKey, likePattern, likePattern, limit, offset]
   );
 

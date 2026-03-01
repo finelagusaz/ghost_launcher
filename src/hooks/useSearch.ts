@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { GhostView } from "../types";
-import { searchGhosts } from "../lib/ghostDatabase";
+import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../lib/ghostDatabase";
 
 // バッファの最大サイズ。これを超えるマージは全置換にフォールバックする
 export const MAX_BUFFER_SIZE = 2000;
@@ -43,6 +43,31 @@ export function useSearch(
       setLoading(true);
       setDbError(null);
       try {
+        const isInitialLoad = query === "" && offset === 0;
+
+        if (isInitialLoad) {
+          const initialGhosts = await searchGhostsInitialPage(requestKey, limit);
+          if (!isActive) return;
+
+          resetKeyRef.current = resetKey;
+          setGhosts(initialGhosts);
+          setLoadedStart(0);
+          bufferRef.current = { ghosts: initialGhosts, start: 0 };
+
+          // 初期描画を優先して総件数は遅延取得する
+          setTotal(initialGhosts.length);
+          void countGhostsByQuery(requestKey, query)
+            .then((count) => {
+              if (!isActive) return;
+              setTotal(count);
+            })
+            .catch((err) => {
+              console.warn("Failed to count ghosts from SQLite:", err);
+            });
+
+          return;
+        }
+
         const result = await searchGhosts(requestKey, query, limit, offset);
         if (!isActive) return;
 

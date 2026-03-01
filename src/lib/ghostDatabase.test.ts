@@ -118,6 +118,46 @@ describe("ghostDatabase - searchGhosts NFKC正規化", () => {
   });
 });
 
+
+describe("ghostDatabase - searchGhostsInitialPage", () => {
+  it("初期ページ取得は LIKE や OFFSET を使わず request_key + ORDER BY + LIMIT で取得する", async () => {
+    mockSelect.mockResolvedValue([]);
+    const { searchGhostsInitialPage } = await import("./ghostDatabase");
+    await searchGhostsInitialPage("rk1", 50);
+
+    const call = mockSelect.mock.calls[0];
+    const sql = call[0] as string;
+    expect(sql).toContain("WHERE request_key = ?");
+    expect(sql).toContain("ORDER BY name_lower ASC");
+    expect(sql).toContain("LIMIT ?");
+    expect(sql).not.toContain("LIKE");
+    expect(sql).not.toContain("OFFSET");
+    expect(call[1]).toEqual(["rk1", 50]);
+  });
+});
+
+describe("ghostDatabase - countGhostsByQuery", () => {
+  it("空クエリ時は LIKE なしで件数取得する", async () => {
+    mockSelect.mockResolvedValue([{ count: 42 }]);
+    const { countGhostsByQuery } = await import("./ghostDatabase");
+    const total = await countGhostsByQuery("rk1", "");
+
+    expect(total).toBe(42);
+    const call = mockSelect.mock.calls[0];
+    expect(call[0]).toBe("SELECT COUNT(*) as count FROM ghosts WHERE request_key = ?");
+    expect(call[1]).toEqual(["rk1"]);
+  });
+
+  it("非空クエリ時は NFKC 正規化した LIKE で件数取得する", async () => {
+    mockSelect.mockResolvedValue([{ count: 1 }]);
+    const { countGhostsByQuery } = await import("./ghostDatabase");
+    const total = await countGhostsByQuery("rk1", "Ａｌｉｃｅ");
+
+    expect(total).toBe(1);
+    const call = mockSelect.mock.calls[0];
+    expect(call[1][1]).toBe("%alice%");
+  });
+});
 describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("BEGIN/COMMIT/ROLLBACK を使わない（コネクションプール安全）", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
