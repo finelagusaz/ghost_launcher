@@ -26,5 +26,4 @@ pub struct Ghost {
 pub struct ScanGhostsResponse {
     pub ghosts: Vec<Ghost>,
     pub fingerprint: String,
-    pub scan_generated_at: String,
 }
