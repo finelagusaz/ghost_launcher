@@ -71,6 +71,7 @@ function App() {
     language,
     saveLanguage,
     loading: settingsLoading,
+    languageApplying,
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
@@ -163,6 +164,7 @@ function App() {
                 onRemoveFolder={removeGhostFolder}
                 language={language}
                 onLanguageChange={saveLanguage}
+                languageApplying={languageApplying}
               />
             </DialogContent>
             <DialogActions>

@@ -7,6 +7,7 @@ import {
   Field,
   Input,
   Select,
+  Spinner,
   Text,
   makeStyles,
   tokens,
@@ -22,6 +23,7 @@ interface Props {
   onRemoveFolder: (folder: string) => void;
   language: Language;
   onLanguageChange: (lang: Language) => void;
+  languageApplying?: boolean;
 }
 
 const useStyles = makeStyles({
@@ -81,6 +83,7 @@ export function SettingsPanel({
   onRemoveFolder,
   language,
   onLanguageChange,
+  languageApplying = false,
 }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
@@ -142,10 +145,14 @@ export function SettingsPanel({
 
   return (
     <div className={styles.panel}>
-      <Field label={t("settings.language.label")}>
+      <Field
+        label={t("settings.language.label")}
+        validationMessage={languageApplying ? <Spinner size="tiny" label={t("app.loading")} /> : undefined}
+      >
         <Select
           value={language}
           onChange={(_: unknown, data: { value: string }) => onLanguageChange(data.value as Language)}
+          disabled={languageApplying}
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
             <option key={lang} value={lang}>

@@ -29,7 +29,11 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-  // 4. prevent Vite from scanning rust build output (src-tauri/target) during dep pre-bundling
+  // 4. Tauri アプリはローカル配信のためチャンクサイズ警告を緩和
+  build: {
+    chunkSizeWarningLimit: 600,
+  },
+  // 5. prevent Vite from scanning rust build output (src-tauri/target) during dep pre-bundling
   optimizeDeps: {
     exclude: [],
     entries: ["src/**/*.{ts,tsx}", "index.html"],

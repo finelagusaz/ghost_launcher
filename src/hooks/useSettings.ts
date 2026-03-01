@@ -7,34 +7,74 @@ export function useSettings() {
   const [ghostFolders, setGhostFolders] = useState<string[]>([]);
   const [language, setLanguageState] = useState<Language>(() => i18n.language as Language);
   const [loading, setLoading] = useState(true);
+  const [languageApplying, setLanguageApplying] = useState(false);
   const ghostFoldersRef = useRef<string[]>([]);
 
   useEffect(() => {
+    let active = true;
+
+    const applySavedLanguage = async () => {
+      try {
+        const lang = await settingsStore.get<Language>(LANGUAGE_STORE_KEY);
+        if (!active || !lang || !isSupportedLanguage(lang)) {
+          return;
+        }
+
+        setLanguageApplying(true);
+        await i18n.changeLanguage(lang);
+        await applyUserLocale(lang);
+
+        if (!active) {
+          return;
+        }
+
+        setLanguageState(lang);
+      } catch {
+        // 言語設定の復元に失敗しても、アプリの初期描画は継続する
+      } finally {
+        if (active) {
+          setLanguageApplying(false);
+        }
+      }
+    };
+
     const load = async () => {
       try {
-        const [path, folders, lang] = await Promise.all([
+        const [path, folders] = await Promise.all([
           settingsStore.get<string>("ssp_path"),
           settingsStore.get<string[]>("ghost_folders"),
-          settingsStore.get<Language>(LANGUAGE_STORE_KEY),
         ]);
+
+        if (!active) {
+          return;
+        }
+
         setSspPath(path ?? null);
         const loadedFolders = folders ?? [];
         setGhostFolders(loadedFolders);
         ghostFoldersRef.current = loadedFolders;
-        if (lang && isSupportedLanguage(lang)) {
-          await i18n.changeLanguage(lang);
-          await applyUserLocale(lang);
-          setLanguageState(lang);
-        }
       } catch {
+        if (!active) {
+          return;
+        }
+
         setSspPath(null);
         setGhostFolders([]);
         ghostFoldersRef.current = [];
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
+
+      void applySavedLanguage();
     };
-    load();
+
+    void load();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const saveSspPath = useCallback(async (path: string) => {
@@ -103,5 +143,15 @@ export function useSettings() {
     );
   }, [updateGhostFolders]);
 
-  return { sspPath, saveSspPath, ghostFolders, addGhostFolder, removeGhostFolder, language, saveLanguage, loading };
+  return {
+    sspPath,
+    saveSspPath,
+    ghostFolders,
+    addGhostFolder,
+    removeGhostFolder,
+    language,
+    saveLanguage,
+    loading,
+    languageApplying,
+  };
 }
