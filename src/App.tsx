@@ -115,9 +115,7 @@ function App() {
   const handleOpenSettings = openSettings;
   const handleCloseSettings = closeSettings;
 
-  const fatalSettingsLoading = settingsLoading;
-
-  if (fatalSettingsLoading) {
+  if (settingsLoading) {
     return (
       <div className={styles.loading}>
         <Spinner label={t("app.loading")} />
