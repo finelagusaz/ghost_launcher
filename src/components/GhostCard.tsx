@@ -147,7 +147,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   };
 
   const metaContent = ghost.craftman
-    ? `${ghost.directory_name} · ${ghost.craftman}`
+    ? `${ghost.directory_name} | ${ghost.craftman}`
     : ghost.directory_name;
 
   return (
