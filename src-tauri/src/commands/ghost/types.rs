@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ghost {
+    /// 差分更新判定用の軽量フィンガープリント
+    pub diff_fingerprint: String,
     /// descript.txt の name フィールド（表示名）
     pub name: String,
     /// descript.txt の craftman フィールド（作者名）。未設定の場合は空文字列

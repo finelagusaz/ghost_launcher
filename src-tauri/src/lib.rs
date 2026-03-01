@@ -53,6 +53,12 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 7,
+            description: "add_ghost_identity_and_row_fingerprint",
+            sql: "ALTER TABLE ghosts ADD COLUMN ghost_identity_key TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN row_fingerprint TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;\nCREATE UNIQUE INDEX IF NOT EXISTS idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -72,6 +78,32 @@ mod tests {
             conn.execute_batch(m.sql)
                 .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
         }
+    }
+
+    #[test]
+    fn マイグレーション7は既存の同一request_key行があっても適用できる() {
+        // DELETE が CREATE UNIQUE INDEX より先に実行されることを確認するリグレッションテスト。
+        // 修正前は同一 request_key の複数行が全て ghost_identity_key='' となり
+        // UNIQUE INDEX 作成時に制約違反で失敗していた。
+        let conn = Connection::open_in_memory().unwrap();
+        let mut sorted = migrations();
+        sorted.sort_by_key(|m| m.version);
+        // migration 1-6 を適用
+        for m in sorted.iter().take(6) {
+            conn.execute_batch(m.sql).unwrap();
+        }
+        // 同一 request_key で複数行挿入（実際のユーザー環境を模擬）
+        conn.execute_batch(
+            "INSERT INTO ghosts \
+             (name, directory_name, path, source, name_lower, directory_name_lower, \
+              request_key, updated_at, craftman, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind) \
+             VALUES ('A', 'a', '/a', 'ssp', 'a', 'a', 'rk1', '', '', '', 0, ''), \
+                    ('B', 'b', '/b', 'ssp', 'b', 'b', 'rk1', '', '', '', 0, '')",
+        )
+        .unwrap();
+        // migration 7 を適用（以前はここで UNIQUE 制約違反が発生していた）
+        conn.execute_batch(sorted[6].sql)
+            .unwrap_or_else(|e| panic!("migration 7 failed: {}", e));
     }
 
     #[test]

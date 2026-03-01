@@ -38,37 +38,76 @@ export async function clearGhostsByRequestKey(requestKey: string): Promise<void>
   console.log(`[ghostDatabase] Cleared ghosts table for requestKey=${requestKey}`);
 }
 
+const GHOST_KEY_SEPARATOR = "\u001f";
+
+function normalizeForKey(value: string): string {
+  return value.normalize("NFKC").toLowerCase();
+}
+
+function buildGhostIdentityKey(ghost: Ghost): string {
+  return `${normalizeForKey(ghost.source)}${GHOST_KEY_SEPARATOR}${normalizeForKey(ghost.directory_name)}`;
+}
+
+function buildGhostDiffFingerprint(ghost: Ghost): string {
+  if (ghost.diff_fingerprint) {
+    return ghost.diff_fingerprint;
+  }
+  return [
+    ghost.name,
+    ghost.craftman,
+    ghost.path,
+    ghost.thumbnail_path,
+    ghost.thumbnail_use_self_alpha ? "1" : "0",
+    ghost.thumbnail_kind,
+  ].join(GHOST_KEY_SEPARATOR);
+}
+
+const GHOST_INSERT_SQL_PREFIX =
+  "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
+
+const GHOST_INSERT_PLACEHOLDER = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+
+function buildGhostInsertRow(requestKey: string, ghost: Ghost): { identityKey: string; params: (string | number)[] } {
+  const identityKey = buildGhostIdentityKey(ghost);
+  return {
+    identityKey,
+    params: [
+      requestKey,
+      identityKey,
+      buildGhostDiffFingerprint(ghost),
+      ghost.name,
+      ghost.craftman,
+      ghost.directory_name,
+      ghost.path,
+      ghost.source,
+      normalizeForKey(ghost.name),
+      normalizeForKey(ghost.directory_name),
+      ghost.thumbnail_path,
+      ghost.thumbnail_use_self_alpha ? 1 : 0,
+      ghost.thumbnail_kind,
+    ],
+  };
+}
+
 export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Promise<void> {
   if (ghosts.length === 0) return;
   const db = await getDb();
 
-  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。12列中プレースホルダ11個×90行=990で安全圏。
-  const chunkSize = 90;
+  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。14列中プレースホルダ13個×75行=975で安全圏。
+  const chunkSize = 75;
   let inserted = 0;
   for (let i = 0; i < ghosts.length; i += chunkSize) {
     const chunk = ghosts.slice(i, i + chunkSize);
-
-    let sql = "INSERT INTO ghosts (request_key, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
     const placeholders: string[] = [];
     const params: (string | number)[] = [];
 
     for (const ghost of chunk) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
-      params.push(requestKey);
-      params.push(ghost.name);
-      params.push(ghost.craftman);
-      params.push(ghost.directory_name);
-      params.push(ghost.path);
-      params.push(ghost.source);
-      params.push(ghost.name.normalize("NFKC").toLowerCase());
-      params.push(ghost.directory_name.normalize("NFKC").toLowerCase());
-      params.push(ghost.thumbnail_path);
-      params.push(ghost.thumbnail_use_self_alpha ? 1 : 0);
-      params.push(ghost.thumbnail_kind);
+      const row = buildGhostInsertRow(requestKey, ghost);
+      placeholders.push(GHOST_INSERT_PLACEHOLDER);
+      params.push(...row.params);
     }
 
-    sql += placeholders.join(", ");
-    await db.execute(sql, params);
+    await db.execute(GHOST_INSERT_SQL_PREFIX + placeholders.join(", "), params);
     inserted += chunk.length;
   }
   console.log(`[ghostDatabase] Inserted ${inserted} ghosts into SQLite for requestKey=${requestKey}`);
@@ -80,9 +119,59 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
 // SQLITE_BUSY を引き起こすため、各操作を auto-commit で実行する。
 // キャッシュ DB のため、中断時はフルスキャンで復旧可能。
 export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghost[]): Promise<void> {
-  await clearGhostsByRequestKey(requestKey);
-  await insertGhostsBatch(requestKey, ghosts);
-  console.log(`[ghostDatabase] Replaced ghosts for requestKey=${requestKey}`);
+  // NOT IN の変数上限: SQLITE_MAX_VARIABLE_NUMBER(999) から request_key の 1 を引いた最大。
+  // 998 件超はゴーストが極めて多いレアケースのため全削除→再挿入にフォールバックする。
+  const NOT_IN_MAX = 998;
+  if (ghosts.length > NOT_IN_MAX) {
+    await clearGhostsByRequestKey(requestKey);
+    await insertGhostsBatch(requestKey, ghosts);
+    console.log(`[ghostDatabase] Replaced ghosts (full reset) for requestKey=${requestKey}`);
+    return;
+  }
+
+  const db = await getDb();
+
+  // tauri-plugin-sql はトランザクション境界を共有できないため、
+  // upsert と不要行削除を auto-commit で順次実行する。
+  const chunkSize = 75;
+  const keepKeys: string[] = [];
+
+  for (let i = 0; i < ghosts.length; i += chunkSize) {
+    const chunk = ghosts.slice(i, i + chunkSize);
+    const placeholders: string[] = [];
+    const params: (string | number)[] = [];
+
+    for (const ghost of chunk) {
+      const row = buildGhostInsertRow(requestKey, ghost);
+      keepKeys.push(row.identityKey);
+      placeholders.push(GHOST_INSERT_PLACEHOLDER);
+      params.push(...row.params);
+    }
+
+    let sql = GHOST_INSERT_SQL_PREFIX + placeholders.join(", ");
+    sql += " ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET ";
+    sql += "row_fingerprint = excluded.row_fingerprint, ";
+    sql += "name = excluded.name, craftman = excluded.craftman, directory_name = excluded.directory_name, ";
+    sql += "path = excluded.path, source = excluded.source, name_lower = excluded.name_lower, ";
+    sql += "directory_name_lower = excluded.directory_name_lower, thumbnail_path = excluded.thumbnail_path, ";
+    sql += "thumbnail_use_self_alpha = excluded.thumbnail_use_self_alpha, thumbnail_kind = excluded.thumbnail_kind, ";
+    sql += "updated_at = CURRENT_TIMESTAMP ";
+    sql += "WHERE ghosts.row_fingerprint <> excluded.row_fingerprint";
+
+    await db.execute(sql, params);
+  }
+
+  if (keepKeys.length > 0) {
+    const placeholders = buildInClausePlaceholders(keepKeys.length);
+    await db.execute(
+      `DELETE FROM ghosts WHERE request_key = ? AND ghost_identity_key NOT IN (${placeholders})`,
+      [requestKey, ...keepKeys],
+    );
+  } else {
+    await clearGhostsByRequestKey(requestKey);
+  }
+
+  console.log(`[ghostDatabase] Upserted ghosts and pruned stale rows for requestKey=${requestKey}`);
 }
 
 interface RequestKeyRow {

@@ -13,10 +13,7 @@ pub fn scan_ghosts_with_meta(
 ) -> Result<ScanGhostsResponse, String> {
     let (ghosts, fingerprint) =
         scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
-    Ok(ScanGhostsResponse {
-        ghosts,
-        fingerprint,
-    })
+    Ok(ScanGhostsResponse { ghosts, fingerprint })
 }
 
 #[tauri::command]

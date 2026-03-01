@@ -49,7 +49,7 @@ describe("refreshGhostCatalog", () => {
     vi.mocked(validateCache).mockResolvedValue(false);
     vi.mocked(executeScan).mockResolvedValue({
       ghosts: [
-        { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp" },
+        { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-row" },
       ],
       fingerprint: "fp2",
     });

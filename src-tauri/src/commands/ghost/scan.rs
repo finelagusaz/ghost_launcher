@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 use ghost_meta::{AlphaMode, ThumbnailKind};
 
 use super::path_utils::normalize_path;
@@ -21,11 +23,33 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
             )
         },
     );
+    let name = meta.name;
+    let craftman = meta.craftman.unwrap_or_default();
+    let directory_name = meta.directory_name;
+    let path = meta.path.to_string_lossy().into_owned();
+    let alpha_str = if thumbnail_use_self_alpha { "1" } else { "0" };
+    let diff_fingerprint = {
+        let mut hasher = Sha256::new();
+        for fragment in [
+            name.as_str(),
+            craftman.as_str(),
+            path.as_str(),
+            thumbnail_path.as_str(),
+            alpha_str,
+            thumbnail_kind.as_str(),
+        ] {
+            hasher.update(fragment.as_bytes());
+            hasher.update([0x1f]);
+        }
+        format!("{:x}", hasher.finalize())
+    };
+
     Ghost {
-        name: meta.name,
-        craftman: meta.craftman.unwrap_or_default(),
-        directory_name: meta.directory_name,
-        path: meta.path.to_string_lossy().into_owned(),
+        diff_fingerprint,
+        name,
+        craftman,
+        directory_name,
+        path,
         source,
         thumbnail_path,
         thumbnail_use_self_alpha,

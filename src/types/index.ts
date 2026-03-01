@@ -9,6 +9,7 @@ export interface Ghost {
   thumbnail_path: string;
   thumbnail_use_self_alpha: boolean;
   thumbnail_kind: ThumbnailKind;
+  diff_fingerprint?: string;
 }
 
 export interface GhostView extends Ghost {
