@@ -1,13 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { i18n, SUPPORTED_LANGUAGES, LANGUAGE_STORE_KEY, extractStringValues, applyUserLocale } from "./i18n";
+import { i18n, SUPPORTED_LANGUAGES, LANGUAGE_STORE_KEY, extractStringValues, applyUserLocale, detectOsLanguage } from "./i18n";
 import ja from "../locales/ja.json";
 import en from "../locales/en.json";
 
 describe("i18n", () => {
-  it("SUPPORTED_LANGUAGES に ja と en が含まれる", () => {
-    expect(SUPPORTED_LANGUAGES).toContain("ja");
-    expect(SUPPORTED_LANGUAGES).toContain("en");
+  it("SUPPORTED_LANGUAGES に全サポート言語が含まれる", () => {
+    for (const lang of ["ja", "en", "zh-CN", "zh-TW", "ko", "ru"]) {
+      expect(SUPPORTED_LANGUAGES).toContain(lang);
+    }
   });
 
   it("LANGUAGE_STORE_KEY が定義されている", () => {
@@ -30,16 +31,17 @@ describe("i18n", () => {
     expect(keys).toContain("search.label");
   });
 
-  it("ja に切り替えると日本語が返る", async () => {
-    await i18n.changeLanguage("ja");
-    expect(i18n.t("card.launch")).toBe("起動");
-    expect(i18n.t("list.empty")).toBe("ゴーストが見つかりません");
-  });
-
-  it("en に切り替えると英語が返る", async () => {
-    await i18n.changeLanguage("en");
-    expect(i18n.t("card.launch")).toBe("Launch");
-    expect(i18n.t("list.empty")).toBe("No ghosts found");
+  it.each([
+    ["ja",    "起動",      "ゴーストが見つかりません"],
+    ["en",    "Launch",    "No ghosts found"],
+    ["zh-CN", "启动",      "未找到幽灵"],
+    ["zh-TW", "啟動",      "找不到幽靈"],
+    ["ko",    "실행",      "고스트를 찾을 수 없습니다"],
+    ["ru",    "Запустить", "Духи не найдены"],
+  ])("%s に切り替えると card.launch と list.empty が正しく返る", async (lang, launch, empty) => {
+    await i18n.changeLanguage(lang);
+    expect(i18n.t("card.launch")).toBe(launch);
+    expect(i18n.t("list.empty")).toBe(empty);
   });
 
   it("list.count の補間が正しく動作する", async () => {
@@ -119,5 +121,62 @@ describe("applyUserLocale", () => {
   it("JSON が不正でも例外を伝播しない", async () => {
     vi.mocked(invoke).mockResolvedValue("not valid json{{{");
     await expect(applyUserLocale("ja")).resolves.toBeUndefined();
+  });
+});
+
+describe("detectOsLanguage", () => {
+  const originalLanguage = Object.getOwnPropertyDescriptor(navigator, "language");
+
+  afterEach(() => {
+    if (originalLanguage?.configurable) {
+      Object.defineProperty(navigator, "language", originalLanguage);
+    }
+  });
+
+  function setNavigatorLanguage(lang: string) {
+    Object.defineProperty(navigator, "language", {
+      get: () => lang,
+      configurable: true,
+    });
+  }
+
+  it("完全一致: zh-TW → zh-TW", () => {
+    setNavigatorLanguage("zh-TW");
+    expect(detectOsLanguage()).toBe("zh-TW");
+  });
+
+  it("完全一致: zh-CN → zh-CN", () => {
+    setNavigatorLanguage("zh-CN");
+    expect(detectOsLanguage()).toBe("zh-CN");
+  });
+
+  it("基本コード一致: ko-KR → ko", () => {
+    setNavigatorLanguage("ko-KR");
+    expect(detectOsLanguage()).toBe("ko");
+  });
+
+  it("基本コード一致: ru-RU → ru", () => {
+    setNavigatorLanguage("ru-RU");
+    expect(detectOsLanguage()).toBe("ru");
+  });
+
+  it("zh 単体は zh-CN にフォールバック", () => {
+    setNavigatorLanguage("zh");
+    expect(detectOsLanguage()).toBe("zh-CN");
+  });
+
+  it("未対応言語は en にフォールバック", () => {
+    setNavigatorLanguage("fr-FR");
+    expect(detectOsLanguage()).toBe("en");
+  });
+
+  it("ja はそのまま返る", () => {
+    setNavigatorLanguage("ja");
+    expect(detectOsLanguage()).toBe("ja");
+  });
+
+  it("ja-JP → ja", () => {
+    setNavigatorLanguage("ja-JP");
+    expect(detectOsLanguage()).toBe("ja");
   });
 });
