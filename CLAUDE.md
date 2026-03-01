@@ -98,6 +98,8 @@ ghost_launcher/
 
 **E2E テスト**: `playwright` + `selenium-webdriver` + `tauri-driver` を組み合わせて実機の Tauri アプリを操作します。`e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当。セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）。SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップします。E2E テストはリリースビルドが前提であり CI には含まれません。
 
+**SQLite マイグレーション制約**: `ALTER TABLE ... ADD COLUMN ... DEFAULT` の値には**リテラルのみ**使用できる。`CURRENT_TIMESTAMP` や `datetime('now')` などの関数は拒否される（アプリ起動時にマイグレーション失敗でクラッシュする）。正しくは `DEFAULT ''` のようにリテラルを指定し、実際の値は INSERT 時の VALUES 句で設定する。新しいマイグレーションを追加・変更した場合は `cargo test` のインメモリ DB テスト（`lib.rs` の `tests::マイグレーションが順番にインメモリdbへ適用できる`）が構文エラーを検知する。
+
 ## 開発方針
 
 - **KISS**: シンプルさを最優先する。1つの関数は1つのことだけを行い、短く保つ。到達不能なフォールバックや使われない汎用化は書かない

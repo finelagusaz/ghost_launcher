@@ -1,6 +1,11 @@
 mod commands;
 mod utils;
 
+// マイグレーション追加時の注意:
+//   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
+//   CURRENT_TIMESTAMP や datetime('now') などの関数は SQLite が拒否する（起動時クラッシュ）。
+//   正しい例: DEFAULT ''   誤った例: DEFAULT CURRENT_TIMESTAMP
+//   実際の時刻は INSERT 時の VALUES 句で CURRENT_TIMESTAMP を使って設定すること。
 pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
     vec![
         tauri_plugin_sql::Migration {
