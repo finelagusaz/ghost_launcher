@@ -1,0 +1,6 @@
+[workspace]
+members = ["src-tauri", "crates/ghost-meta"]
+resolver = "2"
+
+[workspace.dependencies]
+encoding_rs = "0.8"

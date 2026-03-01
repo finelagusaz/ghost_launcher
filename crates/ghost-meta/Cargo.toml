@@ -1,0 +1,19 @@
+[package]
+name = "ghost-meta"
+version = "0.1.0"
+edition = "2024"
+description = "Ghost metadata reader for Ukagaka/SSP — scans ghost directories, parses descript.txt, and resolves thumbnails"
+license = "MIT"
+repository = "https://github.com/finelagusaz/ghost_launcher"
+readme = "README.md"
+publish = false
+
+[features]
+thumbnail = ["dep:image"]
+serde = ["dep:serde"]
+
+[dependencies]
+thiserror = "2"
+encoding_rs = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
