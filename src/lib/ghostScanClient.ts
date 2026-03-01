@@ -10,13 +10,3 @@ export async function scanGhostsWithMeta(
     additionalFolders,
   });
 }
-
-export async function getGhostsFingerprint(
-  sspPath: string,
-  additionalFolders: string[],
-): Promise<string> {
-  return invoke<string>("get_ghosts_fingerprint", {
-    sspPath,
-    additionalFolders,
-  });
-}
