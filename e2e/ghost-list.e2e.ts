@@ -48,6 +48,7 @@ async function clickSettingsButton(driver: WebDriver): Promise<void> {
     );
     await btn.click();
   }
+  await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
 }
 
 // --- テストケース ---
@@ -88,12 +89,11 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
 
   await clickSettingsButton(driver);
 
-  // ダイアログタイトル「設定」または "Settings" が表示される
-  const dialogTitle = await driver.wait(
-    until.elementLocated(By.xpath("//h2[text()='設定' or text()='Settings']")),
-    5_000,
+  // ダイアログタイトル「設定」または "Settings" が表示される（アニメーション完了まで待機）
+  const dialogTitleEl = await driver.findElement(
+    By.xpath("//h2[text()='設定' or text()='Settings']"),
   );
-  expect(await dialogTitle.isDisplayed()).toBe(true);
+  await driver.wait(until.elementIsVisible(dialogTitleEl), 5_000);
 
   // 「閉じる」または "Close" ボタンでダイアログを閉じる
   const closeButton = await driver.findElement(
@@ -123,7 +123,7 @@ test("ゴースト一覧: SSP パス設定後にゴーストカードが表示�
   // 起動ボタン（日英）が 1 つ以上表示される = ゴーストカードが描画されている
   const launchButtons = await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0 ? elements : null;
   }, 15_000);
@@ -147,14 +147,14 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   // ゴーストが読み込まれるまで待機
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0;
   }, 15_000);
 
   // 検索前の起動ボタン数（= カード数）を取得
   const cardsBefore = await driver.findElements(
-    By.xpath("//button[text()='起動' or text()='Launch']"),
+    By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
   );
   const countBefore = cardsBefore.length;
 
@@ -168,7 +168,7 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   // 少し待ってからカード数が減ったことを確認
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length < countBefore || elements.length === 0;
   }, 10_000);
@@ -178,7 +178,7 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
 
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0;
   }, 10_000);
@@ -198,14 +198,14 @@ test("スクロール＆ページネーション: 下にスクロールすると
   // ゴーストが読み込まれるまで待機
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0;
   }, 15_000);
 
   // 初回読込の起動ボタン数（= カード数）を取得
   const cardsBefore = await driver.findElements(
-    By.xpath("//button[text()='起動' or text()='Launch']"),
+    By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
   );
   const countBefore = cardsBefore.length;
 
@@ -227,13 +227,13 @@ test("スクロール＆ページネーション: 下にスクロールすると
   // 追加読み込みによってカード数が増えるのを待機
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > countBefore;
   }, 15_000);
 
   const cardsAfter = await driver.findElements(
-    By.xpath("//button[text()='起動' or text()='Launch']"),
+    By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
   );
   expect(cardsAfter.length).toBeGreaterThan(countBefore);
 });

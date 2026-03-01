@@ -198,7 +198,7 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
   // ゴーストが表示されるまで待機（起動ボタンが出現したら描画済み）
   const launchButtons = await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0 ? elements : null;
   }, 15_000);
@@ -212,7 +212,7 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
   let ghostName = "";
   try {
     const firstCardNameEl = await driver.findElement(
-      By.xpath("(//button[text()='起動' or text()='Launch'])[1]/parent::div/div[1]/span[1]"),
+      By.xpath("(//button[normalize-space(.)='起動' or normalize-space(.)='Launch'])[1]/parent::div/div[1]/span[1]"),
     );
     ghostName = await firstCardNameEl.getText();
   } catch {
@@ -242,13 +242,13 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
   // NFKC 正規化により結果が 1 件以上ヒットする
   await driver.wait(async () => {
     const elements = await driver.findElements(
-      By.xpath("//button[text()='起動' or text()='Launch']"),
+      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
     );
     return elements.length > 0;
   }, 10_000);
 
   const results = await driver.findElements(
-    By.xpath("//button[text()='起動' or text()='Launch']"),
+    By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
   );
   expect(results.length).toBeGreaterThan(0);
 });
