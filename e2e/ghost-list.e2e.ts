@@ -17,8 +17,8 @@ const test = base.extend<{ harness: Harness }>({
 
 /** アプリの初期ロードを待機する（ルート要素が描画されるまで） */
 async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
-  // Fluent UI のシェルが描画されるまで待機
-  await driver.wait(until.elementLocated(By.css("[class*='shell']")), timeoutMs);
+  // settingsLoading 完了後に描画される h1（Ghost Launcher）が出現するまで待機
+  await driver.wait(until.elementLocated(By.css("h1")), timeoutMs);
 }
 
 /** SSP パス未設定時の空状態テキストを検出する（日英対応） */
@@ -42,9 +42,9 @@ async function clickSettingsButton(driver: WebDriver): Promise<void> {
     );
     await btn.click();
   } catch {
-    // ヘッダーのアイコンボタン（aria-label 日英どちらか）
+    // ヘッダーの設定ボタン（テキスト内容で特定）
     const btn = await driver.findElement(
-      By.css("button[aria-label='設定'], button[aria-label='Settings']"),
+      By.xpath("//button[normalize-space(.)='設定' or normalize-space(.)='Settings']"),
     );
     await btn.click();
   }
@@ -120,20 +120,17 @@ test("ゴースト一覧: SSP パス設定後にゴーストカードが表示�
     return;
   }
 
-  // カード要素が 1 つ以上存在する
-  const cards = await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+  // 起動ボタン（日英）が 1 つ以上表示される = ゴーストカードが描画されている
+  const launchButtons = await driver.wait(async () => {
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0 ? elements : null;
   }, 15_000);
 
-  expect(cards).not.toBeNull();
-  expect(cards!.length).toBeGreaterThan(0);
-
-  // 最初のカードに起動ボタン（日英）がある
-  const launchButton = await cards![0].findElement(
-    By.xpath(".//button[text()='起動' or text()='Launch']"),
-  );
-  expect(await launchButton.isDisplayed()).toBe(true);
+  expect(launchButtons).not.toBeNull();
+  expect(launchButtons!.length).toBeGreaterThan(0);
+  expect(await launchButtons![0].isDisplayed()).toBe(true);
 });
 
 test("検索: 検索ボックスに入力すると一覧がフィルタされる", async ({ harness }) => {
@@ -149,12 +146,16 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
 
   // ゴーストが読み込まれるまで待機
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0;
   }, 15_000);
 
-  // 検索前のカード数を取得
-  const cardsBefore = await driver.findElements(By.css("[class*='card']"));
+  // 検索前の起動ボタン数（= カード数）を取得
+  const cardsBefore = await driver.findElements(
+    By.xpath("//button[text()='起動' or text()='Launch']"),
+  );
   const countBefore = cardsBefore.length;
 
   // 検索ボックスを探してテキストを入力（日英どちらかのプレースホルダ）
@@ -166,7 +167,9 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
 
   // 少し待ってからカード数が減ったことを確認
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length < countBefore || elements.length === 0;
   }, 10_000);
 
@@ -174,7 +177,9 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   await searchInput.sendKeys(Key.chord(Key.CONTROL, "a"), Key.BACK_SPACE);
 
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0;
   }, 10_000);
 });
@@ -192,12 +197,16 @@ test("スクロール＆ページネーション: 下にスクロールすると
 
   // ゴーストが読み込まれるまで待機
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0;
   }, 15_000);
 
-  // 初回読込のカード数を取得
-  const cardsBefore = await driver.findElements(By.css("[class*='card']"));
+  // 初回読込の起動ボタン数（= カード数）を取得
+  const cardsBefore = await driver.findElements(
+    By.xpath("//button[text()='起動' or text()='Launch']"),
+  );
   const countBefore = cardsBefore.length;
 
   // total 表示を取得して追加読込が可能か確認
@@ -211,16 +220,20 @@ test("スクロール＆ページネーション: 下にスクロールすると
 
   // ビューポートの末尾までスクロール
   await driver.executeScript(`
-    const viewport = document.querySelector("[class*='viewport']");
+    const viewport = document.querySelector("[data-testid='ghost-list-viewport']");
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   `);
 
   // 追加読み込みによってカード数が増えるのを待機
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > countBefore;
   }, 15_000);
 
-  const cardsAfter = await driver.findElements(By.css("[class*='card']"));
+  const cardsAfter = await driver.findElements(
+    By.xpath("//button[text()='起動' or text()='Launch']"),
+  );
   expect(cardsAfter.length).toBeGreaterThan(countBefore);
 });

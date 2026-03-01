@@ -16,7 +16,8 @@ const test = base.extend<{ harness: Harness }>({
 // --- ヘルパー ---
 
 async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
-  await driver.wait(until.elementLocated(By.css("[class*='shell']")), timeoutMs);
+  // settingsLoading 完了後に描画される h1（Ghost Launcher）が出現するまで待機
+  await driver.wait(until.elementLocated(By.css("h1")), timeoutMs);
 }
 
 /** 言語に依存しない方法で設定ダイアログを開く */
@@ -27,8 +28,9 @@ async function openSettings(driver: WebDriver): Promise<void> {
     );
     await btn.click();
   } catch {
+    // ヘッダーの設定ボタン（テキスト内容で特定）
     const btn = await driver.findElement(
-      By.css("button[aria-label='設定'], button[aria-label='Settings']"),
+      By.xpath("//button[normalize-space(.)='設定' or normalize-space(.)='Settings']"),
     );
     await btn.click();
   }
@@ -193,21 +195,25 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
     // 空状態でない = ゴーストが存在する可能性あり
   }
 
-  // ゴーストが表示されるまで待機
-  const cards = await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+  // ゴーストが表示されるまで待機（起動ボタンが出現したら描画済み）
+  const launchButtons = await driver.wait(async () => {
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0 ? elements : null;
   }, 15_000);
 
-  if (!cards) {
+  if (!launchButtons) {
     test.skip();
     return;
   }
 
-  // 最初のカードのゴースト名を取得（要素が見つからなければスキップ）
+  // 最初のカードのゴースト名を取得（起動ボタンの兄弟 span 先頭から取得）
   let ghostName = "";
   try {
-    const firstCardNameEl = await cards[0].findElement(By.css("[class*='name'], h2, h3"));
+    const firstCardNameEl = await driver.findElement(
+      By.xpath("(//button[text()='起動' or text()='Launch'])[1]/parent::div/div[1]/span[1]"),
+    );
     ghostName = await firstCardNameEl.getText();
   } catch {
     test.skip();
@@ -235,10 +241,14 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
 
   // NFKC 正規化により結果が 1 件以上ヒットする
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[class*='card']"));
+    const elements = await driver.findElements(
+      By.xpath("//button[text()='起動' or text()='Launch']"),
+    );
     return elements.length > 0;
   }, 10_000);
 
-  const results = await driver.findElements(By.css("[class*='card']"));
+  const results = await driver.findElements(
+    By.xpath("//button[text()='起動' or text()='Launch']"),
+  );
   expect(results.length).toBeGreaterThan(0);
 });

@@ -145,7 +145,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
         <Text className={styles.count} aria-live="polite">
           {t("list.count", { count: total })}
         </Text>
-        <div className={styles.viewport} ref={viewportRef}>
+        <div className={styles.viewport} ref={viewportRef} data-testid="ghost-list-viewport">
           <div className={styles.stack}>
             {ghosts.map((ghost) => (
               <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
@@ -177,6 +177,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
         className={styles.viewport}
         ref={viewportRef}
         onScroll={onScroll}
+        data-testid="ghost-list-viewport"
       >
         <div style={{ height: topSpacer }} />
         <div className={styles.stack}>
