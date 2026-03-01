@@ -25,16 +25,12 @@ async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<v
  * ゴーストが存在すれば起動ボタン一覧を返し、空状態・タイムアウトなら null を返す。
  */
 async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<WebElement[] | null> {
-  const EMPTY_XPATH =
-    "//*[contains(text(), 'SSPフォルダを選択してください') or contains(text(), 'Please select an SSP folder')" +
-    " or contains(text(), 'ゴーストが見つかりません') or contains(text(), 'No ghosts found')]";
-  const LAUNCH_XPATH = "//button[normalize-space(.)='起動' or normalize-space(.)='Launch']";
   let found: WebElement[] | null = null;
   try {
     await driver.wait(async () => {
-      const buttons = await driver.findElements(By.xpath(LAUNCH_XPATH));
+      const buttons = await driver.findElements(By.css("[data-testid='launch-button']"));
       if (buttons.length > 0) { found = buttons; return true; }
-      const empties = await driver.findElements(By.xpath(EMPTY_XPATH));
+      const empties = await driver.findElements(By.css("[data-testid='empty-state']"));
       return empties.length > 0;
     }, timeoutMs);
   } catch {
@@ -43,18 +39,15 @@ async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<Web
   return found;
 }
 
-/** 言語に依存しない方法で設定ダイアログを開く */
+/** 設定ダイアログを開く */
 async function openSettings(driver: WebDriver): Promise<void> {
   try {
-    const btn = await driver.findElement(
-      By.xpath("//button[contains(., '設定を開く') or contains(., 'Open settings')]"),
-    );
+    // 空状態の「設定を開く」ボタン
+    const btn = await driver.findElement(By.css("[data-testid='open-settings-button']"));
     await btn.click();
   } catch {
-    // ヘッダーの設定ボタン（テキスト内容で特定）
-    const btn = await driver.findElement(
-      By.xpath("//button[normalize-space(.)='設定' or normalize-space(.)='Settings']"),
-    );
+    // ヘッダーの設定ボタン
+    const btn = await driver.findElement(By.css("[data-testid='settings-button']"));
     await btn.click();
   }
   await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
@@ -76,11 +69,9 @@ async function setLanguage(driver: WebDriver, lang: "ja" | "en"): Promise<void> 
   );
 }
 
-/** ダイアログを閉じる（日英どちらかの閉じるボタン） */
+/** ダイアログを閉じる */
 async function closeSettings(driver: WebDriver): Promise<void> {
-  const closeBtn = await driver.findElement(
-    By.xpath("//button[text()='閉じる' or text()='Close']"),
-  );
+  const closeBtn = await driver.findElement(By.css("[data-testid='settings-close-button']"));
   await closeBtn.click();
   await driver.wait(async () => {
     const dialogs = await driver.findElements(By.css("[role='dialog']"));
@@ -131,7 +122,7 @@ test("言語切り替え: 英語モードで検索ボックスのプレースホ
 
   // 検索プレースホルダが英語
   const searchInput = await driver.wait(
-    until.elementLocated(By.css("input[placeholder='Search by ghost name']")),
+    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='Search by ghost name']")),
     5_000,
   );
   expect(await searchInput.isDisplayed()).toBe(true);
@@ -157,7 +148,7 @@ test("言語切り替え: 日本語に戻すと検索ボックスのプレース
 
   // 検索プレースホルダが日本語に戻っている
   const searchInput = await driver.wait(
-    until.elementLocated(By.css("input[placeholder='ゴースト名で検索']")),
+    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='ゴースト名で検索']")),
     5_000,
   );
   expect(await searchInput.isDisplayed()).toBe(true);
@@ -191,9 +182,7 @@ test("言語切り替え: SSP 未設定時の空状態メッセージも切り�
   expect(await emptyMsg.isDisplayed()).toBe(true);
 
   // 「Open settings」ボタンが表示される
-  const openSettingsBtn = await driver.findElement(
-    By.xpath("//button[contains(., 'Open settings')]"),
-  );
+  const openSettingsBtn = await driver.findElement(By.css("[data-testid='open-settings-button']"));
   expect(await openSettingsBtn.isDisplayed()).toBe(true);
 
   // 後片付け：日本語に戻す
@@ -214,12 +203,10 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
     return;
   }
 
-  // 最初のカードのゴースト名を取得（起動ボタンの兄弟 span 先頭から取得）
+  // 最初のカードのゴースト名を取得
   let ghostName = "";
   try {
-    const firstCardNameEl = await driver.findElement(
-      By.xpath("(//button[normalize-space(.)='起動' or normalize-space(.)='Launch'])[1]/parent::div/div[1]/span[1]"),
-    );
+    const firstCardNameEl = await driver.findElement(By.css("[data-testid='ghost-name']"));
     ghostName = await firstCardNameEl.getText();
   } catch {
     test.skip();
@@ -240,21 +227,15 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
     ? fullWidthChar
     : firstChar;
 
-  const searchInput = await driver.findElement(
-    By.css("input[placeholder='ゴースト名で検索'], input[placeholder='Search by ghost name']"),
-  );
+  const searchInput = await driver.findElement(By.css("[data-testid='search-input'] input"));
   await searchInput.sendKeys(searchQuery);
 
   // NFKC 正規化により結果が 1 件以上ヒットする
   await driver.wait(async () => {
-    const elements = await driver.findElements(
-      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
-    );
+    const elements = await driver.findElements(By.css("[data-testid='launch-button']"));
     return elements.length > 0;
   }, 10_000);
 
-  const results = await driver.findElements(
-    By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
-  );
+  const results = await driver.findElements(By.css("[data-testid='launch-button']"));
   expect(results.length).toBeGreaterThan(0);
 });

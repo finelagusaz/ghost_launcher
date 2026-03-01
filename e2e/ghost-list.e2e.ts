@@ -15,23 +15,16 @@ const test = base.extend<{ harness: Harness }>({
 
 // --- ヘルパー ---
 
-// ゴーストが表示されていない状態（SSP未設定 or スキャン結果0件）を検出する XPath
-const EMPTY_STATE_XPATH =
-  "//*[contains(text(), 'SSPフォルダを選択してください') or contains(text(), 'Please select an SSP folder')" +
-  " or contains(text(), 'ゴーストが見つかりません') or contains(text(), 'No ghosts found')]";
-// 起動ボタンの XPath（日英対応・icon 付き Button でも確実にマッチ）
-const LAUNCH_BUTTON_XPATH = "//button[normalize-space(.)='起動' or normalize-space(.)='Launch']";
-
 /** アプリの初期ロードを待機する（ルート要素が描画されるまで） */
 async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
   // settingsLoading 完了後に描画される h1（Ghost Launcher）が出現するまで待機
   await driver.wait(until.elementLocated(By.css("h1")), timeoutMs);
 }
 
-/** SSP パス未設定時の空状態テキストを検出する（日英対応） */
+/** SSP パス未設定時の空状態テキストを検出する */
 async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
   try {
-    const el = await driver.findElement(By.xpath(EMPTY_STATE_XPATH));
+    const el = await driver.findElement(By.css("[data-testid='empty-state']"));
     return el.getText();
   } catch {
     return null;
@@ -41,15 +34,15 @@ async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
 /**
  * スキャン完了（ゴーストカード表示 or 空状態）まで待機する。
  * ゴーストが存在すれば起動ボタン一覧を返し、空状態・タイムアウトなら null を返す。
- * findEmptyStateText と異なり、スキャン中のローディング状態でも確実に完了を待つ。
+ * スキャン中のローディング状態でも確実に完了を待つ。
  */
 async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<WebElement[] | null> {
   let found: WebElement[] | null = null;
   try {
     await driver.wait(async () => {
-      const buttons = await driver.findElements(By.xpath(LAUNCH_BUTTON_XPATH));
+      const buttons = await driver.findElements(By.css("[data-testid='launch-button']"));
       if (buttons.length > 0) { found = buttons; return true; }
-      const empties = await driver.findElements(By.xpath(EMPTY_STATE_XPATH));
+      const empties = await driver.findElements(By.css("[data-testid='empty-state']"));
       return empties.length > 0;
     }, timeoutMs);
   } catch {
@@ -61,16 +54,12 @@ async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<Web
 /** 言語に依存しない方法で設定ボタンを見つけてクリックする */
 async function clickSettingsButton(driver: WebDriver): Promise<void> {
   try {
-    // 空状態の「設定を開く」または "Open settings"
-    const btn = await driver.findElement(
-      By.xpath("//button[contains(., '設定を開く') or contains(., 'Open settings')]"),
-    );
+    // 空状態の「設定を開く」ボタン
+    const btn = await driver.findElement(By.css("[data-testid='open-settings-button']"));
     await btn.click();
   } catch {
-    // ヘッダーの設定ボタン（テキスト内容で特定）
-    const btn = await driver.findElement(
-      By.xpath("//button[normalize-space(.)='設定' or normalize-space(.)='Settings']"),
-    );
+    // ヘッダーの設定ボタン
+    const btn = await driver.findElement(By.css("[data-testid='settings-button']"));
     await btn.click();
   }
   await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
@@ -100,10 +89,8 @@ test("SSP パス未設定時に設定誘導が表示される", async ({ harness
       text.includes("Please select an SSP folder"),
     ).toBe(true);
 
-    // 「設定を開く」または "Open settings" ボタンが存在する
-    const settingsButton = await driver.findElement(
-      By.xpath("//button[contains(., '設定を開く') or contains(., 'Open settings')]"),
-    );
+    // 「設定を開く」ボタンが存在する
+    const settingsButton = await driver.findElement(By.css("[data-testid='open-settings-button']"));
     expect(await settingsButton.isDisplayed()).toBe(true);
   }
 });
@@ -120,10 +107,8 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
   );
   await driver.wait(until.elementIsVisible(dialogTitleEl), 5_000);
 
-  // 「閉じる」または "Close" ボタンでダイアログを閉じる
-  const closeButton = await driver.findElement(
-    By.xpath("//button[text()='閉じる' or text()='Close']"),
-  );
+  // 閉じるボタンでダイアログを閉じる
+  const closeButton = await driver.findElement(By.css("[data-testid='settings-close-button']"));
   await closeButton.click();
 
   // ダイアログが閉じたことを確認
@@ -160,16 +145,14 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   }
   const countBefore = initialButtons.length;
 
-  // 検索ボックスを探してテキストを入力（日英どちらかのプレースホルダ）
-  const searchInput = await driver.findElement(
-    By.css("input[placeholder='ゴースト名で検索'], input[placeholder='Search by ghost name']"),
-  );
+  // 検索ボックスの input 要素を取得
+  const searchInput = await driver.findElement(By.css("[data-testid='search-input'] input"));
   // 存在しないゴースト名で検索してフィルタリングを確認
   await searchInput.sendKeys("zzz_nonexistent_ghost_name_zzz");
 
   // 少し待ってからカード数が減ったことを確認
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.xpath(LAUNCH_BUTTON_XPATH));
+    const elements = await driver.findElements(By.css("[data-testid='launch-button']"));
     return elements.length < countBefore || elements.length === 0;
   }, 10_000);
 
@@ -177,7 +160,7 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   await searchInput.sendKeys(Key.chord(Key.CONTROL, "a"), Key.BACK_SPACE);
 
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.xpath(LAUNCH_BUTTON_XPATH));
+    const elements = await driver.findElements(By.css("[data-testid='launch-button']"));
     return elements.length > 0;
   }, 10_000);
 });
@@ -211,10 +194,10 @@ test("スクロール＆ページネーション: 下にスクロールすると
 
   // 追加読み込みによってカード数が増えるのを待機
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.xpath(LAUNCH_BUTTON_XPATH));
+    const elements = await driver.findElements(By.css("[data-testid='launch-button']"));
     return elements.length > countBefore;
   }, 15_000);
 
-  const cardsAfter = await driver.findElements(By.xpath(LAUNCH_BUTTON_XPATH));
+  const cardsAfter = await driver.findElements(By.css("[data-testid='launch-button']"));
   expect(cardsAfter.length).toBeGreaterThan(countBefore);
 });
