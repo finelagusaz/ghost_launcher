@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test";
-import { By, until, type WebDriver } from "selenium-webdriver";
+import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
 import { createHarness, disposeHarness, type Harness } from "./helpers/harness";
 
 const test = base.extend<{ harness: Harness }>({
@@ -18,6 +18,29 @@ const test = base.extend<{ harness: Harness }>({
 async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
   // settingsLoading 完了後に描画される h1（Ghost Launcher）が出現するまで待機
   await driver.wait(until.elementLocated(By.css("h1")), timeoutMs);
+}
+
+/**
+ * スキャン完了（ゴーストカード表示 or 空状態）まで待機する。
+ * ゴーストが存在すれば起動ボタン一覧を返し、空状態・タイムアウトなら null を返す。
+ */
+async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<WebElement[] | null> {
+  const EMPTY_XPATH =
+    "//*[contains(text(), 'SSPフォルダを選択してください') or contains(text(), 'Please select an SSP folder')" +
+    " or contains(text(), 'ゴーストが見つかりません') or contains(text(), 'No ghosts found')]";
+  const LAUNCH_XPATH = "//button[normalize-space(.)='起動' or normalize-space(.)='Launch']";
+  let found: WebElement[] | null = null;
+  try {
+    await driver.wait(async () => {
+      const buttons = await driver.findElements(By.xpath(LAUNCH_XPATH));
+      if (buttons.length > 0) { found = buttons; return true; }
+      const empties = await driver.findElements(By.xpath(EMPTY_XPATH));
+      return empties.length > 0;
+    }, timeoutMs);
+  } catch {
+    // タイムアウト
+  }
+  return found;
 }
 
 /** 言語に依存しない方法で設定ダイアログを開く */
@@ -184,25 +207,8 @@ test("NFKC正規化: 全角文字で検索してもゴーストがヒットす�
   const { driver } = harness;
   await waitForAppReady(driver);
 
-  // SSP 未設定 or ゴーストが存在しないならスキップ
-  try {
-    await driver.findElement(
-      By.xpath("//*[contains(text(), 'SSPフォルダを選択してください') or contains(text(), 'Please select an SSP folder')]"),
-    );
-    test.skip();
-    return;
-  } catch {
-    // 空状態でない = ゴーストが存在する可能性あり
-  }
-
-  // ゴーストが表示されるまで待機（起動ボタンが出現したら描画済み）
-  const launchButtons = await driver.wait(async () => {
-    const elements = await driver.findElements(
-      By.xpath("//button[normalize-space(.)='起動' or normalize-space(.)='Launch']"),
-    );
-    return elements.length > 0 ? elements : null;
-  }, 15_000);
-
+  // スキャン完了まで待機（SSP未設定またはゴースト0件の場合はスキップ）
+  const launchButtons = await waitForGhosts(driver);
   if (!launchButtons) {
     test.skip();
     return;
