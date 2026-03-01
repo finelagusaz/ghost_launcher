@@ -19,7 +19,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-02 | 追加フォルダ管理           | SSP 外のゴーストフォルダを追加・削除・永続化                                        |
 | F-03 | ゴーストスキャン           | SSP フォルダ + 追加フォルダ内のゴーストを走査し `descript.txt` からメタデータを解析 |
 | F-04 | フィンガープリント差分検知 | ディレクトリ構成・更新時刻のハッシュでスキャン結果の変化を検出                      |
-| F-05 | ゴーストキャッシュ         | スキャン結果を SQLite に永続化し、fingerprint を `localStorage` に保持して差分検知 |
+| F-05 | ゴーストキャッシュ         | スキャン結果を SQLite に永続化し、fingerprint を `localStorage` に保持して差分検知。世代数（最新 5 世代）と TTL（30 日）による寿命管理で肥大化を防止 |
 | F-06 | ゴースト検索               | SQLite に対する名前・ディレクトリ名の部分一致検索                                   |
 | F-07 | ゴースト起動               | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定）      |
 | F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
@@ -79,13 +79,16 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | **lib/**                   |                                                                          |
 | `settingsStore.ts`         | `LazyStore("settings.json")` のシングルトン                              |
 | `ghostScanClient.ts`       | Tauri `invoke` ラッパー（`scanGhostsWithMeta`, `getGhostsFingerprint`）  |
-| `ghostScanOrchestrator.ts` | キャッシュ検証・重複排除付きスキャン実行                                 |
+| `ghostScanOrchestrator.ts` | キャッシュ検証（`validateCache`）・重複排除付きスキャン実行（`executeScan`） |
 | `ghostScanUtils.ts`        | パス正規化・リクエストキー生成・エラーメッセージ構築                     |
-| `ghostCacheRepository.ts`  | ゴーストキャッシュの読み書き（キュー化による直列書き込み）               |
+| `ghostDatabase.ts`         | SQLite への読み書き（`replaceGhostsByRequestKey`, `hasGhosts`, `searchGhosts`, `cleanupOldGhostCaches`） |
+| `ghostCatalogService.ts`   | キャッシュ判定・スキャン実行・SQLite 保存・fingerprint 更新・寿命管理のユースケース手順 |
+| `fingerprintCache.ts`      | `localStorage` への fingerprint 読み書き・刈り込み（`getCachedFingerprint`, `setCachedFingerprint`, `pruneFingerprintCache`） |
 | `ghostLaunchUtils.ts`      | 起動エラーメッセージ構築・ソースフォルダラベル取得                       |
+| `i18n.ts`                  | i18next 初期化・ユーザーロケールファイル読み込み                         |
 | **hooks/**                 |                                                                          |
 | `useSettings.ts`           | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化              |
-| `useGhosts.ts`             | ゴーストスキャン・キャッシュ管理・状態提供                               |
+| `useGhosts.ts`             | React 状態（loading / error）管理と refresh トリガ。実処理は `ghostCatalogService.ts` に委譲 |
 | `useSearch.ts`             | SQLite 部分一致検索。バッファマージモデル（隣接/重複範囲をマージし旧データを保持） |
 | `useVirtualizedList.ts`    | 仮想スクロール計算。`totalCount` で固定スクロール空間を確保              |
 | `useElementHeight.ts`      | ResizeObserver による要素高さ追跡                                        |
@@ -121,31 +124,30 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `name_lower`           | `string` | `name` の小文字版（検索用）           |
 | `directory_name_lower` | `string` | `directory_name` の小文字版（検索用） |
 
-### 4.3 GhostCacheStoreV1（永続化キャッシュ）
+### 4.3 ghosts テーブル（SQLite 揮発キャッシュ）
 
-```json
-{
-  "version": 1,
-  "entries": {
-    "<request_key>": {
-      "request_key": "c:/ssp::c:/extra_ghosts",
-      "fingerprint": "0123456789abcdef",
-      "ghosts": [
-        /* Ghost[] */
-      ],
-      "cached_at": "2026-02-24T12:00:00.000Z"
-    }
-  }
-}
-```
+| カラム名               | 型     | 説明                                              |
+| ---------------------- | ------ | ------------------------------------------------- |
+| `request_key`          | `TEXT` | SSP パスと追加フォルダから生成した識別子          |
+| `name`                 | `TEXT` | ゴースト名                                        |
+| `directory_name`       | `TEXT` | ゴーストのディレクトリ名                          |
+| `path`                 | `TEXT` | ゴーストのフルパス                                |
+| `source`               | `TEXT` | `"ssp"` またはフォルダフルパス                    |
+| `name_lower`           | `TEXT` | `name` の NFKC 正規化・小文字版（検索用）         |
+| `directory_name_lower` | `TEXT` | `directory_name` の NFKC 正規化・小文字版（検索用）|
+| `updated_at`           | `TEXT` | 行の最終更新日時（`CURRENT_TIMESTAMP`）           |
+
+- `ghosts` テーブルはファイルシステム索引の揮発キャッシュであり、スキャンで完全再投入可能
+- スキーマ変更時は `DELETE FROM ghosts` を migration に含め、次回起動時のフルスキャンで再投入させる
 
 ### 4.4 設定ストア（settings.json）
 
-| キー             | 型                  | 説明                         |
-| ---------------- | ------------------- | ---------------------------- |
-| `ssp_path`       | `string`            | SSP インストールフォルダパス |
-| `ghost_folders`  | `string[]`          | 追加ゴーストフォルダの配列   |
-| `ghost_cache_v1` | `GhostCacheStoreV1` | ゴーストキャッシュ           |
+| キー            | 型         | 説明                         |
+| --------------- | ---------- | ---------------------------- |
+| `ssp_path`      | `string`   | SSP インストールフォルダパス |
+| `ghost_folders` | `string[]` | 追加ゴーストフォルダの配列   |
+
+ゴーストキャッシュは SQLite（`ghosts.db`）に、fingerprint は `localStorage`（キー: `fingerprint_<request_key>`）に別途保存する。
 
 ---
 
@@ -240,12 +242,15 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 8.1 キャッシュフロー
 
-1. **refresh開始**: `requestKey` を生成し、同一キーの in-flight リクエストを抑止
-2. **キャッシュ検証準備**: `localStorage[fingerprint_${requestKey}]` と SQLite のデータ有無を確認
-3. **検証**: `get_ghosts_fingerprint` を呼び出し fingerprint 一致を判定
-4. **一致**: スキャン不要（`useSearch` が SQLite から一覧を取得）
-5. **不一致/未保持/強制更新**: フルスキャンを実行
-6. **保存**: スキャン結果を SQLite へ置換保存し、成功時のみ fingerprint を更新
+1. **refresh 開始**: `requestKey` を生成。同一 `inFlightKey` が処理中なら即リターンし重複を防ぐ
+2. **キャッシュ検証**（`forceFullScan` でない場合）:
+   1. `localStorage` から fingerprint を取得（`getCachedFingerprint`）
+   2. SQLite に該当 `requestKey` のデータが存在するか確認（`hasGhosts`）
+   3. `get_ghosts_fingerprint` で現在の fingerprint と比較（`validateCache`）
+   4. 一致すれば処理をスキップ（`skipped: true`）
+3. **フルスキャン**: `scan_ghosts_with_meta` を実行（`executeScan` で同一 `requestKey` の並行リクエストを共有）
+4. **保存**: スキャン結果を SQLite へ置換保存（`replaceGhostsByRequestKey`）し、fingerprint を `localStorage` へ更新
+5. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）し、対応する fingerprint を `localStorage` から刈り込む（`pruneFingerprintCache`）
 
 ### 8.2 責務分離方針
 
@@ -263,6 +268,19 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 ### 8.4 重複排除
 
 同一 `requestKey` に対する並行スキャンリクエストは共有される（`pendingScans` Map）。
+
+### 8.5 寿命管理
+
+スキャン結果の保存後（`replaceGhostsByRequestKey` 成功直後）に `cleanupOldGhostCaches` を実行し、不要な `request_key` キャッシュを削除する。
+
+| 項目                          | 仕様                                                       |
+| ----------------------------- | ---------------------------------------------------------- |
+| 世代保持数                    | 最新 5 世代                                                |
+| TTL                           | 30 日                                                      |
+| 削除条件                      | 世代超過 **または** TTL 超過                               |
+| `currentRequestKey` の保護    | TTL 切れでも削除対象から除外し、戻り値に必ず含める          |
+| fingerprint の同期刈り込み    | 削除後に `pruneFingerprintCache(keepRequestKeys)` で対応する `localStorage` エントリも削除 |
+| 失敗時の挙動                  | 警告ログのみ。UI への影響なし                              |
 
 ---
 
@@ -323,30 +341,29 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> BuildRequestKey : refresh() 呼び出し
+    [*] --> CheckInFlight : refresh() 呼び出し
 
-    BuildRequestKey --> CheckInFlight : requestKey 生成
     CheckInFlight --> [*] : 同一リクエスト処理中（スキップ）
     CheckInFlight --> CheckForceFullScan : 新規リクエスト
 
-    CheckForceFullScan --> LoadPreloadedCache : 通常スキャン
+    CheckForceFullScan --> CheckFingerprintCache : 通常スキャン
     CheckForceFullScan --> ExecuteFullScan : 強制フルスキャン
 
-    LoadPreloadedCache --> ShowCached : preloaded キャッシュあり
-    LoadPreloadedCache --> ReadStoreCache : preloaded なし
+    CheckFingerprintCache --> ExecuteFullScan : fingerprint なし
+    CheckFingerprintCache --> CheckSQLiteExists : fingerprint あり
 
-    ReadStoreCache --> ShowCached : ストアキャッシュあり
-    ReadStoreCache --> ExecuteFullScan : キャッシュなし
+    CheckSQLiteExists --> ExecuteFullScan : SQLite にデータなし
+    CheckSQLiteExists --> ValidateFingerprint : SQLite にデータあり
 
-    ShowCached --> ValidateFingerprint : UI にキャッシュ表示済み
-    ValidateFingerprint --> Done : fingerprint 一致
+    ValidateFingerprint --> Done : fingerprint 一致（スキップ）
     ValidateFingerprint --> ExecuteFullScan : fingerprint 不一致 / エラー
 
-    ExecuteFullScan --> UpdateUI : スキャン成功
+    ExecuteFullScan --> SaveToSQLite : スキャン成功
     ExecuteFullScan --> HandleError : スキャン失敗
 
-    UpdateUI --> WriteCacheAsync : UI 更新
-    WriteCacheAsync --> Done : キャッシュ書き込み（非同期）
+    SaveToSQLite --> UpdateFingerprint : SQLite 置換保存
+    UpdateFingerprint --> LifecycleCleanup : localStorage 更新
+    LifecycleCleanup --> Done : 世代超過・TTL 超過キャッシュを削除
 
     HandleError --> Done : エラー表示
 
