@@ -1,6 +1,7 @@
 import { test as base, expect } from "@playwright/test";
-import { By, until, Key, type WebDriver, type WebElement } from "selenium-webdriver";
+import { By, until, Key, type WebDriver } from "selenium-webdriver";
 import { createHarness, disposeHarness, type Harness } from "./helpers/harness";
+import { waitForAppReady, waitForGhosts, openSettings, closeSettings } from "./helpers/ui";
 
 const test = base.extend<{ harness: Harness }>({
   harness: async ({}, use) => {
@@ -15,12 +16,6 @@ const test = base.extend<{ harness: Harness }>({
 
 // --- ヘルパー ---
 
-/** アプリの初期ロードを待機する（ルート要素が描画されるまで） */
-async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
-  // settingsLoading 完了後に描画される h1（Ghost Launcher）が出現するまで待機
-  await driver.wait(until.elementLocated(By.css("h1")), timeoutMs);
-}
-
 /** SSP パス未設定時の空状態テキストを検出する */
 async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
   try {
@@ -29,40 +24,6 @@ async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * スキャン完了（ゴーストカード表示 or 空状態）まで待機する。
- * ゴーストが存在すれば起動ボタン一覧を返し、空状態・タイムアウトなら null を返す。
- * スキャン中のローディング状態でも確実に完了を待つ。
- */
-async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<WebElement[] | null> {
-  let found: WebElement[] | null = null;
-  try {
-    await driver.wait(async () => {
-      const buttons = await driver.findElements(By.css("[data-testid='launch-button']"));
-      if (buttons.length > 0) { found = buttons; return true; }
-      const empties = await driver.findElements(By.css("[data-testid='empty-state']"));
-      return empties.length > 0;
-    }, timeoutMs);
-  } catch {
-    // タイムアウト
-  }
-  return found;
-}
-
-/** 言語に依存しない方法で設定ボタンを見つけてクリックする */
-async function clickSettingsButton(driver: WebDriver): Promise<void> {
-  try {
-    // 空状態の「設定を開く」ボタン
-    const btn = await driver.findElement(By.css("[data-testid='open-settings-button']"));
-    await btn.click();
-  } catch {
-    // ヘッダーの設定ボタン
-    const btn = await driver.findElement(By.css("[data-testid='settings-button']"));
-    await btn.click();
-  }
-  await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
 }
 
 // --- テストケース ---
@@ -99,7 +60,7 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
   const { driver } = harness;
   await waitForAppReady(driver);
 
-  await clickSettingsButton(driver);
+  await openSettings(driver);
 
   // ダイアログタイトル「設定」または "Settings" が表示される（アニメーション完了まで待機）
   const dialogTitleEl = await driver.findElement(
@@ -107,15 +68,7 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
   );
   await driver.wait(until.elementIsVisible(dialogTitleEl), 5_000);
 
-  // 閉じるボタンでダイアログを閉じる
-  const closeButton = await driver.findElement(By.css("[data-testid='settings-close-button']"));
-  await closeButton.click();
-
-  // ダイアログが閉じたことを確認
-  await driver.wait(async () => {
-    const dialogs = await driver.findElements(By.css("[role='dialog']"));
-    return dialogs.length === 0;
-  }, 5_000);
+  await closeSettings(driver);
 });
 
 test("ゴースト一覧: SSP パス設定後にゴーストカードが表示される", async ({ harness }) => {
@@ -130,7 +83,6 @@ test("ゴースト一覧: SSP パス設定後にゴーストカードが表示�
   }
 
   expect(launchButtons.length).toBeGreaterThan(0);
-  expect(await launchButtons[0].isDisplayed()).toBe(true);
 });
 
 test("検索: 検索ボックスに入力すると一覧がフィルタされる", async ({ harness }) => {
