@@ -1,5 +1,5 @@
-import { hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
-import { getCachedFingerprint, setCachedFingerprint } from "./fingerprintCache";
+import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
+import { getCachedFingerprint, pruneFingerprintCache, setCachedFingerprint } from "./fingerprintCache";
 import { executeScan, validateCache } from "./ghostScanOrchestrator";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
 
@@ -37,5 +37,13 @@ export async function refreshGhostCatalog({
   const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
   await replaceGhostsByRequestKey(requestKey, result.ghosts);
   setCachedFingerprint(requestKey, result.fingerprint);
+
+  try {
+    const keepRequestKeys = await cleanupOldGhostCaches(requestKey);
+    pruneFingerprintCache(keepRequestKeys);
+  } catch (error) {
+    console.warn("[ghostCatalogService] キャッシュ寿命管理のクリーンアップに失敗しました", error);
+  }
+
   return { skipped: false };
 }

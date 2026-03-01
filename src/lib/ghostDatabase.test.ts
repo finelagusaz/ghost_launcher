@@ -131,3 +131,25 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
     expect(sqlCalls[0]).toMatch(/^DELETE FROM ghosts/);
   });
 });
+
+describe("ghostDatabase - cleanupOldGhostCaches", () => {
+  it("世代上限とTTLに基づき古い request_key を削除する", async () => {
+    const now = new Date();
+    const iso = (daysAgo: number) => new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+    mockSelect.mockResolvedValue([
+      { request_key: "rk-current", last_updated: iso(0) },
+      { request_key: "rk-recent", last_updated: iso(1) },
+      { request_key: "rk-old", last_updated: iso(40) },
+    ]);
+
+    const { cleanupOldGhostCaches } = await import("./ghostDatabase");
+    const keep = await cleanupOldGhostCaches("rk-current", 2, 30);
+
+    expect(keep).toContain("rk-current");
+    const deleteCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall![1]).toEqual(["rk-old"]);
+  });
+});
