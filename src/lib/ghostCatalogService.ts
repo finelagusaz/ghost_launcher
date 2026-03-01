@@ -27,7 +27,6 @@ export async function refreshGhostCatalog({
     sspPath,
     additionalFolders,
     forceFullScan,
-    cachedFingerprint,
   });
 
   const cacheFingerprintMatched =

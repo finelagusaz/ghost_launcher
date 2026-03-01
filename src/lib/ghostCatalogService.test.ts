@@ -99,7 +99,6 @@ describe("refreshGhostCatalog", () => {
       sspPath: "C:/SSP",
       additionalFolders: [],
       forceFullScan: true,
-      cachedFingerprint: null,
     });
   });
 
