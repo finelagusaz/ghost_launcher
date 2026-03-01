@@ -31,3 +31,6 @@ workspace/
 dev_out*.txt
 pr_body.md
 commit_msg.txt
+
+# テスト成果物
+test-results/
