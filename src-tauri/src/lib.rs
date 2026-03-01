@@ -29,7 +29,7 @@ pub fn run() {
                     }, tauri_plugin_sql::Migration {
                         version: 3,
                         description: "add_updated_at_and_reset_ghosts_cache",
-                        sql: "ALTER TABLE ghosts ADD COLUMN updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP;\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nDELETE FROM ghosts;",
+                        sql: "ALTER TABLE ghosts ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nDELETE FROM ghosts;",
                         kind: tauri_plugin_sql::MigrationKind::Up,
                     }],
                 )
