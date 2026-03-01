@@ -1,10 +1,5 @@
-use crate::utils::descript;
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::fingerprint::{
-    compute_fingerprint_hash, metadata_modified_string, push_absent_parent_token, push_entry_token,
-};
 use super::path_utils::normalize_path;
 use super::types::Ghost;
 
@@ -25,104 +20,8 @@ pub(crate) fn unique_sorted_additional_folders(
     folders
 }
 
-/// ゴーストディレクトリを走査し、Ghost データとフィンガープリントトークンを同時収集する
-/// required=true の場合、read_dir 失敗でエラーを返す（SSP 用）
-/// required=false の場合、read_dir 失敗でもトークンを追加して正常終了（追加フォルダ用）
-fn scan_ghost_dir_with_fingerprint(
-    parent_dir: &Path,
-    source: &str,
-    parent_label: &str,
-    normalized_parent: &str,
-    tokens: &mut Vec<String>,
-    required: bool,
-) -> Result<Vec<Ghost>, String> {
-    let mut ghosts = Vec::new();
-
-    // 親ディレクトリの modified time（fingerprint 用）
-    let parent_modified = fs::metadata(parent_dir)
-        .as_ref()
-        .map(metadata_modified_string)
-        .unwrap_or_else(|_| "unreadable".to_string());
-    tokens.push(format!(
-        "parent|{}|{}|{}",
-        parent_label, normalized_parent, parent_modified
-    ));
-
-    let entries = match fs::read_dir(parent_dir) {
-        Ok(entries) => entries,
-        Err(error) => {
-            if required {
-                return Err(format!(
-                    "ディレクトリを読み取れませんでした ({}): {}",
-                    parent_dir.display(),
-                    error
-                ));
-            }
-            tokens.push(format!(
-                "entries|{}|{}|unreadable",
-                parent_label, normalized_parent
-            ));
-            return Ok(ghosts);
-        }
-    };
-
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        // fs::metadata は Windows で GetFileInformationByHandle を使い $STANDARD_INFORMATION を読む。
-        // entry.metadata()（FindNextFile キャッシュ）は Windows NTFS の遅延タイムスタンプ更新で
-        // 陳腐化する場合があるため使用しない。
-        let entry_meta = match fs::metadata(&path) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let directory_name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(name) => name.to_string(),
-            None => continue,
-        };
-
-        let descript_path = path.join("ghost").join("master").join("descript.txt");
-        // トークン生成と descript_state 取得を共通ヘルパーに委譲
-        let descript_state = push_entry_token(
-            tokens,
-            parent_label,
-            normalized_parent,
-            &directory_name,
-            &entry_meta,
-            &descript_path,
-        );
-
-        // descript.txt が存在する場合のみパースして Ghost を構築
-        if descript_state != "missing" {
-            if let Ok(fields) = descript::parse_descript(&descript_path) {
-                let name = fields
-                    .get("name")
-                    .cloned()
-                    .unwrap_or_else(|| directory_name.clone());
-                let craftman = fields.get("craftman").cloned().unwrap_or_default();
-
-                ghosts.push(Ghost {
-                    name,
-                    craftman,
-                    directory_name,
-                    path: path.to_string_lossy().into_owned(),
-                    source: source.to_string(),
-                });
-            }
-        }
-    }
-
-    Ok(ghosts)
-}
-
-/// scan と fingerprint を単一走査で実行する統合関数
+/// scan と fingerprint を 2 パスで実行する統合関数。
+/// ゴーストメタデータは ghost-meta クレートに、フィンガープリント計算は fingerprint モジュールに委譲する。
 pub(crate) fn scan_ghosts_with_fingerprint_internal(
     ssp_path: &str,
     additional_folders: &[String],
@@ -141,55 +40,39 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
         ));
     }
 
-    let mut tokens = vec!["fingerprint-version|1".to_string()];
-    let normalized_ssp = normalize_path(&ghost_dir);
+    // SSP ゴーストをスキャン
+    let mut ghosts: Vec<Ghost> = ghost_meta::scan_ghosts(&ghost_dir)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|meta| Ghost {
+            name: meta.name,
+            craftman: meta.craftman.unwrap_or_default(),
+            directory_name: meta.directory_name,
+            path: meta.path.to_string_lossy().into_owned(),
+            source: "ssp".to_string(),
+        })
+        .collect();
 
-    let mut ghosts = scan_ghost_dir_with_fingerprint(
-        &ghost_dir,
-        "ssp",
-        "ssp",
-        &normalized_ssp,
-        &mut tokens,
-        true,
-    )?;
-
-    for (source, folder_path, normalized_folder) in
-        unique_sorted_additional_folders(additional_folders)
-    {
-        if !folder_path.exists() {
-            push_absent_parent_token(
-                &mut tokens,
-                &normalized_folder,
-                &normalized_folder,
-                "missing",
-            );
+    // 追加フォルダをスキャン
+    for (source, folder_path, _) in unique_sorted_additional_folders(additional_folders) {
+        if !folder_path.exists() || !folder_path.is_dir() {
             continue;
         }
-        if !folder_path.is_dir() {
-            push_absent_parent_token(
-                &mut tokens,
-                &normalized_folder,
-                &normalized_folder,
-                "not-directory",
-            );
-            continue;
-        }
-        if let Ok(mut additional) = scan_ghost_dir_with_fingerprint(
-            &folder_path,
-            &source,
-            &normalized_folder,
-            &normalized_folder,
-            &mut tokens,
-            false,
-        ) {
-            ghosts.append(&mut additional);
+        if let Ok(metas) = ghost_meta::scan_ghosts(&folder_path) {
+            ghosts.extend(metas.into_iter().map(|meta| Ghost {
+                name: meta.name,
+                craftman: meta.craftman.unwrap_or_default(),
+                directory_name: meta.directory_name,
+                path: meta.path.to_string_lossy().into_owned(),
+                source: source.clone(),
+            }));
         }
     }
 
     ghosts.sort_by_cached_key(|ghost| ghost.name.to_lowercase());
 
-    // フィンガープリント計算
-    let fingerprint = compute_fingerprint_hash(&tokens);
+    // フィンガープリント計算（fingerprint モジュールに委譲）
+    let fingerprint = super::fingerprint::build_fingerprint(ssp_path, additional_folders)?;
 
     Ok((ghosts, fingerprint))
 }

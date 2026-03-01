@@ -1,5 +1,4 @@
 mod commands;
-mod utils;
 
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
