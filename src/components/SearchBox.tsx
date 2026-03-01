@@ -22,7 +22,7 @@ export function SearchBox({ value, onChange }: Props) {
   const isComposing = useRef(false);
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-testid="search-input">
       <Field label={t("search.label")}>
         <Input
           contentBefore={<SearchRegular />}

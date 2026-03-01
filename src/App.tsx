@@ -166,7 +166,7 @@ function App() {
               />
             </DialogContent>
             <DialogActions>
-              <Button appearance="secondary" onClick={handleCloseSettings}>
+              <Button appearance="secondary" onClick={handleCloseSettings} data-testid="settings-close-button">
                 {t("app.settings.close")}
               </Button>
             </DialogActions>

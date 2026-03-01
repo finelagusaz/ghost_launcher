@@ -132,7 +132,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
 
   if (total === 0 && ghosts.length === 0) {
     return (
-      <div className={styles.state}>
+      <div className={styles.state} data-testid="empty-state">
         <Text>{t("list.empty")}</Text>
       </div>
     );

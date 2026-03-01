@@ -63,7 +63,7 @@ export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRef
             {t("header.refresh")}
           </Button>
         )}
-        <Button icon={<SettingsRegular />} appearance="secondary" onClick={onOpenSettings}>
+        <Button icon={<SettingsRegular />} appearance="secondary" onClick={onOpenSettings} data-testid="settings-button">
           {t("header.settings")}
         </Button>
       </div>

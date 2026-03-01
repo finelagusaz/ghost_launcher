@@ -110,7 +110,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
     <Card className={styles.card} appearance="outline">
       <div className={styles.row}>
         <div className={styles.info}>
-          <Text weight="semibold" className={styles.name}>
+          <Text weight="semibold" className={styles.name} data-testid="ghost-name">
             {ghost.name}
           </Text>
           <Text className={styles.meta}>
@@ -128,6 +128,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
           appearance="outline"
           onClick={handleLaunch}
           disabled={launching}
+          data-testid="launch-button"
         >
           {launching ? t("card.launching") : t("card.launch")}
         </Button>

@@ -64,9 +64,9 @@ export const GhostContent = memo(function GhostContent({
 
   if (!sspPath) {
     return (
-      <div className={styles.emptyState}>
+      <div className={styles.emptyState} data-testid="empty-state">
         <Text>{t("content.noSspPath")}</Text>
-        <Button icon={<SettingsRegular />} appearance="outline" onClick={onOpenSettings}>
+        <Button icon={<SettingsRegular />} appearance="outline" onClick={onOpenSettings} data-testid="open-settings-button">
           {t("content.openSettings")}
         </Button>
       </div>
