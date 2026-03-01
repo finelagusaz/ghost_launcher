@@ -100,6 +100,10 @@ ghost_launcher/
 
 **SQLite マイグレーション制約**: `ALTER TABLE ... ADD COLUMN ... DEFAULT` の値には**リテラルのみ**使用できる。`CURRENT_TIMESTAMP` や `datetime('now')` などの関数は拒否される（アプリ起動時にマイグレーション失敗でクラッシュする）。正しくは `DEFAULT ''` のようにリテラルを指定し、実際の値は INSERT 時の VALUES 句で設定する。新しいマイグレーションを追加・変更した場合は `cargo test` のインメモリ DB テスト（`lib.rs` の `tests::マイグレーションが順番にインメモリdbへ適用できる`）が構文エラーを検知する。
 
+**SQLite スキーマ防衛修復**: migration が既存 DB に適用されないケース（開発中の DB バージョン混在など）への防衛線として `repairGhostDbSchema()` パターンを使う。`PRAGMA table_info(ghosts)` でカラム存在を確認し、欠落していれば `ALTER TABLE` で追加後にキャッシュをリセット。セッション内で繰り返し呼ばれるため、モジュールレベルフラグ（`let schemaRepaired = false`）で初回のみ実行するよう制御する。
+
+**vitest モックのリセット**: `vi.mockClear()` は呼び出し履歴（calls/results）をクリアするが `mockResolvedValue` などの実装は残る。テスト間でモック実装が汚染される場合は `vi.mockReset()` を使う。モジュールレベル変数（フラグ・シングルトン等）をリセットしたい場合は `beforeEach` で `vi.resetModules()` を呼び、dynamic import（`await import('./module')`）でモジュールを再取得する。
+
 ## 開発方針
 
 - **KISS**: シンプルさを最優先する。1つの関数は1つのことだけを行い、短く保つ。到達不能なフォールバックや使われない汎用化は書かない
