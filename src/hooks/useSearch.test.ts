@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useSearch, MAX_BUFFER_SIZE } from "./useSearch";
 import type { GhostView } from "../types";
-import { searchGhosts } from "../lib/ghostDatabase";
+import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../lib/ghostDatabase";
 
 vi.mock("../lib/ghostDatabase", () => ({
   searchGhosts: vi.fn(),
+  searchGhostsInitialPage: vi.fn(),
+  countGhostsByQuery: vi.fn(),
 }));
 
 function makeGhost(name: string, dir: string): GhostView {
@@ -28,6 +30,8 @@ const mockGhosts: GhostView[] = [reimu, marisa];
 describe("useSearch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(searchGhostsInitialPage).mockResolvedValue([]);
+    vi.mocked(countGhostsByQuery).mockResolvedValue(0);
   });
 
   it("requestKey が null の場合は検索しない", async () => {
@@ -43,10 +47,8 @@ describe("useSearch", () => {
   });
 
   it("requestKey を渡すと SQLite 検索結果を返す", async () => {
-    vi.mocked(searchGhosts).mockResolvedValueOnce({
-      ghosts: mockGhosts,
-      total: mockGhosts.length,
-    });
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce(mockGhosts);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(mockGhosts.length);
 
     const { result } = renderHook(() => useSearch("rk1", "", 100, 0, 0));
 
@@ -55,13 +57,14 @@ describe("useSearch", () => {
       expect(result.current.ghosts).toHaveLength(2);
     });
 
-    expect(searchGhosts).toHaveBeenCalledWith("rk1", "", 100, 0);
+    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100);
     expect(result.current.total).toBe(2);
   });
 
   it("offset 変更時はバッファをマージする", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
     vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu], total: 2 })
       .mockResolvedValueOnce({ ghosts: [marisa], total: 2 });
 
     const { result, rerender } = renderHook(
@@ -89,8 +92,9 @@ describe("useSearch", () => {
   });
 
   it("隣接ウィンドウのマージ: 重複部分は上書きされ旧データが保持される", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(3);
     vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu, marisa], total: 3 })
       .mockResolvedValueOnce({ ghosts: [marisa, alice], total: 3 });
 
     const { result, rerender } = renderHook(
@@ -117,8 +121,9 @@ describe("useSearch", () => {
   });
 
   it("query 変更時はバッファがクリアされる", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
     vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu, marisa], total: 2 })
       .mockResolvedValueOnce({ ghosts: [marisa], total: 1 });
 
     const { result, rerender } = renderHook(
@@ -145,9 +150,10 @@ describe("useSearch", () => {
   });
 
   it("refreshTrigger 変更時はバッファがクリアされる", async () => {
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu, marisa], total: 2 })
-      .mockResolvedValueOnce({ ghosts: [alice], total: 1 });
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([alice]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(1);
 
     const { result, rerender } = renderHook(
       ({ trigger }) => useSearch("rk1", "", 100, 0, trigger),
@@ -172,8 +178,9 @@ describe("useSearch", () => {
   });
 
   it("バッファサイズ上限超過時は全置換にフォールバックする", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(50000);
     vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu], total: 50000 })
       .mockResolvedValueOnce({ ghosts: [marisa], total: 50000 });
 
     const farOffset = MAX_BUFFER_SIZE + 100;
@@ -201,9 +208,12 @@ describe("useSearch", () => {
   });
 
   it("refreshTrigger 変化で検索を再実行する", async () => {
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [mockGhosts[0]], total: 1 })
-      .mockResolvedValueOnce({ ghosts: mockGhosts, total: 2 });
+    vi.mocked(searchGhostsInitialPage)
+      .mockResolvedValueOnce([mockGhosts[0]])
+      .mockResolvedValueOnce(mockGhosts);
+    vi.mocked(countGhostsByQuery)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2);
 
     const { result, rerender } = renderHook(
       ({ trigger }) => useSearch("rk1", "", 100, 0, trigger),
@@ -222,14 +232,12 @@ describe("useSearch", () => {
       expect(result.current.ghosts).toHaveLength(2);
     });
 
-    expect(searchGhosts).toHaveBeenCalledTimes(2);
+    expect(searchGhostsInitialPage).toHaveBeenCalledTimes(2);
   });
 
   it("requestKey が null → 非null に変わると検索が発火する", async () => {
-    vi.mocked(searchGhosts).mockResolvedValueOnce({
-      ghosts: mockGhosts,
-      total: 2,
-    });
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce(mockGhosts);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
 
     const { result, rerender } = renderHook(
       ({ rk }) => useSearch(rk, "", 100, 0, 1),
@@ -250,12 +258,12 @@ describe("useSearch", () => {
       expect(result.current.ghosts).toHaveLength(2);
     });
 
-    expect(searchGhosts).toHaveBeenCalledTimes(1);
-    expect(searchGhosts).toHaveBeenCalledWith("rk1", "", 100, 0);
+    expect(searchGhostsInitialPage).toHaveBeenCalledTimes(1);
+    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100);
   });
 
   it("検索でエラーが発生した場合は dbError にメッセージを設定する", async () => {
-    vi.mocked(searchGhosts).mockRejectedValueOnce(
+    vi.mocked(searchGhostsInitialPage).mockRejectedValueOnce(
       new Error("database is locked")
     );
 
