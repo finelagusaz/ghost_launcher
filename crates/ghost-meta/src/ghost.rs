@@ -1,4 +1,5 @@
 use crate::descript::parse_descript;
+use crate::thumbnail::{resolve_thumbnail, ThumbnailInfo};
 use crate::GhostMetaError;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,8 @@ pub struct GhostMeta {
     pub directory_name: String,
     /// ゴーストルートディレクトリの絶対パス
     pub path: PathBuf,
+    /// 解決済みサムネイル情報。thumbnail feature の有無に関わらず常に存在するフィールド
+    pub thumbnail: Option<ThumbnailInfo>,
 }
 
 /// ゴーストルートディレクトリのメタデータを取得する。
@@ -33,12 +36,14 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
         .cloned()
         .unwrap_or_else(|| directory_name.clone());
     let craftman = fields.get("craftman").cloned();
+    let thumbnail = resolve_thumbnail(ghost_root);
 
     Ok(GhostMeta {
         name,
         craftman,
         directory_name,
         path: ghost_root.to_path_buf(),
+        thumbnail,
     })
 }
 
@@ -198,5 +203,33 @@ mod tests {
 
         let metas = scan_ghosts(tmp.path()).unwrap();
         assert_eq!(metas.len(), 1);
+    }
+
+    // --- thumbnail フィールド統合 ---
+
+    #[test]
+    fn read_ghost_がsurface0あり時にthumbnailを返す() {
+        let tmp = TempDirGuard::new("ghost_meta_read_ghost_thumb");
+        create_ghost(tmp.path(), "with_shell", "charset,UTF-8\nname,With Shell\n");
+        // shell/master/surface0.png を作成
+        let shell_master = tmp.path().join("with_shell").join("shell").join("master");
+        fs::create_dir_all(&shell_master).unwrap();
+        fs::write(shell_master.join("surface0.png"), "").unwrap();
+
+        let meta = read_ghost(&tmp.path().join("with_shell")).unwrap();
+        assert!(meta.thumbnail.is_some());
+        assert_eq!(
+            meta.thumbnail.unwrap().path,
+            shell_master.join("surface0.png")
+        );
+    }
+
+    #[test]
+    fn read_ghost_がshellなし時にthumbnailはnone() {
+        let tmp = TempDirGuard::new("ghost_meta_read_ghost_no_thumb");
+        create_ghost(tmp.path(), "no_shell", "charset,UTF-8\nname,No Shell\n");
+
+        let meta = read_ghost(&tmp.path().join("no_shell")).unwrap();
+        assert!(meta.thumbnail.is_none());
     }
 }
