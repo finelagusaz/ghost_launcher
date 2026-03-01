@@ -147,10 +147,13 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   return total > 0;
 }
 
+const GHOST_SELECT_COLUMNS =
+  "name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+
 export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
   const db = await getDb();
   const rows = await db.select<GhostView[]>(
-    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?",
+    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
     [requestKey, limit]
   );
 
@@ -188,7 +191,7 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
 
   const rows = await db.select<GhostView[]>(
-    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
+    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
     [requestKey, likePattern, likePattern, limit, offset]
   );
 
