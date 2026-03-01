@@ -1,6 +1,6 @@
 import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
 import { getCachedFingerprint, pruneFingerprintCache, setCachedFingerprint } from "./fingerprintCache";
-import { executeScan, validateCache } from "./ghostScanOrchestrator";
+import { executeScan } from "./ghostScanOrchestrator";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
 
 export interface RefreshGhostCatalogParams {
@@ -21,20 +21,26 @@ export async function refreshGhostCatalog({
   const additionalFolders = buildAdditionalFolders(ghostFolders);
   const requestKey = buildRequestKey(sspPath, additionalFolders);
 
-  if (!forceFullScan) {
-    const cachedFingerprint = getCachedFingerprint(requestKey);
-    if (cachedFingerprint) {
-      const exists = await hasGhosts(requestKey);
-      if (exists) {
-        const cacheValid = await validateCache(cachedFingerprint, sspPath, additionalFolders);
-        if (cacheValid) {
-          return { skipped: true };
-        }
-      }
+  const cachedFingerprint = forceFullScan ? null : getCachedFingerprint(requestKey);
+  const result = await executeScan({
+    requestKey,
+    sspPath,
+    additionalFolders,
+    forceFullScan,
+  });
+
+  const cacheFingerprintMatched =
+    !forceFullScan &&
+    cachedFingerprint !== null &&
+    result.fingerprint === cachedFingerprint;
+
+  if (cacheFingerprintMatched) {
+    const exists = await hasGhosts(requestKey);
+    if (exists) {
+      return { skipped: true };
     }
   }
 
-  const result = await executeScan(requestKey, sspPath, additionalFolders, forceFullScan);
   await replaceGhostsByRequestKey(requestKey, result.ghosts);
   setCachedFingerprint(requestKey, result.fingerprint);
 
