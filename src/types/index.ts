@@ -1,5 +1,6 @@
 export interface Ghost {
   name: string;
+  craftman: string;
   directory_name: string;
   path: string;
   source: string;

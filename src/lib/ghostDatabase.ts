@@ -6,12 +6,33 @@ let dbInstance: Database | null = null;
 export async function getDb(): Promise<Database> {
   if (!dbInstance) {
     console.log("[ghostDatabase] Loading SQLite database...");
-    dbInstance = await Database.load("sqlite:ghosts.db");
-    await dbInstance.execute("PRAGMA journal_mode=WAL");
-    await dbInstance.execute("PRAGMA busy_timeout=5000");
+    const db = await Database.load("sqlite:ghosts.db");
+    await db.execute("PRAGMA journal_mode=WAL");
+    await db.execute("PRAGMA busy_timeout=5000");
+    dbInstance = db;
     console.log("[ghostDatabase] Database loaded successfully");
   }
   return dbInstance;
+}
+
+// migration が適用されなかった場合の防衛線。ghostCatalogService の先頭で呼び出す。
+// craftman カラムが欠落していれば ALTER TABLE で追加し、キャッシュをリセットする。
+// hasGhosts() が false を返すようになるため、次のスキャンで自動的に再構築される。
+// セッション内で1回だけ実行する（PRAGMA table_info の繰り返し呼び出しを防ぐ）。
+let schemaRepaired = false;
+export async function repairGhostDbSchema(): Promise<void> {
+  if (schemaRepaired) return;
+  schemaRepaired = true;
+  const db = await getDb();
+  const columns = await db.select<{ name: string }[]>("PRAGMA table_info(ghosts)");
+  if (columns.length === 0) return; // テーブル未作成（migration が処理する）
+  const hasCraftman = columns.some((col) => col.name === "craftman");
+  if (!hasCraftman) {
+    console.warn("[ghostDatabase] craftman カラムが欠落しています。スキーマを修復します...");
+    await db.execute("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''");
+    await db.execute("DELETE FROM ghosts");
+    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
+  }
 }
 
 export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {
@@ -30,14 +51,15 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
   for (let i = 0; i < ghosts.length; i += chunkSize) {
     const chunk = ghosts.slice(i, i + chunkSize);
 
-    let sql = "INSERT INTO ghosts (request_key, name, directory_name, path, source, name_lower, directory_name_lower, updated_at) VALUES ";
+    let sql = "INSERT INTO ghosts (request_key, name, craftman, directory_name, path, source, name_lower, directory_name_lower, updated_at) VALUES ";
     const placeholders: string[] = [];
     const params: string[] = [];
 
     for (const ghost of chunk) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
+      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
       params.push(requestKey);
       params.push(ghost.name);
+      params.push(ghost.craftman);
       params.push(ghost.directory_name);
       params.push(ghost.path);
       params.push(ghost.source);
@@ -139,7 +161,7 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
 
   const rows = await db.select<GhostView[]>(
-    "SELECT name, directory_name, path, source, name_lower, directory_name_lower FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
+    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
     [requestKey, likePattern, likePattern, limit, offset]
   );
 

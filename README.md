@@ -31,15 +31,15 @@ SSP 本体の `ghost` フォルダに加え、任意の追加フォルダにあ�
 - ゴースト一覧の自動収集
   - `SSP\ghost` 配下をスキャン
   - 追加登録したフォルダも同時にスキャン
-  - `ghost/master/descript.txt` の `name` を表示名として利用
+  - `ghost/master/descript.txt` の `name`（表示名）と `craftman`（作者名）を取得して表示
 - ゴースト検索
   - 表示名・ディレクトリ名の部分一致検索
   - 全角・半角の表記揺れを吸収（NFKC 正規化）
   - IME 変換中は検索をトリガーせず、確定後に実行
-- 多言語対応（日本語 / English）
+- 多言語対応（日本語 / English / 中文(简体) / 中文(繁體) / 한국어 / Русский）
   - 初回起動時は OS のロケールに自動追従
   - 設定パネルでいつでも切り替え可能
-  - 実行ファイルと同じフォルダの `locales/{lang}.json` を置くことでUI文言をカスタマイズ可能
+  - 実行ファイルと同じフォルダの `locales/{lang}.json` を置くことで UI 文言をカスタマイズ可能
 - ゴースト起動
   - SSP 内ゴーストはディレクトリ名指定
   - 追加フォルダのゴーストはフルパス指定
@@ -104,3 +104,4 @@ npm run tauri build
 ## ドキュメント
 
 - UI デザインガイドライン: `docs/ui-guidelines.md`
+- UI 文言のカスタマイズ: `docs/locale-customization.md`
