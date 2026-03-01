@@ -16,6 +16,8 @@ pub struct Ghost {
     pub thumbnail_path: String,
     /// サムネイルの透過方式。true = PNG アルファチャンネル、false = 左上ピクセルをキーカラーとして透過
     pub thumbnail_use_self_alpha: bool,
+    /// サムネイルの種別。"surface" / "thumbnail" / ""（サムネイルなし）
+    pub thumbnail_kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -45,6 +45,12 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "ALTER TABLE ghosts ADD COLUMN thumbnail_path TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0;\nDELETE FROM ghosts;",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 6,
+            description: "add_thumbnail_kind_and_reset_ghosts_cache",
+            sql: "ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 

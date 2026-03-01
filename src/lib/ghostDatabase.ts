@@ -46,6 +46,13 @@ export async function repairGhostDbSchema(): Promise<void> {
     await db.execute("DELETE FROM ghosts");
     console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
   }
+  const hasThumbnailKind = columns.some((col) => col.name === "thumbnail_kind");
+  if (!hasThumbnailKind) {
+    console.warn("[ghostDatabase] thumbnail_kind カラムが欠落しています。スキーマを修復します...");
+    await db.execute("ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT ''");
+    await db.execute("DELETE FROM ghosts");
+    console.warn("[ghostDatabase] スキーマ修復完了。ゴーストキャッシュをリセットしました");
+  }
 }
 
 export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {
@@ -58,18 +65,18 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
   if (ghosts.length === 0) return;
   const db = await getDb();
 
-  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。10列×99行=990で安全圏。
-  const chunkSize = 99;
+  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。11列×90行=990で安全圏。
+  const chunkSize = 90;
   let inserted = 0;
   for (let i = 0; i < ghosts.length; i += chunkSize) {
     const chunk = ghosts.slice(i, i + chunkSize);
 
-    let sql = "INSERT INTO ghosts (request_key, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, updated_at) VALUES ";
+    let sql = "INSERT INTO ghosts (request_key, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
     const placeholders: string[] = [];
     const params: (string | number)[] = [];
 
     for (const ghost of chunk) {
-      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
+      placeholders.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)");
       params.push(requestKey);
       params.push(ghost.name);
       params.push(ghost.craftman);
@@ -80,6 +87,7 @@ export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Pr
       params.push(ghost.directory_name.normalize("NFKC").toLowerCase());
       params.push(ghost.thumbnail_path);
       params.push(ghost.thumbnail_use_self_alpha ? 1 : 0);
+      params.push(ghost.thumbnail_kind);
     }
 
     sql += placeholders.join(", ");
@@ -176,7 +184,7 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
 
   const rows = await db.select<GhostView[]>(
-    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
+    "SELECT name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?",
     [requestKey, likePattern, likePattern, limit, offset]
   );
 

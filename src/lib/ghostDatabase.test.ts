@@ -38,7 +38,7 @@ describe("ghostDatabase - スキーマ修復 (repairGhostDbSchema)", () => {
     // PRAGMA table_info の応答として全必須カラムを含む一覧を返す
     mockSelect.mockResolvedValueOnce([
       { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
-      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" },
+      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" }, { name: "thumbnail_kind" },
     ]);
     const { repairGhostDbSchema } = await import("./ghostDatabase");
     await repairGhostDbSchema();
@@ -76,6 +76,22 @@ describe("ghostDatabase - スキーマ修復 (repairGhostDbSchema)", () => {
       .map((c) => c[0] as string)
       .filter((sql) => !sql.startsWith("PRAGMA"));
     expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0");
+    expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
+  });
+
+  it("thumbnail_kind カラムが欠落している場合は ALTER TABLE と DELETE を実行する", async () => {
+    mockSelect.mockResolvedValueOnce([
+      { name: "id" }, { name: "name" }, { name: "craftman" }, { name: "directory_name" },
+      { name: "thumbnail_path" }, { name: "thumbnail_use_self_alpha" },
+      // thumbnail_kind 欠落
+    ]);
+    const { repairGhostDbSchema } = await import("./ghostDatabase");
+    await repairGhostDbSchema();
+
+    const nonPragmaCalls = mockExecute.mock.calls
+      .map((c) => c[0] as string)
+      .filter((sql) => !sql.startsWith("PRAGMA"));
+    expect(nonPragmaCalls).toContain("ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT ''");
     expect(nonPragmaCalls).toContain("DELETE FROM ghosts");
   });
 
@@ -134,7 +150,7 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
   it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
     const { insertGhostsBatch } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false },
+      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" },
     ];
     await insertGhostsBatch("rk1", ghosts);
 
@@ -142,7 +158,7 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
       (c[0] as string).startsWith("INSERT INTO ghosts")
     );
     expect(insertCall).toBeDefined();
-    // params: [requestKey, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha]
+    // params: [requestKey, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
     const params = insertCall![1] as (string | number)[];
     expect(params[6]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
     expect(params[7]).toBe("alice");
@@ -176,7 +192,7 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("DELETE → INSERT の順で実行される", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false },
+      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" },
     ];
     await replaceGhostsByRequestKey("rk1", ghosts);
 

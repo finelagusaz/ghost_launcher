@@ -1,7 +1,37 @@
 use std::path::{Path, PathBuf};
 
+use ghost_meta::{AlphaMode, ThumbnailKind};
+
 use super::path_utils::normalize_path;
 use super::types::Ghost;
+
+/// GhostMeta から Ghost 構造体へ変換するヘルパー
+fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
+    let (thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind) = meta.thumbnail.map_or(
+        (String::new(), false, String::new()),
+        |info| {
+            let kind = match info.kind {
+                ThumbnailKind::Surface => "surface".to_string(),
+                ThumbnailKind::Thumbnail => "thumbnail".to_string(),
+            };
+            (
+                info.path.to_string_lossy().into_owned(),
+                info.alpha == AlphaMode::SelfAlpha,
+                kind,
+            )
+        },
+    );
+    Ghost {
+        name: meta.name,
+        craftman: meta.craftman.unwrap_or_default(),
+        directory_name: meta.directory_name,
+        path: meta.path.to_string_lossy().into_owned(),
+        source,
+        thumbnail_path,
+        thumbnail_use_self_alpha,
+        thumbnail_kind,
+    }
+}
 
 pub(crate) fn unique_sorted_additional_folders(
     additional_folders: &[String],
@@ -44,24 +74,7 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     let mut ghosts: Vec<Ghost> = ghost_meta::scan_ghosts(&ghost_dir)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .map(|meta| {
-            let (thumbnail_path, thumbnail_use_self_alpha) = meta.thumbnail.map_or(
-                (String::new(), false),
-                |info| (
-                    info.path.to_string_lossy().into_owned(),
-                    info.alpha == ghost_meta::AlphaMode::SelfAlpha,
-                ),
-            );
-            Ghost {
-                name: meta.name,
-                craftman: meta.craftman.unwrap_or_default(),
-                directory_name: meta.directory_name,
-                path: meta.path.to_string_lossy().into_owned(),
-                source: "ssp".to_string(),
-                thumbnail_path,
-                thumbnail_use_self_alpha,
-            }
-        })
+        .map(|meta| ghost_from_meta(meta, "ssp".to_string()))
         .collect();
 
     // 追加フォルダをスキャン
@@ -70,24 +83,7 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
             continue;
         }
         if let Ok(metas) = ghost_meta::scan_ghosts(&folder_path) {
-            ghosts.extend(metas.into_iter().map(|meta| {
-                let (thumbnail_path, thumbnail_use_self_alpha) = meta.thumbnail.map_or(
-                    (String::new(), false),
-                    |info| (
-                        info.path.to_string_lossy().into_owned(),
-                        info.alpha == ghost_meta::AlphaMode::SelfAlpha,
-                    ),
-                );
-                Ghost {
-                    name: meta.name,
-                    craftman: meta.craftman.unwrap_or_default(),
-                    directory_name: meta.directory_name,
-                    path: meta.path.to_string_lossy().into_owned(),
-                    source: source.clone(),
-                    thumbnail_path,
-                    thumbnail_use_self_alpha,
-                }
-            }));
+            ghosts.extend(metas.into_iter().map(|meta| ghost_from_meta(meta, source.clone())));
         }
     }
 

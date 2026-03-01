@@ -6,6 +6,7 @@ export interface Ghost {
   source: string;
   thumbnail_path: string;
   thumbnail_use_self_alpha: boolean;
+  thumbnail_kind: string;
 }
 
 export interface GhostView extends Ghost {

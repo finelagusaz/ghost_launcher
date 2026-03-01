@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
@@ -93,20 +94,6 @@ const useStyles = makeStyles({
     gap: "12px",
     minWidth: 0,
   },
-  thumbnailContainer: {
-    flexShrink: 0,
-    width: "64px",
-    height: "64px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  thumbnailImg: {
-    maxWidth: "64px",
-    maxHeight: "64px",
-    objectFit: "contain",
-  },
 });
 
 // テキストが溢れているときだけ Tooltip を表示するヘルパー
@@ -153,6 +140,7 @@ const ThumbnailCanvas = memo(function ThumbnailCanvas({ src }: { src: string }) 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
@@ -173,7 +161,7 @@ const ThumbnailCanvas = memo(function ThumbnailCanvas({ src }: { src: string }) 
     };
     img.src = src;
   }, [src]);
-  return <canvas ref={canvasRef} style={{ maxWidth: "64px", maxHeight: "64px" }} />;
+  return <canvas ref={canvasRef} style={{ maxHeight: "50vh", maxWidth: "40vw" }} />;
 });
 
 export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
@@ -181,6 +169,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const { t } = useTranslation();
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
   const sourceFolderLabel = ghost.source !== "ssp" ? getSourceFolderLabel(ghost.source) : null;
 
   const handleLaunch = async () => {
@@ -205,19 +194,23 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
 
   const thumbnailSrc = ghost.thumbnail_path ? convertFileSrc(ghost.thumbnail_path) : null;
 
+  const overlayStyle: React.CSSProperties = {
+    position: "fixed",
+    pointerEvents: "none",
+    zIndex: 10000,
+    bottom: ghost.thumbnail_kind === "surface" ? 0 : "20px",
+    right: ghost.thumbnail_kind === "surface" ? 0 : "20px",
+  };
+
   return (
-    <Card className={styles.card} appearance="outline">
+    <Card
+      className={styles.card}
+      appearance="outline"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div className={styles.row}>
         <div className={styles.content}>
-          {thumbnailSrc && (
-            <div className={styles.thumbnailContainer}>
-              {Boolean(ghost.thumbnail_use_self_alpha) ? (
-                <img src={thumbnailSrc} alt="" className={styles.thumbnailImg} />
-              ) : (
-                <ThumbnailCanvas src={thumbnailSrc} />
-              )}
-            </div>
-          )}
           <div className={styles.info}>
             <TruncatedText
               weight="semibold"
@@ -250,6 +243,16 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
         <Text role="alert" className={styles.error}>
           {error}
         </Text>
+      )}
+      {hovered && thumbnailSrc && createPortal(
+        <div style={overlayStyle}>
+          {Boolean(ghost.thumbnail_use_self_alpha) ? (
+            <img src={thumbnailSrc} alt="" style={{ maxHeight: "50vh", maxWidth: "40vw" }} />
+          ) : (
+            <ThumbnailCanvas src={thumbnailSrc} />
+          )}
+        </div>,
+        document.body
       )}
     </Card>
   );

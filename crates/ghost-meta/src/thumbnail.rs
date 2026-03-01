@@ -11,11 +11,21 @@ pub enum AlphaMode {
     KeyColor,
 }
 
+/// サムネイル画像の種別
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThumbnailKind {
+    /// shell/master/surface0* 画像
+    Surface,
+    /// ゴーストルート直下の thumbnail.png
+    Thumbnail,
+}
+
 /// 解決済みサムネイルの情報
 #[derive(Debug, Clone)]
 pub struct ThumbnailInfo {
     pub path: PathBuf,
     pub alpha: AlphaMode,
+    pub kind: ThumbnailKind,
 }
 
 /// ゴーストのサムネイル画像を解決する。
@@ -38,6 +48,7 @@ pub fn resolve_thumbnail(ghost_root: &Path) -> Option<ThumbnailInfo> {
         return Some(ThumbnailInfo {
             path: thumbnail_path,
             alpha,
+            kind: ThumbnailKind::Thumbnail,
         });
     }
 
@@ -81,12 +92,14 @@ fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
         return Some(ThumbnailInfo {
             path: shell_master.join(filename),
             alpha,
+            kind: ThumbnailKind::Surface,
         });
     }
     if let Some(filename) = png_files.first() {
         return Some(ThumbnailInfo {
             path: shell_master.join(filename),
             alpha,
+            kind: ThumbnailKind::Surface,
         });
     }
 
@@ -206,6 +219,7 @@ mod tests {
 
         let info = resolve_thumbnail(tmp.path()).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
+        assert_eq!(info.kind, ThumbnailKind::Surface);
     }
 
     #[test]
@@ -242,6 +256,7 @@ mod tests {
 
         let info = resolve_thumbnail(tmp.path()).unwrap();
         assert_eq!(info.path, thumbnail_path);
+        assert_eq!(info.kind, ThumbnailKind::Thumbnail);
     }
 
     #[test]
