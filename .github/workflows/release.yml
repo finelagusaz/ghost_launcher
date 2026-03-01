@@ -36,7 +36,7 @@ jobs:
       - name: Package portable ZIP
         shell: pwsh
         run: |
-          $releaseDir = "src-tauri/target/release"
+          $releaseDir = "target/release"
           $stageDir = "dist-release"
           $zipName = "ghost-launcher-${{ github.ref_name }}-windows-x64.zip"
 
