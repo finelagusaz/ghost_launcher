@@ -4,6 +4,8 @@ export interface Ghost {
   directory_name: string;
   path: string;
   source: string;
+  thumbnail_path: string;
+  thumbnail_use_self_alpha: boolean;
 }
 
 export interface GhostView extends Ghost {

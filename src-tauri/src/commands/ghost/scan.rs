@@ -44,12 +44,23 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     let mut ghosts: Vec<Ghost> = ghost_meta::scan_ghosts(&ghost_dir)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .map(|meta| Ghost {
-            name: meta.name,
-            craftman: meta.craftman.unwrap_or_default(),
-            directory_name: meta.directory_name,
-            path: meta.path.to_string_lossy().into_owned(),
-            source: "ssp".to_string(),
+        .map(|meta| {
+            let (thumbnail_path, thumbnail_use_self_alpha) = meta.thumbnail.map_or(
+                (String::new(), false),
+                |info| (
+                    info.path.to_string_lossy().into_owned(),
+                    info.alpha == ghost_meta::AlphaMode::SelfAlpha,
+                ),
+            );
+            Ghost {
+                name: meta.name,
+                craftman: meta.craftman.unwrap_or_default(),
+                directory_name: meta.directory_name,
+                path: meta.path.to_string_lossy().into_owned(),
+                source: "ssp".to_string(),
+                thumbnail_path,
+                thumbnail_use_self_alpha,
+            }
         })
         .collect();
 
@@ -59,12 +70,23 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
             continue;
         }
         if let Ok(metas) = ghost_meta::scan_ghosts(&folder_path) {
-            ghosts.extend(metas.into_iter().map(|meta| Ghost {
-                name: meta.name,
-                craftman: meta.craftman.unwrap_or_default(),
-                directory_name: meta.directory_name,
-                path: meta.path.to_string_lossy().into_owned(),
-                source: source.clone(),
+            ghosts.extend(metas.into_iter().map(|meta| {
+                let (thumbnail_path, thumbnail_use_self_alpha) = meta.thumbnail.map_or(
+                    (String::new(), false),
+                    |info| (
+                        info.path.to_string_lossy().into_owned(),
+                        info.alpha == ghost_meta::AlphaMode::SelfAlpha,
+                    ),
+                );
+                Ghost {
+                    name: meta.name,
+                    craftman: meta.craftman.unwrap_or_default(),
+                    directory_name: meta.directory_name,
+                    path: meta.path.to_string_lossy().into_owned(),
+                    source: source.clone(),
+                    thumbnail_path,
+                    thumbnail_use_self_alpha,
+                }
             }));
         }
     }
