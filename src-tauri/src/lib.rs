@@ -53,6 +53,16 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "ALTER TABLE ghosts ADD COLUMN thumbnail_kind TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 7,
+            description: "add_ghost_identity_and_row_fingerprint",
+            sql: "ALTER TABLE ghosts ADD COLUMN ghost_identity_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ghosts ADD COLUMN row_fingerprint TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);
+CREATE INDEX IF NOT EXISTS idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);
+DELETE FROM ghosts;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 

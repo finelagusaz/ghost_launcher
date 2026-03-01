@@ -90,7 +90,7 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
   it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
     const { insertGhostsBatch } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" },
+      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
     ];
     await insertGhostsBatch("rk1", ghosts);
 
@@ -98,10 +98,10 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
       (c[0] as string).startsWith("INSERT INTO ghosts")
     );
     expect(insertCall).toBeDefined();
-    // params: [requestKey, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
+    // params: [requestKey, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
     const params = insertCall![1] as (string | number)[];
-    expect(params[6]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
-    expect(params[7]).toBe("alice");
+    expect(params[8]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
+    expect(params[9]).toBe("alice");
   });
 });
 
@@ -170,10 +170,10 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
     expect(transactionCalls).toEqual([]);
   });
 
-  it("DELETE → INSERT の順で実行される", async () => {
+  it("UPSERT → 不要行 DELETE の順で実行される", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" },
+      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
     ];
     await replaceGhostsByRequestKey("rk1", ghosts);
 
@@ -181,11 +181,12 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
       .map((c) => c[0] as string)
       .filter((sql) => !sql.startsWith("PRAGMA"));
 
-    expect(sqlCalls[0]).toMatch(/^DELETE FROM ghosts/);
-    expect(sqlCalls[1]).toMatch(/^INSERT INTO ghosts/);
+    expect(sqlCalls[0]).toContain("INSERT INTO ghosts");
+    expect(sqlCalls[0]).toContain("ON CONFLICT(request_key, ghost_identity_key)");
+    expect(sqlCalls[1]).toMatch(/^DELETE FROM ghosts WHERE request_key = \? AND ghost_identity_key NOT IN/);
   });
 
-  it("ゴーストが空の場合は DELETE のみ実行される", async () => {
+  it("ゴーストが空の場合は request_key 単位で全削除される", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     await replaceGhostsByRequestKey("rk1", []);
 
@@ -196,8 +197,22 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
     expect(sqlCalls).toHaveLength(1);
     expect(sqlCalls[0]).toMatch(/^DELETE FROM ghosts/);
   });
-});
 
+  it("同一 row_fingerprint の再投入では UPDATE を抑制する WHERE 条件を含む", async () => {
+    const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
+    const ghosts = [
+      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-a" },
+    ];
+    await replaceGhostsByRequestKey("rk1", ghosts);
+
+    const upsertSql = mockExecute.mock.calls
+      .map((c) => c[0] as string)
+      .find((sql) => sql.includes("ON CONFLICT(request_key, ghost_identity_key)"));
+
+    expect(upsertSql).toBeDefined();
+    expect(upsertSql).toContain("WHERE ghosts.row_fingerprint <> excluded.row_fingerprint");
+  });
+});
 describe("ghostDatabase - cleanupOldGhostCaches", () => {
   it("世代上限とTTLに基づき古い request_key を削除する", async () => {
     const now = new Date();
