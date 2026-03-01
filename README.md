@@ -104,3 +104,4 @@ npm run tauri build
 ## ドキュメント
 
 - UI デザインガイドライン: `docs/ui-guidelines.md`
+- UI 文言のカスタマイズ: `docs/locale-customization.md`
