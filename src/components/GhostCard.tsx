@@ -89,14 +89,16 @@ const useStyles = makeStyles({
 });
 
 // テキストが溢れているときだけ Tooltip を表示するヘルパー
-function TruncatedText({
+const TruncatedText = memo(function TruncatedText({
   content,
   className,
   weight,
+  testId,
 }: {
   content: string;
   className?: string;
   weight?: "regular" | "medium" | "semibold" | "bold";
+  testId?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -107,7 +109,7 @@ function TruncatedText({
   }, []);
 
   const text = (
-    <Text ref={ref} className={className} weight={weight}>
+    <Text ref={ref} className={className} weight={weight} data-testid={testId}>
       {content}
     </Text>
   );
@@ -119,7 +121,7 @@ function TruncatedText({
       {text}
     </Tooltip>
   );
-}
+});
 
 export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
@@ -156,6 +158,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
             weight="semibold"
             content={ghost.name}
             className={styles.name}
+            testId="ghost-name"
           />
           <div className={styles.meta}>
             {sourceFolderLabel && (

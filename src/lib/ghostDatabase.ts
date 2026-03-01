@@ -18,7 +18,11 @@ export async function getDb(): Promise<Database> {
 // migration が適用されなかった場合の防衛線。ghostCatalogService の先頭で呼び出す。
 // craftman カラムが欠落していれば ALTER TABLE で追加し、キャッシュをリセットする。
 // hasGhosts() が false を返すようになるため、次のスキャンで自動的に再構築される。
+// セッション内で1回だけ実行する（PRAGMA table_info の繰り返し呼び出しを防ぐ）。
+let schemaRepaired = false;
 export async function repairGhostDbSchema(): Promise<void> {
+  if (schemaRepaired) return;
+  schemaRepaired = true;
   const db = await getDb();
   const columns = await db.select<{ name: string }[]>("PRAGMA table_info(ghosts)");
   if (columns.length === 0) return; // テーブル未作成（migration が処理する）
