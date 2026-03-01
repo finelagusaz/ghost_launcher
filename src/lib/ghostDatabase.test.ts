@@ -65,7 +65,7 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
   it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
     const { insertGhostsBatch } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "Ａｌｉｃｅ", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp" },
+      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp" },
     ];
     await insertGhostsBatch("rk1", ghosts);
 
@@ -73,10 +73,10 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
       (c[0] as string).startsWith("INSERT INTO ghosts")
     );
     expect(insertCall).toBeDefined();
-    // params: [requestKey, name, directory_name, path, source, name_lower, directory_name_lower]
+    // params: [requestKey, name, craftman, directory_name, path, source, name_lower, directory_name_lower]
     const params = insertCall![1] as string[];
-    expect(params[5]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
-    expect(params[6]).toBe("alice");
+    expect(params[6]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
+    expect(params[7]).toBe("alice");
   });
 });
 
@@ -107,7 +107,7 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("DELETE → INSERT の順で実行される", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "A", directory_name: "a", path: "/a", source: "ssp" },
+      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp" },
     ];
     await replaceGhostsByRequestKey("rk1", ghosts);
 

@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct Ghost {
     /// descript.txt の name フィールド（表示名）
     pub name: String,
+    /// descript.txt の craftman フィールド（作者名）。未設定の場合は空文字列
+    pub craftman: String,
     /// ゴーストのディレクトリ名（SSP起動時に使用）
     pub directory_name: String,
     /// ゴーストのフルパス

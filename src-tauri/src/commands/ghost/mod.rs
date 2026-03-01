@@ -180,6 +180,41 @@ mod tests {
     }
 
     #[test]
+    fn scan_ghosts_internal_extracts_craftman_field() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_craftman_test")?;
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir_with_descript(
+            &ssp_ghost,
+            "with_craftman",
+            "name,テストゴースト\ncraftman,プログラム\ncharset,UTF-8\n",
+        )?;
+        create_ghost_dir_with_descript(
+            &ssp_ghost,
+            "without_craftman",
+            "name,作者なし\ncharset,UTF-8\n",
+        )?;
+
+        let (ghosts, _) = scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[])?;
+
+        let with_craftman = ghosts
+            .iter()
+            .find(|ghost| ghost.directory_name == "with_craftman")
+            .ok_or_else(|| "with_craftman ghost not found".to_string())?;
+        assert_eq!(with_craftman.craftman, "プログラム");
+
+        let without_craftman = ghosts
+            .iter()
+            .find(|ghost| ghost.directory_name == "without_craftman")
+            .ok_or_else(|| "without_craftman ghost not found".to_string())?;
+        assert_eq!(without_craftman.craftman, "");
+
+        Ok(())
+    }
+
+    #[test]
     fn scan_ghosts_internal_falls_back_to_directory_name_without_name_field() -> Result<(), String>
     {
         let workspace = TempDirGuard::new("ghost_launcher_scan_fallback_test")?;

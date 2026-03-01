@@ -106,9 +106,11 @@ fn scan_ghost_dir_with_fingerprint(
                     .get("name")
                     .cloned()
                     .unwrap_or_else(|| directory_name.clone());
+                let craftman = fields.get("craftman").cloned().unwrap_or_default();
 
                 ghosts.push(Ghost {
                     name,
+                    craftman,
                     directory_name,
                     path: path.to_string_lossy().into_owned(),
                     source: source.to_string(),

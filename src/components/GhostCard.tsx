@@ -1,7 +1,15 @@
-import { memo, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { Badge, Button, Card, Text, makeStyles, tokens } from "@fluentui/react-components";
+import {
+  Badge,
+  Button,
+  Card,
+  Text,
+  Tooltip,
+  makeStyles,
+  tokens,
+} from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
@@ -53,24 +61,21 @@ const useStyles = makeStyles({
     overflow: "hidden",
   },
   meta: {
-    color: tokens.colorNeutralForeground3,
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
     gap: "8px",
     minWidth: 0,
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
     overflow: "hidden",
-    "@media (max-width: 600px)": {
-      display: "flex",
-      flexWrap: "wrap",
-      whiteSpace: "normal",
-      textOverflow: "clip",
-      overflow: "visible",
-    },
+    color: tokens.colorNeutralForeground3,
   },
   sourceBadge: {
     flexShrink: 0,
+  },
+  metaText: {
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    minWidth: 0,
   },
   launchButton: {
     flexShrink: 0,
@@ -82,6 +87,39 @@ const useStyles = makeStyles({
     color: tokens.colorPaletteRedForeground1,
   },
 });
+
+// テキストが溢れているときだけ Tooltip を表示するヘルパー
+function TruncatedText({
+  content,
+  className,
+  weight,
+}: {
+  content: string;
+  className?: string;
+  weight?: "regular" | "medium" | "semibold" | "bold";
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setIsTruncated(el.scrollWidth > el.clientWidth);
+  }, []);
+
+  const text = (
+    <Text ref={ref} className={className} weight={weight}>
+      {content}
+    </Text>
+  );
+
+  if (!isTruncated) return text;
+
+  return (
+    <Tooltip content={content} relationship="label">
+      {text}
+    </Tooltip>
+  );
+}
 
 export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
@@ -106,21 +144,27 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
     }
   };
 
+  const metaContent = ghost.craftman
+    ? `${ghost.directory_name} · ${ghost.craftman}`
+    : ghost.directory_name;
+
   return (
     <Card className={styles.card} appearance="outline">
       <div className={styles.row}>
         <div className={styles.info}>
-          <Text weight="semibold" className={styles.name} data-testid="ghost-name">
-            {ghost.name}
-          </Text>
-          <Text className={styles.meta}>
-            {ghost.directory_name}
+          <TruncatedText
+            weight="semibold"
+            content={ghost.name}
+            className={styles.name}
+          />
+          <div className={styles.meta}>
             {sourceFolderLabel && (
               <Badge appearance="outline" className={styles.sourceBadge}>
                 {sourceFolderLabel}
               </Badge>
             )}
-          </Text>
+            <TruncatedText content={metaContent} className={styles.metaText} />
+          </div>
         </div>
         <Button
           className={styles.launchButton}
