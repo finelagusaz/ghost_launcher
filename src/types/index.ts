@@ -2,7 +2,10 @@ export type ThumbnailKind = "surface" | "thumbnail" | "";
 
 export interface Ghost {
   name: string;
+  sakura_name: string;
+  kero_name: string;
   craftman: string;
+  craftmanw: string;
   directory_name: string;
   path: string;
   source: string;
@@ -14,6 +17,10 @@ export interface Ghost {
 
 export interface GhostView extends Ghost {
   name_lower: string;
+  sakura_name_lower: string;
+  kero_name_lower: string;
+  craftman_lower: string;
+  craftmanw_lower: string;
   directory_name_lower: string;
 }
 

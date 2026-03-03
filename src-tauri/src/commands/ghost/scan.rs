@@ -24,7 +24,10 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
         },
     );
     let name = meta.name;
+    let sakura_name = meta.sakura_name.unwrap_or_default();
+    let kero_name = meta.kero_name.unwrap_or_default();
     let craftman = meta.craftman.unwrap_or_default();
+    let craftmanw = meta.craftmanw.unwrap_or_default();
     let directory_name = meta.directory_name;
     let path = meta.path.to_string_lossy().into_owned();
     let alpha_str = if thumbnail_use_self_alpha { "1" } else { "0" };
@@ -32,7 +35,10 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
         let mut hasher = Sha256::new();
         for fragment in [
             name.as_str(),
+            sakura_name.as_str(),
+            kero_name.as_str(),
             craftman.as_str(),
+            craftmanw.as_str(),
             path.as_str(),
             thumbnail_path.as_str(),
             alpha_str,
@@ -47,7 +53,10 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
     Ghost {
         diff_fingerprint,
         name,
+        sakura_name,
+        kero_name,
         craftman,
+        craftmanw,
         directory_name,
         path,
         source,

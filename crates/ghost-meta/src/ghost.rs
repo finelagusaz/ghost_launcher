@@ -8,8 +8,14 @@ use std::path::{Path, PathBuf};
 pub struct GhostMeta {
     /// descript.txt の name フィールド（表示名）。未設定の場合はディレクトリ名
     pub name: String,
+    /// descript.txt の sakura.name フィールド（\0 キャラ名）。未設定の場合は None
+    pub sakura_name: Option<String>,
+    /// descript.txt の kero.name フィールド（\1 キャラ名）。未設定の場合は None
+    pub kero_name: Option<String>,
     /// descript.txt の craftman フィールド（作者名）。未設定の場合は None
     pub craftman: Option<String>,
+    /// descript.txt の craftmanw フィールド（作者名2）。未設定の場合は None
+    pub craftmanw: Option<String>,
     /// ゴーストのディレクトリ名
     pub directory_name: String,
     /// ゴーストルートディレクトリの絶対パス
@@ -35,12 +41,18 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
         .get("name")
         .cloned()
         .unwrap_or_else(|| directory_name.clone());
+    let sakura_name = fields.get("sakura.name").cloned();
+    let kero_name = fields.get("kero.name").cloned();
     let craftman = fields.get("craftman").cloned();
+    let craftmanw = fields.get("craftmanw").cloned();
     let thumbnail = resolve_thumbnail(ghost_root);
 
     Ok(GhostMeta {
         name,
+        sakura_name,
+        kero_name,
         craftman,
+        craftmanw,
         directory_name,
         path: ghost_root.to_path_buf(),
         thumbnail,
@@ -141,6 +153,33 @@ mod tests {
 
         let meta = read_ghost(&tmp.path().join("no_craftman")).unwrap();
         assert_eq!(meta.craftman, None);
+    }
+
+    #[test]
+    fn read_ghost_がsakura_nameとkero_nameとcraftmanwを読み取る() {
+        let tmp = TempDirGuard::new("ghost_meta_read_ghost_sakura_kero");
+        create_ghost(
+            tmp.path(),
+            "full_ghost",
+            "charset,UTF-8\nname,テストゴースト\nsakura.name,春菜\nkero.name,うにゅう\ncraftman,作者A\ncraftmanw,作者B\n",
+        );
+
+        let meta = read_ghost(&tmp.path().join("full_ghost")).unwrap();
+        assert_eq!(meta.sakura_name, Some("春菜".to_string()));
+        assert_eq!(meta.kero_name, Some("うにゅう".to_string()));
+        assert_eq!(meta.craftman, Some("作者A".to_string()));
+        assert_eq!(meta.craftmanw, Some("作者B".to_string()));
+    }
+
+    #[test]
+    fn read_ghost_がsakura_name等なしのときnoneを返す() {
+        let tmp = TempDirGuard::new("ghost_meta_read_ghost_no_sakura");
+        create_ghost(tmp.path(), "minimal", "charset,UTF-8\nname,最小ゴースト\n");
+
+        let meta = read_ghost(&tmp.path().join("minimal")).unwrap();
+        assert_eq!(meta.sakura_name, None);
+        assert_eq!(meta.kero_name, None);
+        assert_eq!(meta.craftmanw, None);
     }
 
     #[test]

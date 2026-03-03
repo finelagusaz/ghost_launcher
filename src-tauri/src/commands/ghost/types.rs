@@ -6,8 +6,14 @@ pub struct Ghost {
     pub diff_fingerprint: String,
     /// descript.txt の name フィールド（表示名）
     pub name: String,
+    /// descript.txt の sakura.name フィールド（\0 キャラ名）。未設定の場合は空文字列
+    pub sakura_name: String,
+    /// descript.txt の kero.name フィールド（\1 キャラ名）。未設定の場合は空文字列
+    pub kero_name: String,
     /// descript.txt の craftman フィールド（作者名）。未設定の場合は空文字列
     pub craftman: String,
+    /// descript.txt の craftmanw フィールド（作者名2）。未設定の場合は空文字列
+    pub craftmanw: String,
     /// ゴーストのディレクトリ名（SSP起動時に使用）
     pub directory_name: String,
     /// ゴーストのフルパス

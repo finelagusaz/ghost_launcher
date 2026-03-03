@@ -59,6 +59,12 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "ALTER TABLE ghosts ADD COLUMN ghost_identity_key TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN row_fingerprint TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;\nCREATE UNIQUE INDEX IF NOT EXISTS idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX IF NOT EXISTS idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 8,
+            description: "add_sakura_kero_craftmanw_and_reset_ghosts_cache",
+            sql: "ALTER TABLE ghosts ADD COLUMN sakura_name TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN kero_name TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftmanw TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN sakura_name_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN kero_name_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftman_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftmanw_lower TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -104,6 +110,9 @@ mod tests {
         // migration 7 を適用（以前はここで UNIQUE 制約違反が発生していた）
         conn.execute_batch(sorted[6].sql)
             .unwrap_or_else(|e| panic!("migration 7 failed: {}", e));
+        // migration 8 も適用できること
+        conn.execute_batch(sorted[7].sql)
+            .unwrap_or_else(|e| panic!("migration 8 failed: {}", e));
     }
 
     #[test]
