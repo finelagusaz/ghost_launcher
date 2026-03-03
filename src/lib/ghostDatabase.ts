@@ -54,7 +54,10 @@ function buildGhostDiffFingerprint(ghost: Ghost): string {
   }
   return [
     ghost.name,
+    ghost.sakura_name,
+    ghost.kero_name,
     ghost.craftman,
+    ghost.craftmanw,
     ghost.path,
     ghost.thumbnail_path,
     ghost.thumbnail_use_self_alpha ? "1" : "0",
@@ -249,6 +252,18 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
 const GHOST_SELECT_COLUMNS =
   "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
 
+const GHOST_SEARCH_LOWER_COLUMNS = [
+  "name_lower",
+  "sakura_name_lower",
+  "kero_name_lower",
+  "craftman_lower",
+  "craftmanw_lower",
+  "directory_name_lower",
+] as const;
+
+const GHOST_SEARCH_WHERE =
+  GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
+
 export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
   const db = await getDb();
   const rows = await db.select<GhostView[]>(
@@ -273,8 +288,8 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
   } else {
     const likePattern = `%${normalizedQuery}%`;
     countResult = await db.select<{ count: number }[]>(
-      "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR sakura_name_lower LIKE ? OR kero_name_lower LIKE ? OR craftman_lower LIKE ? OR craftmanw_lower LIKE ? OR directory_name_lower LIKE ?)",
-      [requestKey, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern]
+      `SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`,
+      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern)]
     );
   }
 
@@ -290,8 +305,8 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
 
   const rows = await db.select<GhostView[]>(
-    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR sakura_name_lower LIKE ? OR kero_name_lower LIKE ? OR craftman_lower LIKE ? OR craftmanw_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
-    [requestKey, likePattern, likePattern, likePattern, likePattern, likePattern, likePattern, limit, offset]
+    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
+    [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
   );
 
   console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
