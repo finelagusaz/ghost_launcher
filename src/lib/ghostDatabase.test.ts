@@ -90,7 +90,7 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
   it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
     const { insertGhostsBatch } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "Ａｌｉｃｅ", craftman: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
+      { name: "Ａｌｉｃｅ", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
     ];
     await insertGhostsBatch("rk1", ghosts);
 
@@ -98,10 +98,10 @@ describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
       (c[0] as string).startsWith("INSERT INTO ghosts")
     );
     expect(insertCall).toBeDefined();
-    // params: [requestKey, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
+    // params: [requestKey, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
     const params = insertCall![1] as (string | number)[];
-    expect(params[8]).toBe("alice"); // "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
-    expect(params[9]).toBe("alice");
+    expect(params[11]).toBe("alice"); // name_lower: "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
+    expect(params[16]).toBe("alice"); // directory_name_lower
   });
 });
 
@@ -173,7 +173,7 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("UPSERT → 不要行 DELETE の順で実行される", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
+      { name: "A", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
     ];
     await replaceGhostsByRequestKey("rk1", ghosts);
 
@@ -201,7 +201,7 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
   it("同一 row_fingerprint の再投入では UPDATE を抑制する WHERE 条件を含む", async () => {
     const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
     const ghosts = [
-      { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-a" },
+      { name: "A", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-a" },
     ];
     await replaceGhostsByRequestKey("rk1", ghosts);
 

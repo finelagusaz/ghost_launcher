@@ -35,5 +35,5 @@
   "card.launching": "啟動中...",
   "card.launchError": "啟動失敗。請確認SSP資料夾設定與幽靈資訊後再試一次。{{detail}}",
   "search.label": "搜尋幽靈",
-  "search.placeholder": "以幽靈名稱搜尋"
+  "search.placeholder": "以名稱或作者搜尋"
 }

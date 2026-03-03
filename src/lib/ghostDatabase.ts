@@ -54,7 +54,10 @@ function buildGhostDiffFingerprint(ghost: Ghost): string {
   }
   return [
     ghost.name,
+    ghost.sakura_name,
+    ghost.kero_name,
     ghost.craftman,
+    ghost.craftmanw,
     ghost.path,
     ghost.thumbnail_path,
     ghost.thumbnail_use_self_alpha ? "1" : "0",
@@ -63,9 +66,9 @@ function buildGhostDiffFingerprint(ghost: Ghost): string {
 }
 
 const GHOST_INSERT_SQL_PREFIX =
-  "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
+  "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
 
-const GHOST_INSERT_PLACEHOLDER = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
+const GHOST_INSERT_PLACEHOLDER = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
 
 function buildGhostInsertRow(requestKey: string, ghost: Ghost): { identityKey: string; params: (string | number)[] } {
   const identityKey = buildGhostIdentityKey(ghost);
@@ -76,11 +79,18 @@ function buildGhostInsertRow(requestKey: string, ghost: Ghost): { identityKey: s
       identityKey,
       buildGhostDiffFingerprint(ghost),
       ghost.name,
+      ghost.sakura_name,
+      ghost.kero_name,
       ghost.craftman,
+      ghost.craftmanw,
       ghost.directory_name,
       ghost.path,
       ghost.source,
       normalizeForKey(ghost.name),
+      normalizeForKey(ghost.sakura_name),
+      normalizeForKey(ghost.kero_name),
+      normalizeForKey(ghost.craftman),
+      normalizeForKey(ghost.craftmanw),
       normalizeForKey(ghost.directory_name),
       ghost.thumbnail_path,
       ghost.thumbnail_use_self_alpha ? 1 : 0,
@@ -151,8 +161,11 @@ export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghos
     let sql = GHOST_INSERT_SQL_PREFIX + placeholders.join(", ");
     sql += " ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET ";
     sql += "row_fingerprint = excluded.row_fingerprint, ";
-    sql += "name = excluded.name, craftman = excluded.craftman, directory_name = excluded.directory_name, ";
+    sql += "name = excluded.name, sakura_name = excluded.sakura_name, kero_name = excluded.kero_name, ";
+    sql += "craftman = excluded.craftman, craftmanw = excluded.craftmanw, directory_name = excluded.directory_name, ";
     sql += "path = excluded.path, source = excluded.source, name_lower = excluded.name_lower, ";
+    sql += "sakura_name_lower = excluded.sakura_name_lower, kero_name_lower = excluded.kero_name_lower, ";
+    sql += "craftman_lower = excluded.craftman_lower, craftmanw_lower = excluded.craftmanw_lower, ";
     sql += "directory_name_lower = excluded.directory_name_lower, thumbnail_path = excluded.thumbnail_path, ";
     sql += "thumbnail_use_self_alpha = excluded.thumbnail_use_self_alpha, thumbnail_kind = excluded.thumbnail_kind, ";
     sql += "updated_at = CURRENT_TIMESTAMP ";
@@ -237,7 +250,19 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
 }
 
 const GHOST_SELECT_COLUMNS =
-  "name, craftman, directory_name, path, source, name_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+  "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+
+const GHOST_SEARCH_LOWER_COLUMNS = [
+  "name_lower",
+  "sakura_name_lower",
+  "kero_name_lower",
+  "craftman_lower",
+  "craftmanw_lower",
+  "directory_name_lower",
+] as const;
+
+const GHOST_SEARCH_WHERE =
+  GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
 
 export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
   const db = await getDb();
@@ -252,7 +277,7 @@ export async function searchGhostsInitialPage(requestKey: string, limit: number)
 
 export async function countGhostsByQuery(requestKey: string, query: string): Promise<number> {
   const db = await getDb();
-  const normalizedQuery = query.normalize("NFKC").toLowerCase();
+  const normalizedQuery = normalizeForKey(query);
 
   let countResult: { count: number }[];
   if (normalizedQuery === "") {
@@ -263,8 +288,8 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
   } else {
     const likePattern = `%${normalizedQuery}%`;
     countResult = await db.select<{ count: number }[]>(
-      "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?)",
-      [requestKey, likePattern, likePattern]
+      `SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`,
+      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern)]
     );
   }
 
@@ -274,16 +299,18 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
   const db = await getDb();
 
-  const normalizedQuery = query.normalize("NFKC").toLowerCase();
+  const normalizedQuery = normalizeForKey(query);
   const likePattern = `%${normalizedQuery}%`;
-  const total = await countGhostsByQuery(requestKey, query);
+
+  const [total, rows] = await Promise.all([
+    countGhostsByQuery(requestKey, query),
+    db.select<GhostView[]>(
+      `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
+      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
+    ),
+  ]);
+
   console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
-
-  const rows = await db.select<GhostView[]>(
-    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (name_lower LIKE ? OR directory_name_lower LIKE ?) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
-    [requestKey, likePattern, likePattern, limit, offset]
-  );
-
   console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
   return { ghosts: rows, total };
 }
