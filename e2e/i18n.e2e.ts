@@ -75,7 +75,7 @@ test("言語切り替え: 英語モードで検索ボックスのプレースホ
 
   // 検索プレースホルダが英語
   const searchInput = await driver.wait(
-    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='Search by ghost name']")),
+    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='Search by name or author']")),
     5_000,
   );
   expect(await searchInput.isDisplayed()).toBe(true);
@@ -101,7 +101,7 @@ test("言語切り替え: 日本語に戻すと検索ボックスのプレース
 
   // 検索プレースホルダが日本語に戻っている
   const searchInput = await driver.wait(
-    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='ゴースト名で検索']")),
+    until.elementLocated(By.css("[data-testid='search-input'] input[placeholder='ゴースト名・作者名で検索']")),
     5_000,
   );
   expect(await searchInput.isDisplayed()).toBe(true);
