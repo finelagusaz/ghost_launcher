@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Field, Input, makeStyles } from "@fluentui/react-components";
 import { SearchRegular } from "@fluentui/react-icons";
@@ -19,7 +19,15 @@ const useStyles = makeStyles({
 export function SearchBox({ value, onChange }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
+  // IME 変換中は props.onChange（検索クエリ更新）をブロックするフラグ
   const isComposing = useRef(false);
+  // 表示値はローカル管理。IME 変換中も読み仮名が崩れないよう常に更新する
+  const [inputValue, setInputValue] = useState(value);
+
+  // 外部から value が変化したとき（検索クリアなど）に追従する
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
 
   return (
     <div className={styles.root} data-testid="search-input">
@@ -27,8 +35,9 @@ export function SearchBox({ value, onChange }: Props) {
         <Input
           contentBefore={<SearchRegular />}
           placeholder={t("search.placeholder")}
-          value={value}
+          value={inputValue}
           onChange={(_: unknown, data: { value: string }) => {
+            setInputValue(data.value);
             if (!isComposing.current) onChange(data.value);
           }}
           onCompositionStart={() => { isComposing.current = true; }}
