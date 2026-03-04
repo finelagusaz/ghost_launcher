@@ -88,7 +88,11 @@ ghost_launcher/
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
-**テストモック**: `vitest.config.ts` の `resolve.alias` で `@tauri-apps/*` を `src/__mocks__/` 以下のモジュールに差し替えるパターンを使用します。
+**テストモック**: `vitest.config.ts` の `resolve.alias` で `@tauri-apps/*` を `src/test/mocks/` 以下のモジュールに自動差し替え済みのため、テストで `invoke` 等を追加モックなしで使える。
+
+**React コンポーネントテスト**: `setup.ts` に自動 cleanup 設定がないため、各テストファイルで `afterEach(cleanup)` を必ず呼ぶ（漏れると前テストの DOM が残り「Found multiple elements」エラーになる）。`act()` で React が要素を差し替えることがあるため、状態変更後は `screen.getByTestId()` 等で要素を再取得する（`act()` 前に得た参照は stale になる）。
+
+**ブラウザ API のモック**: `ResizeObserver` など jsdom に存在しないブラウザ API は `vi.stubGlobal("ResizeObserver", vi.fn(cb => { callbacks.push(cb); return { observe: vi.fn(), disconnect: vi.fn() }; }))` でモックし、`afterEach` で `vi.unstubAllGlobals()` を呼ぶ。収集したコールバックを `act()` 内で手動トリガーして状態変化をテストする。
 
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`utils/descript.rs`）。
 
@@ -129,6 +133,8 @@ ghost_launcher/
    - `.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
    - Rust でファイルシステム操作を変更する場合は macOS と Windows の挙動差を考慮する（例: `entry.metadata()` は Windows FindNextFile キャッシュを参照し陳腐化する場合がある。`fs::metadata(path)` は常に最新値を返す）
 3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く（Red: テストが失敗することを確認する）。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
+   - テストの種類と置き場: フック → `renderHook`（`src/hooks/*.test.ts`）、ライブラリ → 純粋関数（`src/lib/*.test.ts`）、コンポーネント → `render` + jsdom（`src/components/*.test.tsx`）
+   - 外部 UI ライブラリのDOM出力を仮定してアサーションを書かない。先に小さなデバッグテスト（`console.log(element.outerHTML)`）で実際の出力を確認してから assertion を書く
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く（Green: テストが通ることを確認する）
 5. **検証する** — `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` の全てが通ることを確認する
 6. **コミットする** — 検証が完了し、実装完了 = コミット済みの状態にする。`git status` が clean になるまでセッションを終了しない
