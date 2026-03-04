@@ -119,7 +119,7 @@ ghost_launcher/
 3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く（Red: テストが失敗することを確認する）。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
    - テストの種類と置き場: フック → `renderHook`（`src/hooks/*.test.ts`）、ライブラリ → 純粋関数（`src/lib/*.test.ts`）、コンポーネント → `render` + jsdom（`src/components/*.test.tsx`）
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く（Green: テストが通ることを確認する）
-5. **検証する** — `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` の全てが通ることを確認する
+5. **検証する** — コミット前チェックリスト（後述）の全項目が通ることを確認する
 6. **コミットする** — 検証が完了し、実装完了 = コミット済みの状態にする。`git status` が clean になるまでセッションを終了しない
 7. **PR を作成する** — CI が通ることを確認し、GitHub Flow に従い PR を作成する
 
@@ -160,25 +160,15 @@ GitHub Flow に準拠する。
 ### ブランチ命名規則
 
 形式: `{prefix}/{issue番号}-{英語で内容の説明}`
-
-| プレフィックス        | 用途                           | 例                                 |
-|-----------------------|--------------------------------|------------------------------------|
-| `feature/`            | 新機能の追加・開発             | `feature/15-ghost-folder-sorting`  |
-| `fix/`                | バグ修正                       | `fix/15-validation-cancel-error`   |
-| `hotfix/`             | 本番環境の緊急バグ修正         | `hotfix/16-crash-on-launch`        |
-| `release/`            | リリース準備                   | `release/1.0.0`                    |
-| `test/`               | テスト・実験的な作業           | `test/15-vitest-setup`             |
-| `doc/` または `docs/` | ドキュメントの更新・改善       | `docs/15-update-spec`              |
-| `refactor/`           | コードのリファクタリング・改善 | `refactor/15-extract-token-helper` |
-
-番号のみのブランチ名（`fix/15`）は使わない。
+プレフィックス: `feature/` | `fix/` | `hotfix/` | `release/` | `test/` | `docs/` | `refactor/`
+例: `fix/15-validation-cancel-error`, `feature/15-ghost-folder-sorting`。番号のみ（`fix/15`）は不可。
 
 ### PR 運用
 
 1. `main` から作業ブランチを作成
 2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
 3. **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
-4. `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` がすべて通ることを確認してから PR を作成
+4. コミット前チェックリストがすべて通ることを確認してから PR を作成
 5. PR マージ後にブランチを削除
 6. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
 
