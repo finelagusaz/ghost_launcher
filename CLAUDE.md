@@ -8,6 +8,17 @@
 
 Ghost Launcher は、伺か/SSP ゴーストを検出して起動するための Tauri 2 デスクトップアプリです。SSP のインストールディレクトリと追加のカスタムフォルダを走査し、`descript.txt`（Shift_JIS/UTF-8）からゴーストのメタデータを解析して、検索可能なランチャー UI を提供します。
 
+## コミュニケーション方針
+
+- **実行にバイアス**: 明確なタスクは分析・計画より実行を優先する。ユーザーが具体的な修正指示を出した場合は最小限の確認で着手する
+- **コミット・PR は即実行**: コミットや PR 作成の指示は確認なしで実行する
+- **分析は発見事項のみ**: 分析を求められたら発見事項のみを報告し、求められていない実装計画には踏み込まない
+- **不明点は先に質問**: 着手前に不明点がある場合は、作業を始める前にまとめて質問する
+
+## 言語
+
+UI テキストはすべて日本語です。Rust ファイル内のコードコメントも日本語です。
+
 ## コマンド
 
 ```bash
@@ -40,12 +51,12 @@ npm run e2e
 
 ```
 ghost_launcher/
-├── src/                        # フロントエンド（React 19 / TypeScript）
+├── src/                        # フロントエンド（React 19 / TypeScript）→ src/CLAUDE.md
 │   ├── lib/                    # Tauri 呼び出し・ビジネスロジック
 │   ├── hooks/                  # React カスタムフック
 │   ├── components/             # React コンポーネント
 │   └── App.tsx                 # ルートコンポーネント
-├── src-tauri/
+├── src-tauri/                  # Rust バックエンド → src-tauri/CLAUDE.md
 │   └── src/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
@@ -53,7 +64,7 @@ ghost_launcher/
 │       ├── utils/
 │       │   └── descript.rs     # descript.txt パーサー
 │       └── lib.rs              # Tauri アプリビルダー
-├── e2e/                        # E2E テスト（Playwright + selenium-webdriver + tauri-driver）
+├── e2e/                        # E2E テスト → e2e/CLAUDE.md
 │   ├── helpers/
 │   │   └── harness.ts          # tauri-driver 起動・WebDriver セッション管理
 │   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
@@ -88,28 +99,6 @@ ghost_launcher/
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
-**テストモック**: `vitest.config.ts` の `resolve.alias` で `@tauri-apps/*` を `src/__mocks__/` 以下のモジュールに差し替えるパターンを使用します。
-
-**descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`utils/descript.rs`）。
-
-**Rust テストの一時ディレクトリ**: テスト用の一時ディレクトリは `TempDirGuard` パターンで管理し、テスト終了時に確実に削除します。
-
-**スカッシュマージのマージ済み確認**: スカッシュマージでは元コミットが main の祖先に入らないため、`git log main..branch` は「未マージ」と誤検知する。内容が main に取り込まれているかは `git diff main..branch --stat` で判断する。差分がほぼゼロなら実質マージ済み。
-
-**E2E テスト**: `playwright` + `selenium-webdriver` + `tauri-driver` を組み合わせて実機の Tauri アプリを操作します。`e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当。セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）。SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップします。E2E テストはリリースビルドが前提であり CI には含まれません。
-
-**SQLite マイグレーション制約**: `ALTER TABLE ... ADD COLUMN ... DEFAULT` の値には**リテラルのみ**使用できる。`CURRENT_TIMESTAMP` や `datetime('now')` などの関数は拒否される（アプリ起動時にマイグレーション失敗でクラッシュする）。正しくは `DEFAULT ''` のようにリテラルを指定し、実際の値は INSERT 時の VALUES 句で設定する。新しいマイグレーションを追加・変更した場合は `cargo test` のインメモリ DB テスト（`lib.rs` の `tests::マイグレーションが順番にインメモリdbへ適用できる`）が構文エラーを検知する。
-
-**SQLite マイグレーション SQL の不変性**: sqlx は適用済みマイグレーションの SQL 文字列の SHA-384 チェックサムを `_sqlx_migrations` テーブルに記録し、起動時に再検証する。空白・インデントを含む**あらゆる変更**がチェックサム不一致を引き起こし「migration N was previously applied but has been modified」でクラッシュする。このため: (1) 一度でもリリース・コミットした migration の SQL は**絶対に編集しない**。(2) 複数行 SQL は Rust のインデントが文字列に混入しないよう `"ALTER TABLE ...\nCREATE INDEX ..."` のように **`\n` を明示**して書く（raw 改行 + インデントを使うとリファクタリング時にインデントが変わり即クラッシュする）。
-
-**SQLite マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db はキャッシュ DB であり、再スキャンで復旧可能なため安全。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
-
-**vitest モックのリセット**: `vi.mockClear()` は呼び出し履歴（calls/results）をクリアするが `mockResolvedValue` などの実装は残る。テスト間でモック実装が汚染される場合は `vi.mockReset()` を使う。モジュールレベル変数（フラグ・シングルトン等）をリセットしたい場合は `beforeEach` で `vi.resetModules()` を呼び、dynamic import（`await import('./module')`）でモジュールを再取得する。
-
-**非同期 singleton の初期化**: 複数のセットアップステップを持つ singleton は、全ステップ完了後にインスタンスを変数へ代入する。途中で代入すると後続のセットアップが失敗した場合に不完全なインスタンスが固定される（例: `getDb()` で PRAGMA 実行前に `dbInstance = db` と代入しない）。
-
-**依存クレートの移行・更新**: シリアライズ形式やストレージ形式に関わるクレートを移行する場合は、必ず後方互換性を検証する。(1) 移行前の形式で保存されたデータを移行後のコードで読めるか確認する。(2) フォールバックパス（旧形式 → 新形式への自動変換）が必要か判断する。(3) クレートのバージョンアップ時は `cargo info <crate>` でダウンロード数・リポジトリ URL・最終公開日を確認し、トロルパッケージやプレースホルダーでないことを検証する。
-
 ## 開発方針
 
 - **KISS**: シンプルさを最優先する。1つの関数は1つのことだけを行い、短く保つ。到達不能なフォールバックや使われない汎用化は書かない
@@ -127,10 +116,10 @@ ghost_launcher/
    - 対称的なコードパス（追加/削除、成功/失敗）がある場合は両方を確認する
    - 変更しないと判断したファイルについても、その根拠を確認する
    - `.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
-   - Rust でファイルシステム操作を変更する場合は macOS と Windows の挙動差を考慮する（例: `entry.metadata()` は Windows FindNextFile キャッシュを参照し陳腐化する場合がある。`fs::metadata(path)` は常に最新値を返す）
 3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く（Red: テストが失敗することを確認する）。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
+   - テストの種類と置き場: フック → `renderHook`（`src/hooks/*.test.ts`）、ライブラリ → 純粋関数（`src/lib/*.test.ts`）、コンポーネント → `render` + jsdom（`src/components/*.test.tsx`）
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く（Green: テストが通ることを確認する）
-5. **検証する** — `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` の全てが通ることを確認する
+5. **検証する** — コミット前チェックリスト（後述）の全項目が通ることを確認する
 6. **コミットする** — 検証が完了し、実装完了 = コミット済みの状態にする。`git status` が clean になるまでセッションを終了しない
 7. **PR を作成する** — CI が通ることを確認し、GitHub Flow に従い PR を作成する
 
@@ -171,34 +160,28 @@ GitHub Flow に準拠する。
 ### ブランチ命名規則
 
 形式: `{prefix}/{issue番号}-{英語で内容の説明}`
-
-| プレフィックス        | 用途                           | 例                                 |
-|-----------------------|--------------------------------|------------------------------------|
-| `feature/`            | 新機能の追加・開発             | `feature/15-ghost-folder-sorting`  |
-| `fix/`                | バグ修正                       | `fix/15-validation-cancel-error`   |
-| `hotfix/`             | 本番環境の緊急バグ修正         | `hotfix/16-crash-on-launch`        |
-| `release/`            | リリース準備                   | `release/1.0.0`                    |
-| `test/`               | テスト・実験的な作業           | `test/15-vitest-setup`             |
-| `doc/` または `docs/` | ドキュメントの更新・改善       | `docs/15-update-spec`              |
-| `refactor/`           | コードのリファクタリング・改善 | `refactor/15-extract-token-helper` |
-
-番号のみのブランチ名（`fix/15`）は使わない。
+プレフィックス: `feature/` | `fix/` | `hotfix/` | `release/` | `test/` | `docs/` | `refactor/`
+例: `fix/15-validation-cancel-error`, `feature/15-ghost-folder-sorting`。番号のみ（`fix/15`）は不可。
 
 ### PR 運用
 
 1. `main` から作業ブランチを作成
 2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
 3. **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
-4. `npm run build`・`npm test`・`npm run check:ui-guidelines`・`npm run test:ui-guidelines-check`・`cargo test --manifest-path src-tauri/Cargo.toml` がすべて通ることを確認してから PR を作成
+4. コミット前チェックリストがすべて通ることを確認してから PR を作成
 5. PR マージ後にブランチを削除
 6. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
 
-## コミュニケーション方針
+### スカッシュマージのマージ済み確認
 
-- **実行にバイアス**: 明確なタスクは分析・計画より実行を優先する。ユーザーが具体的な修正指示を出した場合は最小限の確認で着手する
-- **コミット・PR は即実行**: コミットや PR 作成の指示は確認なしで実行する
-- **分析は発見事項のみ**: 分析を求められたら発見事項のみを報告し、求められていない実装計画には踏み込まない
-- **不明点は先に質問**: 着手前に不明点がある場合は、作業を始める前にまとめて質問する
+スカッシュマージでは元コミットが main の祖先に入らないため、`git log main..branch` は「未マージ」と誤検知する。内容が main に取り込まれているかは `git diff main..branch --stat` で判断する。差分がほぼゼロなら実質マージ済み。
+
+## CLAUDE.md の保守ルール
+
+- **短さが正義**: 読まれないルールは存在しないのと同じ。追記する前に「これは本当にここに要るか」を問う
+- **コードの近くに置く**: フォルダ固有の知識はそのフォルダの `CLAUDE.md` に書く。作業者の視線の先にルールがあることが重要
+- **更新タイミング**: 実装・レビュー・修正が完了し、パターンとして確定したときに更新する。作業中の仮説や未検証の知見は書かない
+- **1 in 1 out を意識する**: 新しいルールを足すとき、不要になったルールの削除を検討する
 
 ## 参照ドキュメント
 
@@ -208,7 +191,3 @@ GitHub Flow に準拠する。
   - **更新タイミング**: サイクル終了後（実装・レビュー・追加修正まで完了したとき）
   - **更新方法**: 上書き（追記しない）。前回サイクルの内容を新サイクルの振り返りで置き換える
   - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `ui/CLAUDE.md` / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる
-
-## 言語
-
-UI テキストはすべて日本語です。Rust ファイル内のコードコメントも日本語です。

@@ -26,13 +26,13 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
     minWidth: 0,
+    flex: 1,
   },
   headerActions: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
-    marginLeft: "auto",
   },
   title: {
     fontSize: "clamp(1.5rem, 5vw, 2rem)",

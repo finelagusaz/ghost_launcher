@@ -131,7 +131,12 @@ const TruncatedText = memo(function TruncatedText({
 
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el) setIsTruncated(el.scrollWidth > el.clientWidth);
+    if (!el) return;
+    const check = () => setIsTruncated(el.scrollWidth > el.clientWidth);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const text = (
