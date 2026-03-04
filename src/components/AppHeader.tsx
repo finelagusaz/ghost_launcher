@@ -33,7 +33,6 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "8px",
     flexWrap: "wrap",
-    marginLeft: "auto",
   },
   title: {
     fontSize: "clamp(1.5rem, 5vw, 2rem)",
