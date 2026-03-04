@@ -26,6 +26,7 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "4px",
     minWidth: 0,
+    flex: 1,
   },
   headerActions: {
     display: "flex",

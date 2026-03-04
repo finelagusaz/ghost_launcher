@@ -70,6 +70,12 @@ const useStyles = makeStyles({
       gridTemplateColumns: "1fr",
     },
   },
+  // 1カラムに崩れたとき直上のフィールドとの関連を保つためボタンを全幅にする
+  responsiveButton: {
+    "@media (max-width: 600px)": {
+      width: "100%",
+    },
+  },
   empty: {
     color: tokens.colorNeutralForeground3,
   },
@@ -171,6 +177,7 @@ export function SettingsPanel({
           <Input readOnly value={sspPath ?? t("settings.ssp.unset")} />
         </Field>
         <Button
+          className={styles.responsiveButton}
           icon={<FolderOpenRegular />}
           appearance="secondary"
           onClick={handleSelectFolder}
@@ -196,6 +203,7 @@ export function SettingsPanel({
             <div key={folder} className={styles.folderRow}>
               <Input readOnly value={folder} />
               <Button
+                className={styles.responsiveButton}
                 icon={<DeleteRegular />}
                 appearance="outline"
                 aria-label={t("settings.folders.deleteAriaLabel", { folder })}
