@@ -90,7 +90,7 @@ ghost_launcher/
 
 **テストモック**: `vitest.config.ts` の `resolve.alias` で `@tauri-apps/*` を `src/test/mocks/` 以下のモジュールに自動差し替え済みのため、テストで `invoke` 等を追加モックなしで使える。
 
-**React コンポーネントテスト**: `setup.ts` に自動 cleanup 設定がないため、各テストファイルで `afterEach(cleanup)` を必ず呼ぶ（漏れると前テストの DOM が残り「Found multiple elements」エラーになる）。`act()` で React が要素を差し替えることがあるため、状態変更後は `screen.getByTestId()` 等で要素を再取得する（`act()` 前に得た参照は stale になる）。
+**React コンポーネントテスト**: `setup.ts` で `afterEach(cleanup)` をグローバル設定済みのため、各テストファイルに cleanup を書く必要はない。`act()` で React が要素を差し替えることがあるため、状態変更後は `screen.getByTestId()` 等で要素を再取得する（`act()` 前に得た参照は stale になる）。
 
 **ブラウザ API のモック**: `ResizeObserver` など jsdom に存在しないブラウザ API は `vi.stubGlobal("ResizeObserver", vi.fn(cb => { callbacks.push(cb); return { observe: vi.fn(), disconnect: vi.fn() }; }))` でモックし、`afterEach` で `vi.unstubAllGlobals()` を呼ぶ。収集したコールバックを `act()` 内で手動トリガーして状態変化をテストする。
 
