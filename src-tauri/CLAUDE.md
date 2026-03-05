@@ -18,6 +18,6 @@
 
 ## その他
 
-**descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`utils/descript.rs`）。
+**descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`crates/ghost-meta/src/descript.rs`）。
 
 **ファイルシステム操作の OS 差異**: macOS と Windows の挙動差に注意。`entry.metadata()` は Windows FindNextFile キャッシュを参照し陳腐化する場合がある。`fs::metadata(path)` は常に最新値を返す。

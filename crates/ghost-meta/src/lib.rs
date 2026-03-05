@@ -10,6 +10,9 @@ pub mod descript;
 pub mod ghost;
 pub mod thumbnail;
 
+#[cfg(test)]
+pub(crate) mod testutil;
+
 pub use descript::parse_descript;
 pub use ghost::{read_ghost, scan_ghosts, GhostMeta};
 pub use thumbnail::{resolve_thumbnail, AlphaMode, ThumbnailInfo, ThumbnailKind};

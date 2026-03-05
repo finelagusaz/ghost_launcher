@@ -61,9 +61,9 @@ ghost_launcher/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
 │       │   └── ssp.rs          # ゴースト起動コマンド
-│       ├── utils/
-│       │   └── descript.rs     # descript.txt パーサー
 │       └── lib.rs              # Tauri アプリビルダー
+├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
+│   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
 ├── e2e/                        # E2E テスト → e2e/CLAUDE.md
 │   ├── helpers/
 │   │   └── harness.ts          # tauri-driver 起動・WebDriver セッション管理
@@ -80,12 +80,12 @@ ghost_launcher/
 
 **Tauri 2 アプリ**: Rust バックエンド + React 19 / TypeScript フロントエンド。
 
-### バックエンド（`src-tauri/src/`）
+### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
 
-- `lib.rs` — Tauri アプリビルダー。コマンドとプラグイン（dialog, store）を登録
-- `commands/ghost/` — ゴースト一覧取得コマンド群。`scan.rs`（走査・解析）、`fingerprint.rs`（差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）で構成
-- `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動（SSP 内部ゴーストはディレクトリ名、外部ゴーストはフルパス）
-- `utils/descript.rs` — `encoding_rs` を使い、文字コード判定付きで `descript.txt` を解析
+- `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
+- `commands/ghost/` — ゴースト一覧取得コマンド群。`scan.rs`（`ghost-meta` 呼び出し + 型変換）、`fingerprint.rs`（差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
+- `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動
+- `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
 
 ### フロントエンド（`src/`）
 

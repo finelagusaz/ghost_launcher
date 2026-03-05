@@ -1,4 +1,6 @@
 mod commands;
+#[cfg(test)]
+pub(crate) mod testutil;
 
 use tauri::Manager;
 

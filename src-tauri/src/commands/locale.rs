@@ -46,39 +46,12 @@ pub fn read_user_locale(lang: String) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::TempDirGuard;
     use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    struct TempDirGuard {
-        path: PathBuf,
-    }
-
-    impl TempDirGuard {
-        fn new(prefix: &str) -> Result<Self, String> {
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| e.to_string())?
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!("{prefix}_{nanos}"));
-            fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-            Ok(Self { path })
-        }
-
-        fn path(&self) -> &PathBuf {
-            &self.path
-        }
-    }
-
-    impl Drop for TempDirGuard {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
 
     #[test]
     fn locales_フォルダがない場合は_none_を返す() {
-        let dir = TempDirGuard::new("locale_test").unwrap();
+        let dir = TempDirGuard::new("locale_test");
         let result = read_locale_from_dir(dir.path(), "ja");
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
@@ -86,7 +59,7 @@ mod tests {
 
     #[test]
     fn 言語ファイルが存在する場合は内容を返す() {
-        let dir = TempDirGuard::new("locale_test").unwrap();
+        let dir = TempDirGuard::new("locale_test");
         let locales_dir = dir.path().join("locales");
         fs::create_dir_all(&locales_dir).unwrap();
         fs::write(locales_dir.join("ja.json"), r#"{"card.launch":"起動"}"#).unwrap();
@@ -98,7 +71,7 @@ mod tests {
 
     #[test]
     fn 存在しない言語コードの場合は_none_を返す() {
-        let dir = TempDirGuard::new("locale_test").unwrap();
+        let dir = TempDirGuard::new("locale_test");
         let locales_dir = dir.path().join("locales");
         fs::create_dir_all(&locales_dir).unwrap();
         fs::write(locales_dir.join("ja.json"), r#"{}"#).unwrap();
@@ -110,7 +83,7 @@ mod tests {
 
     #[test]
     fn ファイルサイズ超過の場合はエラーを返す() {
-        let dir = TempDirGuard::new("locale_test").unwrap();
+        let dir = TempDirGuard::new("locale_test");
         let locales_dir = dir.path().join("locales");
         fs::create_dir_all(&locales_dir).unwrap();
         // 1 MB + 1 byte のダミーファイル

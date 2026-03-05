@@ -86,33 +86,7 @@ pub fn scan_ghosts(parent_dir: &Path) -> Result<Vec<GhostMeta>, GhostMetaError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    struct TempDirGuard {
-        path: PathBuf,
-    }
-
-    impl TempDirGuard {
-        fn new(prefix: &str) -> Self {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!("{}_{}", prefix, now));
-            fs::create_dir_all(&path).unwrap();
-            Self { path }
-        }
-
-        fn path(&self) -> &PathBuf {
-            &self.path
-        }
-    }
-
-    impl Drop for TempDirGuard {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
+    use crate::testutil::TempDirGuard;
 
     fn create_ghost(root: &PathBuf, dir_name: &str, descript: &str) {
         let base = root.join(dir_name).join("ghost").join("master");
