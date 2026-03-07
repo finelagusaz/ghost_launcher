@@ -29,7 +29,7 @@ describe("GhostCard の TruncatedText: ウィンドウリサイズ対応", () =>
     resizeCallbacks = [];
     vi.stubGlobal(
       "ResizeObserver",
-      vi.fn((cb: ResizeObserverCallback) => {
+      vi.fn(function (cb: ResizeObserverCallback) {
         resizeCallbacks.push(cb);
         return { observe: vi.fn(), disconnect: vi.fn() };
       }),
