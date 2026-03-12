@@ -22,12 +22,6 @@ pub struct GhostMeta {
     pub path: PathBuf,
     /// 解決済みサムネイル情報。thumbnail feature の有無に関わらず常に存在するフィールド
     pub thumbnail: Option<ThumbnailInfo>,
-    /// ゴーストルートディレクトリの最終更新時刻（UNIX エポックナノ秒）。取得失敗時は 0
-    pub dir_mtime_nanos: u128,
-    /// descript.txt の状態。"present" / "missing" / "unreadable"
-    pub descript_state: String,
-    /// descript.txt の最終更新時刻（UNIX エポックナノ秒）。取得失敗または存在しない場合は None
-    pub descript_mtime_nanos: Option<u128>,
 }
 
 /// ゴーストルートディレクトリのメタデータを取得する。
@@ -53,28 +47,6 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
     let craftmanw = fields.get("craftmanw").cloned();
     let thumbnail = resolve_thumbnail(ghost_root);
 
-    let dir_mtime_nanos = fs::metadata(ghost_root)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-
-    let (descript_state, descript_mtime_nanos) = match fs::metadata(&descript_path) {
-        Err(_) => ("missing".to_string(), None),
-        Ok(meta) => {
-            let nanos = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos());
-            match nanos {
-                Some(n) => ("present".to_string(), Some(n)),
-                None => ("unreadable".to_string(), None),
-            }
-        }
-    };
-
     Ok(GhostMeta {
         name,
         sakura_name,
@@ -84,9 +56,6 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
         directory_name,
         path: ghost_root.to_path_buf(),
         thumbnail,
-        dir_mtime_nanos,
-        descript_state,
-        descript_mtime_nanos,
     })
 }
 
@@ -247,27 +216,6 @@ mod tests {
 
         let metas = scan_ghosts(tmp.path()).unwrap();
         assert_eq!(metas.len(), 1);
-    }
-
-    // --- mtime フィールド ---
-
-    #[test]
-    fn read_ghost_がdir_mtime_nanosを返す() {
-        let tmp = TempDirGuard::new("ghost_meta_dir_mtime");
-        create_ghost(tmp.path(), "my_ghost", "charset,UTF-8\nname,Test\n");
-
-        let meta = read_ghost(&tmp.path().join("my_ghost")).unwrap();
-        assert!(meta.dir_mtime_nanos > 0);
-    }
-
-    #[test]
-    fn read_ghost_がdescript_stateをpresentで返す() {
-        let tmp = TempDirGuard::new("ghost_meta_descript_state_present");
-        create_ghost(tmp.path(), "my_ghost", "charset,UTF-8\nname,Test\n");
-
-        let meta = read_ghost(&tmp.path().join("my_ghost")).unwrap();
-        assert_eq!(meta.descript_state, "present");
-        assert!(meta.descript_mtime_nanos.is_some());
     }
 
     // --- thumbnail フィールド統合 ---

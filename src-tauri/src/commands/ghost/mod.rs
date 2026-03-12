@@ -22,14 +22,6 @@ pub fn scan_ghosts_with_meta(
     })
 }
 
-#[tauri::command]
-pub fn get_ghosts_fingerprint(
-    ssp_path: String,
-    additional_folders: Vec<String>,
-) -> Result<String, String> {
-    fingerprint::build_fingerprint(&ssp_path, &additional_folders)
-}
-
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;

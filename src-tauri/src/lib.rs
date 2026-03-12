@@ -266,7 +266,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::db::reset_ghost_db,
             commands::ghost::scan_ghosts_with_meta,
-            commands::ghost::get_ghosts_fingerprint,
+
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,
             commands::locale::read_user_locale,

@@ -65,13 +65,13 @@ describe("refreshGhostCatalog", () => {
     expect(setCachedFingerprint).toHaveBeenCalledTimes(1);
   });
 
-  it("キャッシュ fingerprint 一致でも DB に ghost が無ければ保存する", async () => {
+  it("DB に ghost が無ければ cachedFingerprint=null でフルスキャンして保存する", async () => {
     vi.mocked(getCachedFingerprint).mockReturnValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(false);
     vi.mocked(executeScan).mockResolvedValue({
       ghosts: [{ name: "B", craftman: "", directory_name: "b", path: "/b", source: "ssp", sakura_name: "", kero_name: "", craftmanw: "", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" }],
       fingerprint: "fp1",
-      cacheHit: true,
+      cacheHit: false,
     });
 
     const result = await refreshGhostCatalog({
@@ -81,6 +81,9 @@ describe("refreshGhostCatalog", () => {
     });
 
     expect(result.skipped).toBe(false);
+    expect(executeScan).toHaveBeenCalledWith(
+      expect.objectContaining({ cachedFingerprint: null }),
+    );
     expect(replaceGhostsByRequestKey).toHaveBeenCalledTimes(1);
   });
 

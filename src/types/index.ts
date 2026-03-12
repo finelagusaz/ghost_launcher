@@ -30,14 +30,3 @@ export interface ScanGhostsResponse {
   cacheHit: boolean;
 }
 
-export interface GhostCacheEntry {
-  request_key: string;
-  fingerprint: string;
-  ghosts: Ghost[];
-  cached_at: string;
-}
-
-export interface GhostCacheStoreV1 {
-  version: 1;
-  entries: Record<string, GhostCacheEntry>;
-}
