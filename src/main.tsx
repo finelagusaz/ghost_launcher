@@ -5,6 +5,10 @@ import { FluentProvider, tokens, webDarkTheme, webLightTheme } from "@fluentui/r
 import App from "./App";
 import "./index.css";
 import { useSystemTheme } from "./hooks/useSystemTheme";
+import { warmUpSettingsStore } from "./lib/settingsStore";
+
+// LazyStore の初期化を React レンダリング前にキックオフする
+warmUpSettingsStore();
 
 function Root() {
   const theme = useSystemTheme();

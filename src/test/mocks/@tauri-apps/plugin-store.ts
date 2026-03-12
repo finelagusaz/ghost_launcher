@@ -4,6 +4,8 @@ export class LazyStore {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private store: Record<string, any> = {};
 
+  init = vi.fn(async (): Promise<void> => {});
+
   get = vi.fn(<T>(key: string): Promise<T | null> =>
     Promise.resolve(key in this.store ? (this.store[key] as T) : null)
   );
