@@ -2,12 +2,6 @@ import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts, replaceGhostsBy
 import { executeScan } from "./ghostScanOrchestrator";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
 
-// localStorage に残った旧 fingerprint キーの掃除（v0.x → v1.0 移行）
-for (let i = localStorage.length - 1; i >= 0; i--) {
-  const key = localStorage.key(i);
-  if (key?.startsWith("fingerprint_")) localStorage.removeItem(key);
-}
-
 export interface RefreshGhostCatalogParams {
   sspPath: string;
   ghostFolders: string[];
@@ -29,8 +23,11 @@ export async function refreshGhostCatalog({
   // DB が空なら fingerprint を送らない → Rust は必ずフルスキャン結果を返す。
   // これにより cacheHit=true 時は dbHasData=true が論理的に保証され、
   // replaceGhostsByRequestKey([]) による意図しない全削除を構造的に防ぐ。
-  const dbHasData = forceFullScan ? false : await hasGhosts(requestKey);
-  const cachedFingerprint = (forceFullScan || !dbHasData) ? null : await getCachedFingerprint(requestKey);
+  let cachedFingerprint: string | null = null;
+  if (!forceFullScan) {
+    const [dbHasData, fp] = await Promise.all([hasGhosts(requestKey), getCachedFingerprint(requestKey)]);
+    cachedFingerprint = dbHasData ? fp : null;
+  }
   const result = await executeScan({
     requestKey,
     sspPath,
@@ -44,13 +41,16 @@ export async function refreshGhostCatalog({
   }
 
   await replaceGhostsByRequestKey(requestKey, result.ghosts);
-  await setCachedFingerprint(requestKey, result.fingerprint);
 
-  try {
-    await cleanupOldGhostCaches(requestKey);
-  } catch (error) {
-    console.warn("[ghostCatalogService] キャッシュ寿命管理のクリーンアップに失敗しました", error);
-  }
+  // fingerprint 保存と寿命管理は互いに独立。どちらも失敗してよい（次回フルスキャンで復旧）
+  await Promise.all([
+    setCachedFingerprint(requestKey, result.fingerprint).catch((error) => {
+      console.warn("[ghostCatalogService] fingerprint の保存に失敗しました", error);
+    }),
+    cleanupOldGhostCaches(requestKey).catch((error) => {
+      console.warn("[ghostCatalogService] キャッシュ寿命管理のクリーンアップに失敗しました", error);
+    }),
+  ]);
 
   return { skipped: false };
 }

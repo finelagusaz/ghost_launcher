@@ -18,7 +18,8 @@ vi.mock("./ghostScanOrchestrator", () => ({
 describe("refreshGhostCatalog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(cleanupOldGhostCaches).mockResolvedValue([]);
+    vi.mocked(setCachedFingerprint).mockResolvedValue(undefined);
+    vi.mocked(cleanupOldGhostCaches).mockResolvedValue(undefined);
   });
 
   it("キャッシュが有効ならスキャンをスキップする", async () => {
@@ -105,7 +106,7 @@ describe("refreshGhostCatalog", () => {
 
   it("保存後に古い request_key と fingerprint キャッシュを掃除する", async () => {
     vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cacheHit: false });
-    vi.mocked(cleanupOldGhostCaches).mockResolvedValue(["rk-current"]);
+    vi.mocked(cleanupOldGhostCaches).mockResolvedValue(undefined);
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",

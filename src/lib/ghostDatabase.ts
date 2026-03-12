@@ -200,7 +200,7 @@ export async function cleanupOldGhostCaches(
   currentRequestKey: string,
   maxGenerations = 5,
   ttlDays = 30,
-): Promise<string[]> {
+): Promise<void> {
   const db = await getDb();
 
   const rows = await db.select<RequestKeyRow[]>(
@@ -211,7 +211,6 @@ export async function cleanupOldGhostCaches(
   const keepByGeneration = new Set<string>(rows.slice(0, Math.max(0, maxGenerations)).map((r) => r.request_key));
   keepByGeneration.add(currentRequestKey);
 
-  const keepRequestKeys: string[] = [];
   const deleteRequestKeys: string[] = [];
 
   for (const row of rows) {
@@ -220,9 +219,7 @@ export async function cleanupOldGhostCaches(
     const keep =
       (keepByGeneration.has(row.request_key) && !ttlExpired) ||
       row.request_key === currentRequestKey;
-    if (keep) {
-      keepRequestKeys.push(row.request_key);
-    } else {
+    if (!keep) {
       deleteRequestKeys.push(row.request_key);
     }
   }
@@ -233,11 +230,6 @@ export async function cleanupOldGhostCaches(
     await db.execute(`DELETE FROM ghost_fingerprints WHERE request_key IN (${placeholders})`, deleteRequestKeys);
     console.log(`[ghostDatabase] Cleaned ${deleteRequestKeys.length} stale request_key caches`);
   }
-
-  if (!keepRequestKeys.includes(currentRequestKey)) {
-    keepRequestKeys.push(currentRequestKey);
-  }
-  return keepRequestKeys;
 }
 
 export async function getCachedFingerprint(requestKey: string): Promise<string | null> {
