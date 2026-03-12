@@ -402,7 +402,7 @@ stateDiagram-v2
     ExecuteScan --> HandleError : スキャン失敗
 
     SaveToSQLite --> UpdateFingerprint : SQLite 置換保存
-    UpdateFingerprint --> LifecycleCleanup : localStorage 更新
+    UpdateFingerprint --> LifecycleCleanup : fingerprint を SQLite に保存
     LifecycleCleanup --> Done : 世代超過・TTL 超過キャッシュを削除
 
     HandleError --> Done : エラー表示
