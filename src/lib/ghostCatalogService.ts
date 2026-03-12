@@ -1,7 +1,12 @@
-import { cleanupOldGhostCaches, hasGhosts, replaceGhostsByRequestKey } from "./ghostDatabase";
-import { getCachedFingerprint, pruneFingerprintCache, setCachedFingerprint } from "./fingerprintCache";
+import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts, replaceGhostsByRequestKey, setCachedFingerprint } from "./ghostDatabase";
 import { executeScan } from "./ghostScanOrchestrator";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
+
+// localStorage に残った旧 fingerprint キーの掃除（v0.x → v1.0 移行）
+for (let i = localStorage.length - 1; i >= 0; i--) {
+  const key = localStorage.key(i);
+  if (key?.startsWith("fingerprint_")) localStorage.removeItem(key);
+}
 
 export interface RefreshGhostCatalogParams {
   sspPath: string;
@@ -25,7 +30,7 @@ export async function refreshGhostCatalog({
   // これにより cacheHit=true 時は dbHasData=true が論理的に保証され、
   // replaceGhostsByRequestKey([]) による意図しない全削除を構造的に防ぐ。
   const dbHasData = forceFullScan ? false : await hasGhosts(requestKey);
-  const cachedFingerprint = (forceFullScan || !dbHasData) ? null : getCachedFingerprint(requestKey);
+  const cachedFingerprint = (forceFullScan || !dbHasData) ? null : await getCachedFingerprint(requestKey);
   const result = await executeScan({
     requestKey,
     sspPath,
@@ -39,11 +44,10 @@ export async function refreshGhostCatalog({
   }
 
   await replaceGhostsByRequestKey(requestKey, result.ghosts);
-  setCachedFingerprint(requestKey, result.fingerprint);
+  await setCachedFingerprint(requestKey, result.fingerprint);
 
   try {
-    const keepRequestKeys = await cleanupOldGhostCaches(requestKey);
-    pruneFingerprintCache(keepRequestKeys);
+    await cleanupOldGhostCaches(requestKey);
   } catch (error) {
     console.warn("[ghostCatalogService] キャッシュ寿命管理のクリーンアップに失敗しました", error);
   }

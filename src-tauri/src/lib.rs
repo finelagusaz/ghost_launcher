@@ -67,6 +67,12 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "ALTER TABLE ghosts ADD COLUMN sakura_name TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN kero_name TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftmanw TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN sakura_name_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN kero_name_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftman_lower TEXT NOT NULL DEFAULT '';\nALTER TABLE ghosts ADD COLUMN craftmanw_lower TEXT NOT NULL DEFAULT '';\nDELETE FROM ghosts;",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 9,
+            description: "create_ghost_fingerprints_table",
+            sql: "CREATE TABLE IF NOT EXISTS ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT ''\n);",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 

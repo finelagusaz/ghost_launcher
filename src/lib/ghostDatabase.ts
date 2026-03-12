@@ -230,6 +230,7 @@ export async function cleanupOldGhostCaches(
   if (deleteRequestKeys.length > 0) {
     const placeholders = buildInClausePlaceholders(deleteRequestKeys.length);
     await db.execute(`DELETE FROM ghosts WHERE request_key IN (${placeholders})`, deleteRequestKeys);
+    await db.execute(`DELETE FROM ghost_fingerprints WHERE request_key IN (${placeholders})`, deleteRequestKeys);
     console.log(`[ghostDatabase] Cleaned ${deleteRequestKeys.length} stale request_key caches`);
   }
 
@@ -237,6 +238,23 @@ export async function cleanupOldGhostCaches(
     keepRequestKeys.push(currentRequestKey);
   }
   return keepRequestKeys;
+}
+
+export async function getCachedFingerprint(requestKey: string): Promise<string | null> {
+  const db = await getDb();
+  const rows = await db.select<{ fingerprint: string }[]>(
+    "SELECT fingerprint FROM ghost_fingerprints WHERE request_key = ?",
+    [requestKey]
+  );
+  return rows.length > 0 ? rows[0].fingerprint : null;
+}
+
+export async function setCachedFingerprint(requestKey: string, fingerprint: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "INSERT OR REPLACE INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+    [requestKey, fingerprint]
+  );
 }
 
 export async function hasGhosts(requestKey: string): Promise<boolean> {
