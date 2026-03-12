@@ -16,6 +16,8 @@
 
 **マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db はキャッシュ DB であり、再スキャンで復旧可能なため安全。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
+**DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
+
 ## IPC 型の管理
 
 **ts-rs による自動生成**: IPC 境界を越える Rust struct には `#[cfg_attr(test, derive(TS))]` + `#[cfg_attr(test, ts(export))]` を付与する。`cargo test` 実行時に `src/types/generated/` へ TypeScript 型定義が自動生成される。手書きで TS 型を定義しない。
