@@ -16,6 +16,12 @@
 
 **マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db はキャッシュ DB であり、再スキャンで復旧可能なため安全。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
+## IPC 型の管理
+
+**ts-rs による自動生成**: IPC 境界を越える Rust struct には `#[cfg_attr(test, derive(TS))]` + `#[cfg_attr(test, ts(export))]` を付与する。`cargo test` 実行時に `src/types/generated/` へ TypeScript 型定義が自動生成される。手書きで TS 型を定義しない。
+
+**戻り値のフィールド名**: Tauri の `invoke()` は引数名を camelCase → snake_case に自動変換するが、**戻り値のフィールド名は変換しない**。`#[derive(Serialize)]` がそのまま JS に渡るため、TS 型は Rust のフィールド名（snake_case）と完全一致させる。`#[serde(rename_all = "camelCase")]` を使わない限り、JS 側で camelCase を期待してはならない。
+
 ## その他
 
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`crates/ghost-meta/src/descript.rs`）。

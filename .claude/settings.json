@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "bash scripts/hooks/check-ts-types.sh",
+        "timeout": 30000
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "command": "bash scripts/hooks/warn-migration-edit.sh"
+      }
+    ]
+  }
+}

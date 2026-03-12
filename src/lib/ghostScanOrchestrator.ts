@@ -8,6 +8,7 @@ export interface ExecuteScanParams {
   sspPath: string;
   additionalFolders: string[];
   forceFullScan: boolean;
+  cachedFingerprint: string | null;
 }
 
 /**
@@ -20,10 +21,11 @@ export function executeScan({
   sspPath,
   additionalFolders,
   forceFullScan,
+  cachedFingerprint,
 }: ExecuteScanParams): Promise<ScanGhostsResponse> {
   let scanPromise = pendingScans.get(requestKey);
   if (!scanPromise || forceFullScan) {
-    scanPromise = scanGhostsWithMeta(sspPath, additionalFolders);
+    scanPromise = scanGhostsWithMeta(sspPath, additionalFolders, cachedFingerprint);
 
     pendingScans.set(requestKey, scanPromise);
     scanPromise.finally(() => {

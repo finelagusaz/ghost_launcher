@@ -14,10 +14,10 @@ import {
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
-import type { Ghost } from "../types";
+import type { GhostView } from "../types";
 
 interface Props {
-  ghost: Ghost;
+  ghost: GhostView;
   sspPath: string;
 }
 

@@ -1,9 +1,13 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
 use ghost_meta::{AlphaMode, ThumbnailKind};
 
+use super::fingerprint::{
+    compute_fingerprint_hash, metadata_modified_string, push_absent_parent_token, push_entry_token,
+};
 use super::path_utils::normalize_path;
 use super::types::Ghost;
 
@@ -83,47 +87,130 @@ pub(crate) fn unique_sorted_additional_folders(
     folders
 }
 
-/// scan と fingerprint を 2 パスで実行する統合関数。
-/// ゴーストメタデータは ghost-meta クレートに、フィンガープリント計算は fingerprint モジュールに委譲する。
+/// 親ディレクトリを走査し、フィンガープリントトークン生成（+ オプションで Ghost 収集）を行う。
+/// required=true のとき、ディレクトリが存在しない・読めない場合はエラーを返す。
+/// ghosts が Some のとき、descript.txt が存在するエントリを Ghost として収集する。
+pub(crate) fn walk_parent(
+    parent_dir: &Path,
+    parent_label: &str,
+    required: bool,
+    tokens: &mut Vec<String>,
+    mut ghosts: Option<(&str, &mut Vec<Ghost>)>,
+) -> Result<(), String> {
+    let normalized_parent = normalize_path(parent_dir);
+
+    if !parent_dir.exists() {
+        if required {
+            return Err(format!(
+                "ghost フォルダが見つかりません: {}",
+                parent_dir.display()
+            ));
+        }
+        push_absent_parent_token(tokens, parent_label, &normalized_parent, "missing");
+        return Ok(());
+    }
+    if !parent_dir.is_dir() {
+        if required {
+            return Err(format!(
+                "ghost フォルダがディレクトリではありません: {}",
+                parent_dir.display()
+            ));
+        }
+        push_absent_parent_token(tokens, parent_label, &normalized_parent, "not-directory");
+        return Ok(());
+    }
+
+    let parent_modified = fs::metadata(parent_dir)
+        .as_ref()
+        .map(metadata_modified_string)
+        .unwrap_or_else(|_| "unreadable".to_string());
+    tokens.push(format!(
+        "parent|{}|{}|{}",
+        parent_label, normalized_parent, parent_modified
+    ));
+
+    let entries = match fs::read_dir(parent_dir) {
+        Ok(e) => e,
+        Err(error) => {
+            if required {
+                return Err(format!(
+                    "ディレクトリを読み取れませんでした ({}): {}",
+                    parent_dir.display(),
+                    error
+                ));
+            }
+            tokens.push(format!(
+                "entries|{}|{}|unreadable",
+                parent_label, normalized_parent
+            ));
+            return Ok(());
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        // fs::metadata は Windows NTFS の遅延タイムスタンプ問題を回避するため entry.metadata() を使わない
+        let entry_meta = match fs::metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let directory_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let descript_path = path.join("ghost").join("master").join("descript.txt");
+        let descript_state = push_entry_token(
+            tokens,
+            parent_label,
+            &normalized_parent,
+            &directory_name,
+            &entry_meta,
+            &descript_path,
+        );
+
+        // descript.txt が存在するエントリのみ Ghost として収集する
+        if let Some((source, ref mut ghost_list)) = ghosts {
+            if descript_state == "present" {
+                if let Ok(meta) = ghost_meta::read_ghost(&path) {
+                    ghost_list.push(ghost_from_meta(meta, source.to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// scan と fingerprint を 1 パスで実行する統合関数。
+/// ゴーストメタデータ収集とフィンガープリントトークン生成を同じ read_dir ループで行う。
 pub(crate) fn scan_ghosts_with_fingerprint_internal(
     ssp_path: &str,
     additional_folders: &[String],
 ) -> Result<(Vec<Ghost>, String), String> {
     let ghost_dir = Path::new(ssp_path).join("ghost");
-    if !ghost_dir.exists() {
-        return Err(format!(
-            "ghost フォルダが見つかりません: {}",
-            ghost_dir.display()
-        ));
-    }
-    if !ghost_dir.is_dir() {
-        return Err(format!(
-            "ghost フォルダがディレクトリではありません: {}",
-            ghost_dir.display()
-        ));
-    }
+    let mut tokens = vec!["fingerprint-version|1".to_string()];
+    let mut ghosts: Vec<Ghost> = Vec::new();
 
-    // SSP ゴーストをスキャン
-    let mut ghosts: Vec<Ghost> = ghost_meta::scan_ghosts(&ghost_dir)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|meta| ghost_from_meta(meta, "ssp".to_string()))
-        .collect();
+    walk_parent(&ghost_dir, "ssp", true, &mut tokens, Some(("ssp", &mut ghosts)))?;
 
-    // 追加フォルダをスキャン
-    for (source, folder_path, _) in unique_sorted_additional_folders(additional_folders) {
-        if !folder_path.exists() || !folder_path.is_dir() {
-            continue;
-        }
-        if let Ok(metas) = ghost_meta::scan_ghosts(&folder_path) {
-            ghosts.extend(metas.into_iter().map(|meta| ghost_from_meta(meta, source.clone())));
-        }
+    for (source, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+        walk_parent(
+            &folder_path,
+            &normalized_folder,
+            false,
+            &mut tokens,
+            Some((&source, &mut ghosts)),
+        )?;
     }
 
     ghosts.sort_by_cached_key(|ghost| ghost.name.to_lowercase());
 
-    // フィンガープリント計算（fingerprint モジュールに委譲）
-    let fingerprint = super::fingerprint::build_fingerprint(ssp_path, additional_folders)?;
-
-    Ok((ghosts, fingerprint))
+    Ok((ghosts, compute_fingerprint_hash(&tokens)))
 }

@@ -213,6 +213,45 @@ describe("ghostDatabase - replaceGhostsByRequestKey", () => {
     expect(upsertSql).toContain("WHERE ghosts.row_fingerprint <> excluded.row_fingerprint");
   });
 });
+describe("ghostDatabase - getCachedFingerprint", () => {
+  it("request_key が存在する場合は fingerprint を返す", async () => {
+    mockSelect.mockResolvedValue([{ fingerprint: "fp-abc" }]);
+    const { getCachedFingerprint } = await import("./ghostDatabase");
+    const result = await getCachedFingerprint("rk1");
+
+    expect(result).toBe("fp-abc");
+    const call = mockSelect.mock.calls.find((c) =>
+      (c[0] as string).includes("ghost_fingerprints")
+    );
+    expect(call).toBeDefined();
+    expect(call![0]).toContain("SELECT fingerprint FROM ghost_fingerprints WHERE request_key = ?");
+    expect(call![1]).toEqual(["rk1"]);
+  });
+
+  it("request_key が存在しない場合は null を返す", async () => {
+    mockSelect.mockResolvedValue([]);
+    const { getCachedFingerprint } = await import("./ghostDatabase");
+    const result = await getCachedFingerprint("rk-missing");
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("ghostDatabase - setCachedFingerprint", () => {
+  it("INSERT OR REPLACE で fingerprint を保存する", async () => {
+    const { setCachedFingerprint } = await import("./ghostDatabase");
+    await setCachedFingerprint("rk1", "fp-new");
+
+    const call = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).includes("ghost_fingerprints")
+    );
+    expect(call).toBeDefined();
+    expect(call![0]).toContain("INSERT OR REPLACE INTO ghost_fingerprints");
+    expect(call![0]).toContain("CURRENT_TIMESTAMP");
+    expect(call![1]).toEqual(["rk1", "fp-new"]);
+  });
+});
+
 describe("ghostDatabase - cleanupOldGhostCaches", () => {
   it("世代上限とTTLに基づき古い request_key を削除する", async () => {
     const now = new Date();
@@ -224,15 +263,19 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     ]);
 
     const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    const keep = await cleanupOldGhostCaches("rk-current", 2, 30);
+    await cleanupOldGhostCaches("rk-current", 2, 30);
 
-    expect(keep).toContain("rk-current");
-    expect(keep).toContain("rk-recent");
-    const deleteCall = mockExecute.mock.calls.find((c) =>
+    const ghostsDeleteCall = mockExecute.mock.calls.find((c) =>
       (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
     );
-    expect(deleteCall).toBeDefined();
-    expect(deleteCall![1]).toEqual(["rk-old"]);
+    expect(ghostsDeleteCall).toBeDefined();
+    expect(ghostsDeleteCall![1]).toEqual(["rk-old"]);
+
+    const fpDeleteCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("DELETE FROM ghost_fingerprints WHERE request_key IN")
+    );
+    expect(fpDeleteCall).toBeDefined();
+    expect(fpDeleteCall![1]).toEqual(["rk-old"]);
   });
 
   it("currentRequestKey が DB に存在しない場合でも戻り値に含まれる", async () => {
@@ -241,9 +284,13 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     ]);
 
     const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    const keep = await cleanupOldGhostCaches("rk-new", 5, 30);
+    await cleanupOldGhostCaches("rk-new", 5, 30);
 
-    expect(keep).toContain("rk-new");
+    // rk-other は世代内なので DELETE されない
+    const deleteCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
+    );
+    expect(deleteCall).toBeUndefined();
   });
 
   it("全エントリが TTL 切れでも currentRequestKey のみ保持される（バグ修正リグレッション）", async () => {
@@ -254,10 +301,8 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     ]);
 
     const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    const keep = await cleanupOldGhostCaches("rk-current", 5, 30);
+    await cleanupOldGhostCaches("rk-current", 5, 30);
 
-    expect(keep).toContain("rk-current");
-    expect(keep).not.toContain("rk-stale");
     const deleteCall = mockExecute.mock.calls.find((c) =>
       (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
     );
@@ -273,9 +318,12 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     ]);
 
     const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    const keep = await cleanupOldGhostCaches("rk-current", 0, 30);
+    await cleanupOldGhostCaches("rk-current", 0, 30);
 
-    expect(keep).toContain("rk-current");
-    expect(keep).not.toContain("rk-other");
+    const deleteCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall![1]).toEqual(["rk-other"]);
   });
 });

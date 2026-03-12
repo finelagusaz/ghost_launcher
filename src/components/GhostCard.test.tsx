@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { GhostCard } from "./GhostCard";
-import type { Ghost } from "../types";
+import type { GhostView } from "../types";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const makeGhost = (overrides?: Partial<Ghost>): Ghost => ({
+const makeGhost = (overrides?: Partial<GhostView>): GhostView => ({
   name: "テストゴースト",
   sakura_name: "",
   kero_name: "",
@@ -19,6 +19,12 @@ const makeGhost = (overrides?: Partial<Ghost>): Ghost => ({
   thumbnail_path: "",
   thumbnail_use_self_alpha: false,
   thumbnail_kind: "",
+  name_lower: "",
+  sakura_name_lower: "",
+  kero_name_lower: "",
+  craftman_lower: "",
+  craftmanw_lower: "",
+  directory_name_lower: "",
   ...overrides,
 });
 
