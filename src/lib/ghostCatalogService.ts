@@ -21,13 +21,14 @@ export async function refreshGhostCatalog({
   const requestKey = buildRequestKey(sspPath, additionalFolders);
 
   // DB が空なら fingerprint を送らない → Rust は必ずフルスキャン結果を返す。
-  // これにより cacheHit=true 時は dbHasData=true が論理的に保証され、
+  // これにより cache_hit=true 時は dbHasData=true が論理的に保証され、
   // replaceGhostsByRequestKey([]) による意図しない全削除を構造的に防ぐ。
   let cachedFingerprint: string | null = null;
   if (!forceFullScan) {
     const [dbHasData, fp] = await Promise.all([hasGhosts(requestKey), getCachedFingerprint(requestKey)]);
     cachedFingerprint = dbHasData ? fp : null;
   }
+
   const result = await executeScan({
     requestKey,
     sspPath,
@@ -36,7 +37,7 @@ export async function refreshGhostCatalog({
     cachedFingerprint,
   });
 
-  if (result.cacheHit) {
+  if (result.cache_hit) {
     return { skipped: true };
   }
 

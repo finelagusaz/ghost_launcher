@@ -25,7 +25,7 @@ describe("refreshGhostCatalog", () => {
   it("キャッシュが有効ならスキャンをスキップする", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(true);
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cacheHit: true });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cache_hit: true });
 
     const result = await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -46,7 +46,7 @@ describe("refreshGhostCatalog", () => {
         { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-row", sakura_name: "", kero_name: "", craftmanw: "" },
       ],
       fingerprint: "fp2",
-      cacheHit: false,
+      cache_hit: false,
     });
 
     const result = await refreshGhostCatalog({
@@ -67,7 +67,7 @@ describe("refreshGhostCatalog", () => {
     vi.mocked(executeScan).mockResolvedValue({
       ghosts: [{ name: "B", craftman: "", directory_name: "b", path: "/b", source: "ssp", sakura_name: "", kero_name: "", craftmanw: "", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" }],
       fingerprint: "fp1",
-      cacheHit: false,
+      cache_hit: false,
     });
 
     const result = await refreshGhostCatalog({
@@ -84,7 +84,7 @@ describe("refreshGhostCatalog", () => {
   });
 
   it("forceFullScan のときはキャッシュ判定を行わずスキャンする", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cacheHit: false });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -105,7 +105,7 @@ describe("refreshGhostCatalog", () => {
   });
 
   it("保存後に古い request_key と fingerprint キャッシュを掃除する", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cacheHit: false });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
     vi.mocked(cleanupOldGhostCaches).mockResolvedValue(undefined);
 
     await refreshGhostCatalog({
@@ -122,7 +122,7 @@ describe("refreshGhostCatalog", () => {
 
   it("executeScan に cachedFingerprint が渡される", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp-cached");
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp-cached", cacheHit: true });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp-cached", cache_hit: true });
     vi.mocked(hasGhosts).mockResolvedValue(true);
 
     await refreshGhostCatalog({
@@ -137,7 +137,7 @@ describe("refreshGhostCatalog", () => {
   });
 
   it("forceFullScan のとき cachedFingerprint=null が executeScan に渡される", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cacheHit: false });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -150,9 +150,9 @@ describe("refreshGhostCatalog", () => {
     );
   });
 
-  it("cacheHit=true のとき replaceGhostsByRequestKey が呼ばれない", async () => {
+  it("cache_hit=true のとき replaceGhostsByRequestKey が呼ばれない", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cacheHit: true });
+    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cache_hit: true });
     vi.mocked(hasGhosts).mockResolvedValue(true);
 
     const result = await refreshGhostCatalog({
