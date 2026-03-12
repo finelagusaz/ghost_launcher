@@ -120,6 +120,21 @@ describe("ghostDatabase - 条件付き VACUUM", () => {
     expect(sqlCalls).toContain("VACUUM");
   });
 
+  it("閾値境界（ちょうど25%・ちょうど1MB）のとき VACUUM を実行する", async () => {
+    // page_count=1024, freelist_count=256, page_size=4096
+    // → 未使用率25.0%（ちょうど閾値）, 未使用サイズ 256*4096=1,048,576=1MB（ちょうど閾値）
+    mockSelect
+      .mockResolvedValueOnce([{ page_count: 1024 }])
+      .mockResolvedValueOnce([{ freelist_count: 256 }])
+      .mockResolvedValueOnce([{ page_size: 4096 }]);
+
+    const { getDb } = await import("./ghostDatabase");
+    await getDb();
+
+    const sqlCalls = mockExecute.mock.calls.map((c) => c[0] as string);
+    expect(sqlCalls).toContain("VACUUM");
+  });
+
   it("未使用率が閾値未満のとき VACUUM をスキップする", async () => {
     // page_count=1000, freelist_count=100, page_size=4096
     // → 未使用率10% < 25%
@@ -151,15 +166,29 @@ describe("ghostDatabase - 条件付き VACUUM", () => {
   });
 
   it("page_count=0（新規DB）のとき VACUUM をスキップする", async () => {
-    mockSelect
-      .mockResolvedValueOnce([{ page_count: 0 }])
-      .mockResolvedValueOnce([{ freelist_count: 0 }]);
+    mockSelect.mockResolvedValueOnce([{ page_count: 0 }]);
 
     const { getDb } = await import("./ghostDatabase");
     await getDb();
 
     const sqlCalls = mockExecute.mock.calls.map((c) => c[0] as string);
     expect(sqlCalls).not.toContain("VACUUM");
+  });
+
+  it("VACUUM が失敗しても DB 接続は正常に完了する", async () => {
+    mockSelect
+      .mockResolvedValueOnce([{ page_count: 1000 }])
+      .mockResolvedValueOnce([{ freelist_count: 300 }])
+      .mockResolvedValueOnce([{ page_size: 4096 }]);
+    mockExecute.mockImplementation((sql: string) => {
+      if (sql === "VACUUM") return Promise.reject(new Error("database or disk is full"));
+      return Promise.resolve({ rowsAffected: 0 });
+    });
+
+    const { getDb } = await import("./ghostDatabase");
+    const db = await getDb();
+
+    expect(db).toBeDefined();
   });
 });
 
