@@ -4,10 +4,37 @@ import { Ghost, GhostView } from "../types";
 
 let dbInstance: Database | null = null;
 
+const VACUUM_FREE_RATIO = 0.25;
+const VACUUM_FREE_BYTES = 1_048_576;
+
+async function vacuumIfNeeded(db: Database): Promise<void> {
+  const pageCountRows = await db.select<{ page_count: number }[]>("PRAGMA page_count");
+  const freelistRows = await db.select<{ freelist_count: number }[]>("PRAGMA freelist_count");
+  const pageCount = pageCountRows[0]?.page_count ?? 0;
+  const freelistCount = freelistRows[0]?.freelist_count ?? 0;
+
+  if (pageCount === 0) return;
+
+  const pageSizeRows = await db.select<{ page_size: number }[]>("PRAGMA page_size");
+  const pageSize = pageSizeRows[0]?.page_size ?? 4096;
+  const freeBytes = freelistCount * pageSize;
+  const freeRatio = freelistCount / pageCount;
+
+  if (freeRatio >= VACUUM_FREE_RATIO && freeBytes >= VACUUM_FREE_BYTES) {
+    console.log(
+      `[ghostDatabase] VACUUM 実行: 未使用率=${(freeRatio * 100).toFixed(1)}%, 未使用=${(freeBytes / 1024 / 1024).toFixed(1)}MB`
+    );
+    await db.execute("VACUUM");
+  }
+}
+
 async function loadDb(): Promise<Database> {
   const db = await Database.load("sqlite:ghosts.db");
   await db.execute("PRAGMA journal_mode=WAL");
   await db.execute("PRAGMA busy_timeout=5000");
+  await db.execute("PRAGMA journal_size_limit=4194304");
+  await db.execute("PRAGMA optimize=0x10002");
+  await vacuumIfNeeded(db);
   return db;
 }
 
