@@ -1,34 +1,50 @@
 # UI 文言のカスタマイズ / Customizing UI Text
 
----
-
 ## 日本語
 
-Ghost Launcher は、実行ファイルと同じフォルダに置いた JSON ファイルを読み込み、UI の文言を上書きできます。
+Ghost Launcher の画面に表示されるテキストを、自分好みに変更できます。
 
-### ファイルの置き場所
+### かんたん 3 ステップ
+
+**1.** `ghost_launcher.exe` と同じフォルダに `locales` フォルダを作る
+
+**2.** 使用中の言語に対応する JSON ファイルを作成する（例: 日本語なら `ja.json`）
 
 ```
 ghost_launcher.exe
 locales/
-  ja.json      ← 日本語 UI を上書きする場合
-  en.json      ← English UI を上書きする場合
-  zh-CN.json
-  zh-TW.json
-  ko.json
-  ru.json
+  ja.json
 ```
 
-`ghost_launcher.exe` があるフォルダに `locales` フォルダを作り、対応する言語コードの JSON ファイルを置いてください。
+**3.** 変更したいキーだけを書く（省略したキーはアプリ内蔵の翻訳がそのまま使われます）
 
-### JSON の形式
+```json
+{
+  "card.launch": "起動",
+  "card.launching": "起動中...",
+  "list.count": "{{count}} 体のゴースト",
+  "list.empty": "ゴーストが見つかりません",
+  "search.placeholder": "ゴースト名で検索"
+}
+```
 
-- フラットなキー・バリュー形式（ネスト不可）
-- 値は文字列のみ（数値・配列・オブジェクトは無視されます）
-- **一部のキーだけ書けば OK**。省略したキーはアプリ内蔵の翻訳が使われます
-- `{{変数名}}` は補間プレースホルダです。そのまま残してください
+> `{{count}}` や `{{detail}}` は補間プレースホルダです。値が自動で埋め込まれるので、そのまま残してください。
+
+### 対応言語
+
+| ファイル名 | 言語 |
+|-----------|------|
+| `ja.json` | 日本語 |
+| `en.json` | English |
+| `zh-CN.json` | 简体中文 |
+| `zh-TW.json` | 繁體中文 |
+| `ko.json` | 한국어 |
+| `ru.json` | Русский |
 
 ### キー一覧
+
+<details>
+<summary>すべてのキーを表示する</summary>
 
 | キー | 用途 | 補間変数 |
 |------|------|----------|
@@ -51,7 +67,7 @@ locales/
 | `settings.folders.label` | 追加フォルダ設定ラベル | — |
 | `settings.folders.add` | 追加ボタン | — |
 | `settings.folders.addDialogTitle` | 追加ダイアログのタイトル | — |
-| `settings.folders.empty` | 追加フォルダが0件のときの表示 | — |
+| `settings.folders.empty` | 追加フォルダが 0 件のときの表示 | — |
 | `settings.folders.helper` | 追加フォルダの説明文 | — |
 | `settings.folders.delete` | 削除ボタン | — |
 | `settings.folders.deleteAriaLabel` | 削除ボタンのアクセシビリティラベル | `{{folder}}` |
@@ -62,7 +78,7 @@ locales/
 | `content.noSspPath` | SSP 未設定時のメッセージ | — |
 | `content.openSettings` | 設定を開くリンク | — |
 | `list.loading` | ゴーストリスト読み込み中 | — |
-| `list.empty` | ゴーストが0件のときの表示 | — |
+| `list.empty` | ゴーストが 0 件のときの表示 | — |
 | `list.count` | ゴースト件数表示 | `{{count}}` |
 | `card.launch` | 起動ボタン | — |
 | `card.launching` | 起動中ボタン（押下後） | — |
@@ -70,55 +86,62 @@ locales/
 | `search.label` | 検索ボックスのラベル | — |
 | `search.placeholder` | 検索ボックスのプレースホルダ | — |
 
-### テンプレート
-
-よく変更するキーのみ抜粋した例です。コピーして使ってください。
-
-```json
-{
-  "card.launch": "起動",
-  "card.launching": "起動中...",
-  "list.count": "{{count}} 体のゴースト",
-  "list.empty": "ゴーストが見つかりません",
-  "search.placeholder": "ゴースト名で検索"
-}
-```
+</details>
 
 ### 注意事項
 
 - ファイルサイズの上限は **1 MB** です
+- 文字コードは **UTF-8** で保存してください
+- フラットなキー・バリュー形式です（ネストは不可。値は文字列のみ）
 - アプリ起動後に JSON を編集した場合は、設定パネルで言語を選び直すと反映されます（同じ言語のままの場合は、一度別の言語に切り替えてから戻してください）
-- 文字コードは UTF-8 で保存してください
 
 ---
 
 ## English
 
-Ghost Launcher can load a JSON file placed next to the executable to override UI text.
+You can customize the text displayed in Ghost Launcher by placing a JSON file next to the executable.
 
-### File Placement
+### Quick Start
+
+**1.** Create a `locales` folder in the same directory as `ghost_launcher.exe`
+
+**2.** Create a JSON file named after the language code you want to override (e.g. `en.json` for English)
 
 ```
 ghost_launcher.exe
 locales/
-  ja.json      ← overrides Japanese UI
-  en.json      ← overrides English UI
-  zh-CN.json
-  zh-TW.json
-  ko.json
-  ru.json
+  en.json
 ```
 
-Create a `locales` folder in the same directory as `ghost_launcher.exe` and place a JSON file named after the language code you want to override.
+**3.** Add only the keys you want to change (omitted keys fall back to the app's built-in translations)
 
-### JSON Format
+```json
+{
+  "card.launch": "Launch",
+  "card.launching": "Launching...",
+  "list.count": "{{count}} ghost(s)",
+  "list.empty": "No ghosts found",
+  "search.placeholder": "Search by ghost name"
+}
+```
 
-- Flat key-value pairs (nesting is not supported)
-- Values must be strings (numbers, arrays, and objects are ignored)
-- **You only need to include the keys you want to change.** Omitted keys fall back to the app's built-in translations
-- `{{variableName}}` are interpolation placeholders — leave them as-is
+> `{{count}}` and `{{detail}}` are interpolation placeholders — values are filled in automatically, so leave them as-is.
+
+### Supported Languages
+
+| File name | Language |
+|-----------|----------|
+| `ja.json` | Japanese |
+| `en.json` | English |
+| `zh-CN.json` | Simplified Chinese |
+| `zh-TW.json` | Traditional Chinese |
+| `ko.json` | Korean |
+| `ru.json` | Russian |
 
 ### Key Reference
+
+<details>
+<summary>Show all keys</summary>
 
 | Key | Description | Variables |
 |-----|-------------|-----------|
@@ -160,22 +183,11 @@ Create a `locales` folder in the same directory as `ghost_launcher.exe` and plac
 | `search.label` | Search box label | — |
 | `search.placeholder` | Search box placeholder | — |
 
-### Template
-
-A minimal example with commonly customized keys:
-
-```json
-{
-  "card.launch": "Launch",
-  "card.launching": "Launching...",
-  "list.count": "{{count}} ghost(s)",
-  "list.empty": "No ghosts found",
-  "search.placeholder": "Search by ghost name"
-}
-```
+</details>
 
 ### Notes
 
 - Maximum file size is **1 MB**
-- If you edit the JSON while the app is running, re-select the language in the settings panel to apply changes (if you are already using that language, switch to another language and back)
 - Save the file in **UTF-8** encoding
+- Use flat key-value pairs only (no nesting; values must be strings)
+- If you edit the JSON while the app is running, re-select the language in the settings panel to apply changes (if already using that language, switch to another and back)
