@@ -27,6 +27,7 @@ export interface GhostView extends Ghost {
 export interface ScanGhostsResponse {
   ghosts: Ghost[];
   fingerprint: string;
+  cacheHit: boolean;
 }
 
 export interface GhostCacheEntry {

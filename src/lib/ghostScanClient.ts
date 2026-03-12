@@ -4,9 +4,11 @@ import type { ScanGhostsResponse } from "../types";
 export async function scanGhostsWithMeta(
   sspPath: string,
   additionalFolders: string[],
+  cachedFingerprint: string | null,
 ): Promise<ScanGhostsResponse> {
   return invoke<ScanGhostsResponse>("scan_ghosts_with_meta", {
     sspPath,
     additionalFolders,
+    cachedFingerprint,
   });
 }

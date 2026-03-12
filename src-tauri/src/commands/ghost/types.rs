@@ -30,6 +30,9 @@ pub struct Ghost {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanGhostsResponse {
+    /// フィンガープリントが一致した場合は空 Vec。DB 更新不要
     pub ghosts: Vec<Ghost>,
     pub fingerprint: String,
+    /// true = キャッシュと一致、ghosts は空・DB 更新不要
+    pub cache_hit: bool,
 }

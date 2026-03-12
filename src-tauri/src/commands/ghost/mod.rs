@@ -10,10 +10,16 @@ pub use types::ScanGhostsResponse;
 pub fn scan_ghosts_with_meta(
     ssp_path: String,
     additional_folders: Vec<String>,
+    cached_fingerprint: Option<String>,
 ) -> Result<ScanGhostsResponse, String> {
     let (ghosts, fingerprint) =
         scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
-    Ok(ScanGhostsResponse { ghosts, fingerprint })
+    let cache_hit = cached_fingerprint.as_deref() == Some(fingerprint.as_str());
+    Ok(ScanGhostsResponse {
+        ghosts: if cache_hit { vec![] } else { ghosts },
+        fingerprint,
+        cache_hit,
+    })
 }
 
 #[tauri::command]

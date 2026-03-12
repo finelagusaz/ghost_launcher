@@ -27,14 +27,10 @@ export async function refreshGhostCatalog({
     sspPath,
     additionalFolders,
     forceFullScan,
+    cachedFingerprint,
   });
 
-  const cacheFingerprintMatched =
-    !forceFullScan &&
-    cachedFingerprint !== null &&
-    result.fingerprint === cachedFingerprint;
-
-  if (cacheFingerprintMatched) {
+  if (result.cacheHit) {
     const exists = await hasGhosts(requestKey);
     if (exists) {
       return { skipped: true };
