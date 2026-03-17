@@ -277,7 +277,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::db::reset_ghost_db,
-            commands::ghost::scan_ghosts_with_meta,
             commands::ghost::scan_and_store,
 
             commands::ssp::launch_ghost,

@@ -35,17 +35,6 @@ pub struct Ghost {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(TS))]
 #[cfg_attr(test, ts(export))]
-pub struct ScanGhostsResponse {
-    /// フィンガープリントが一致した場合は空 Vec。DB 更新不要
-    pub ghosts: Vec<Ghost>,
-    pub fingerprint: String,
-    /// true = キャッシュと一致、ghosts は空・DB 更新不要
-    pub cache_hit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(TS))]
-#[cfg_attr(test, ts(export))]
 pub struct ScanStoreResult {
     pub cache_hit: bool,
     pub total: usize,
@@ -97,16 +86,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn scan_ghosts_response_の_json_フィールド名が_ts_型と一致する() {
-        let resp = ScanGhostsResponse {
-            ghosts: vec![],
-            fingerprint: String::new(),
-            cache_hit: false,
-        };
-        let json: serde_json::Value = serde_json::to_value(&resp).unwrap();
-        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        keys.sort();
-        assert_eq!(keys, vec!["cache_hit", "fingerprint", "ghosts"]);
-    }
 }

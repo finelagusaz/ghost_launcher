@@ -5,23 +5,7 @@ mod scan;
 pub(crate) mod store;
 mod types;
 
-pub use types::{ScanGhostsResponse, ScanStoreResult};
-
-#[tauri::command]
-pub fn scan_ghosts_with_meta(
-    ssp_path: String,
-    additional_folders: Vec<String>,
-    cached_fingerprint: Option<String>,
-) -> Result<ScanGhostsResponse, String> {
-    let (ghosts, fingerprint) =
-        scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
-    let cache_hit = cached_fingerprint.as_deref() == Some(fingerprint.as_str());
-    Ok(ScanGhostsResponse {
-        ghosts: if cache_hit { vec![] } else { ghosts },
-        fingerprint,
-        cache_hit,
-    })
-}
+pub use types::ScanStoreResult;
 
 /// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
 /// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
@@ -46,31 +30,29 @@ pub fn scan_and_store(
         sorted_folders.iter().map(|(_, _, n)| n.clone()).collect();
     let request_key = format!("{}::{}", normalized_ssp, normalized_folders.join("|"));
 
+    // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）
+    let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
+
+    // DB パスを 1 回だけ解決
+    let db_path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?
+        .join("ghosts.db");
+
     // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
     // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
     // 既存ゴースト内の descript.txt 編集は検出できない（「再読込」で対応）。
-    if cached_fingerprint.is_some() {
-        let current_mtimes =
-            fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
-
-        let config_dir = app
-            .path()
-            .app_config_dir()
-            .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
-        let db_path = config_dir.join("ghosts.db");
-
-        if db_path.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                let _ = store::configure_connection(&conn);
-                if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
-                    // Layer 1 hit: 構造変化なし → フルスキャンをスキップ
-                    return Ok(ScanStoreResult {
-                        cache_hit: true,
-                        total: 0,
-                        fingerprint: cached_fingerprint.unwrap_or_default(),
-                        request_key,
-                    });
-                }
+    if cached_fingerprint.is_some() && db_path.exists() {
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            let _ = store::configure_connection(&conn);
+            if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
+                return Ok(ScanStoreResult {
+                    cache_hit: true,
+                    total: 0,
+                    fingerprint: cached_fingerprint.unwrap_or_default(),
+                    request_key,
+                });
             }
         }
     }
@@ -83,15 +65,8 @@ pub fn scan_and_store(
     if cache_hit {
         // Layer 2 hit: 親 mtime は変わったがゴースト構成は同じ
         // parent_mtimes を更新して次回 Layer 1 で hit するようにする
-        let config_dir = app
-            .path()
-            .app_config_dir()
-            .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
-        let db_path = config_dir.join("ghosts.db");
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             let _ = store::configure_connection(&conn);
-            let current_mtimes =
-                fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
             let _ = conn.execute(
                 "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
                 rusqlite::params![current_mtimes, request_key],
@@ -106,18 +81,11 @@ pub fn scan_and_store(
     }
 
     // Cache miss: DB に書き込み
-    let parent_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
-    let db_path = config_dir.join("ghosts.db");
-
     let conn = rusqlite::Connection::open(&db_path)
         .map_err(|e| format!("DB オープンエラー: {e}"))?;
     store::configure_connection(&conn)?;
 
-    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &parent_mtimes)?;
+    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &current_mtimes)?;
 
     Ok(ScanStoreResult {
         cache_hit: false,
