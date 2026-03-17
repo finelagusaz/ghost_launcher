@@ -41,20 +41,19 @@ pub(crate) fn push_absent_parent_token(
     ));
 }
 
-/// ゴーストエントリ1件分のフィンガープリントトークンを生成して push する。
-/// 戻り値: descript_state（"missing" / "present" / "unreadable"）
-/// walk_parent が Ghost 構築判定に使用する。
-pub(crate) fn push_entry_token(
-    tokens: &mut Vec<String>,
+/// ゴーストエントリ1件分のフィンガープリントトークンを生成する（pure function）。
+/// 戻り値: (token_string, descript_state)
+/// descript_state は "missing" / "present" / "unreadable" のいずれか。
+pub(crate) fn build_entry_token(
     parent_label: &str,
     normalized_parent: &str,
     directory_name: &str,
     entry_meta: &fs::Metadata,
     descript_path: &Path,
-) -> String {
+) -> (String, String) {
     let dir_modified = metadata_modified_string(entry_meta);
     let (descript_state, descript_modified) = descript_metadata_for_token(descript_path);
-    tokens.push(format!(
+    let token = format!(
         "entry|{}|{}|{}|{}|{}|{}",
         parent_label,
         normalized_parent,
@@ -62,8 +61,8 @@ pub(crate) fn push_entry_token(
         dir_modified,
         descript_state,
         descript_modified
-    ));
-    descript_state
+    );
+    (token, descript_state)
 }
 
 /// トークン列からフィンガープリントハッシュを計算する
