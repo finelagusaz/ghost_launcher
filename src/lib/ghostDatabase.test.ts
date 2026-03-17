@@ -45,6 +45,30 @@ describe("ghostDatabase - getDb マイグレーションエラー回復", () => 
   });
 });
 
+describe("ghostDatabase - getDb Promise 重複防止", () => {
+  it("並行呼び出しで loadDb が 1 回だけ実行される", async () => {
+    const { getDb } = await import("./ghostDatabase");
+    const [db1, db2] = await Promise.all([getDb(), getDb()]);
+
+    expect(db1).toBe(db2);
+    expect(mockLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it("初回失敗後に再呼び出しで再試行できる", async () => {
+    mockLoad
+      .mockRejectedValueOnce(new Error("disk I/O error"))
+      .mockResolvedValueOnce({ execute: mockExecute, select: mockSelect });
+
+    const { getDb } = await import("./ghostDatabase");
+    await expect(getDb()).rejects.toThrow("disk I/O error");
+
+    // Promise がリセットされているので再試行可能
+    const db = await getDb();
+    expect(db).toBeDefined();
+    expect(mockLoad).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("ghostDatabase - getDb", () => {
 
   it("初回接続時に PRAGMA journal_mode=WAL を設定する", async () => {
@@ -192,25 +216,6 @@ describe("ghostDatabase - 条件付き VACUUM", () => {
   });
 });
 
-describe("ghostDatabase - insertGhostsBatch NFKC正規化", () => {
-  it("全角英字のゴースト名を NFKC 正規化してから小文字化して格納する", async () => {
-    const { insertGhostsBatch } = await import("./ghostDatabase");
-    const ghosts = [
-      { name: "Ａｌｉｃｅ", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "Ａｌｉｃｅ", path: "/alice", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
-    ];
-    await insertGhostsBatch("rk1", ghosts);
-
-    const insertCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("INSERT INTO ghosts")
-    );
-    expect(insertCall).toBeDefined();
-    // params: [requestKey, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind]
-    const params = insertCall![1] as (string | number)[];
-    expect(params[11]).toBe("alice"); // name_lower: "Ａｌｉｃｅ".normalize("NFKC").toLowerCase()
-    expect(params[16]).toBe("alice"); // directory_name_lower
-  });
-});
-
 describe("ghostDatabase - searchGhosts NFKC正規化", () => {
   it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
     mockSelect.mockResolvedValue([{ count: 0 }]);
@@ -270,61 +275,6 @@ describe("ghostDatabase - countGhostsByQuery", () => {
     expect(call![1][1]).toBe("%alice%");
   });
 });
-describe("ghostDatabase - replaceGhostsByRequestKey", () => {
-  it("BEGIN/COMMIT/ROLLBACK を使わない（コネクションプール安全）", async () => {
-    const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
-    await replaceGhostsByRequestKey("rk1", []);
-
-    const sqlCalls = mockExecute.mock.calls.map((c) => c[0] as string);
-    const transactionCalls = sqlCalls.filter(
-      (sql) => /^(BEGIN|COMMIT|ROLLBACK)/i.test(sql)
-    );
-    expect(transactionCalls).toEqual([]);
-  });
-
-  it("UPSERT → 不要行 DELETE の順で実行される", async () => {
-    const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
-    const ghosts = [
-      { name: "A", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp" },
-    ];
-    await replaceGhostsByRequestKey("rk1", ghosts);
-
-    const sqlCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-
-    expect(sqlCalls[0]).toContain("INSERT INTO ghosts");
-    expect(sqlCalls[0]).toContain("ON CONFLICT(request_key, ghost_identity_key)");
-    expect(sqlCalls[1]).toMatch(/^DELETE FROM ghosts WHERE request_key = \? AND ghost_identity_key NOT IN/);
-  });
-
-  it("ゴーストが空の場合は request_key 単位で全削除される", async () => {
-    const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
-    await replaceGhostsByRequestKey("rk1", []);
-
-    const sqlCalls = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .filter((sql) => !sql.startsWith("PRAGMA"));
-
-    expect(sqlCalls).toHaveLength(1);
-    expect(sqlCalls[0]).toMatch(/^DELETE FROM ghosts/);
-  });
-
-  it("同一 row_fingerprint の再投入では UPDATE を抑制する WHERE 条件を含む", async () => {
-    const { replaceGhostsByRequestKey } = await import("./ghostDatabase");
-    const ghosts = [
-      { name: "A", sakura_name: "", kero_name: "", craftman: "", craftmanw: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-a" },
-    ];
-    await replaceGhostsByRequestKey("rk1", ghosts);
-
-    const upsertSql = mockExecute.mock.calls
-      .map((c) => c[0] as string)
-      .find((sql) => sql.includes("ON CONFLICT(request_key, ghost_identity_key)"));
-
-    expect(upsertSql).toBeDefined();
-    expect(upsertSql).toContain("WHERE ghosts.row_fingerprint <> excluded.row_fingerprint");
-  });
-});
 describe("ghostDatabase - getCachedFingerprint", () => {
   it("request_key が存在する場合は fingerprint を返す", async () => {
     mockSelect.mockResolvedValue([{ fingerprint: "fp-abc" }]);
@@ -346,21 +296,6 @@ describe("ghostDatabase - getCachedFingerprint", () => {
     const result = await getCachedFingerprint("rk-missing");
 
     expect(result).toBeNull();
-  });
-});
-
-describe("ghostDatabase - setCachedFingerprint", () => {
-  it("INSERT OR REPLACE で fingerprint を保存する", async () => {
-    const { setCachedFingerprint } = await import("./ghostDatabase");
-    await setCachedFingerprint("rk1", "fp-new");
-
-    const call = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).includes("ghost_fingerprints")
-    );
-    expect(call).toBeDefined();
-    expect(call![0]).toContain("INSERT OR REPLACE INTO ghost_fingerprints");
-    expect(call![0]).toContain("CURRENT_TIMESTAMP");
-    expect(call![1]).toEqual(["rk1", "fp-new"]);
   });
 });
 

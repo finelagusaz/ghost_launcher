@@ -1,4 +1,5 @@
 use crate::descript::parse_descript;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -37,8 +38,11 @@ pub struct ThumbnailInfo {
 /// 4. `None`
 ///
 /// surface0* の選択: 名前辞書順の最初（OS 依存の列挙順を回避するためソートする）
-pub fn resolve_thumbnail(ghost_root: &Path) -> Option<ThumbnailInfo> {
-    if let Some(info) = resolve_surface0(ghost_root) {
+pub fn resolve_thumbnail(
+    ghost_root: &Path,
+    shell_descript: Option<&HashMap<String, String>>,
+) -> Option<ThumbnailInfo> {
+    if let Some(info) = resolve_surface0(ghost_root, shell_descript) {
         return Some(info);
     }
 
@@ -56,7 +60,10 @@ pub fn resolve_thumbnail(ghost_root: &Path) -> Option<ThumbnailInfo> {
 }
 
 /// shell/master/ 内の surface0* ファイルを探して ThumbnailInfo を返す
-fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
+fn resolve_surface0(
+    ghost_root: &Path,
+    shell_descript: Option<&HashMap<String, String>>,
+) -> Option<ThumbnailInfo> {
     let shell_master = ghost_root.join("shell").join("master");
     if !shell_master.is_dir() {
         return None;
@@ -85,7 +92,10 @@ fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
     apng_files.sort_by_key(|f| f.to_ascii_lowercase());
     png_files.sort_by_key(|f| f.to_ascii_lowercase());
 
-    let alpha = read_seriko_use_self_alpha(ghost_root);
+    let alpha = match shell_descript {
+        Some(fields) => seriko_alpha_from_fields(fields),
+        None => read_seriko_use_self_alpha(ghost_root),
+    };
 
     // APNG が PNG より優先
     if let Some(filename) = apng_files.first() {
@@ -104,6 +114,15 @@ fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
     }
 
     None
+}
+
+/// HashMap から seriko.use_self_alpha を判定する。
+fn seriko_alpha_from_fields(fields: &HashMap<String, String>) -> AlphaMode {
+    if fields.get("seriko.use_self_alpha").map(|v| v.as_str()) == Some("1") {
+        AlphaMode::SelfAlpha
+    } else {
+        AlphaMode::KeyColor
+    }
 }
 
 /// shell/master/descript.txt から seriko.use_self_alpha を読み取る。
@@ -173,7 +192,7 @@ mod tests {
     #[test]
     fn shell_master_がない場合はnoneを返す() {
         let tmp = TempDirGuard::new("ghost_meta_thumb_no_shell");
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -181,7 +200,7 @@ mod tests {
     fn surface0もthumbnailpngもない場合はnoneを返す() {
         let tmp = TempDirGuard::new("ghost_meta_thumb_nothing");
         create_shell_master(tmp.path());
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -191,7 +210,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
         assert_eq!(info.kind, ThumbnailKind::Surface);
     }
@@ -203,7 +222,7 @@ mod tests {
         fs::write(shell_master.join("surface0.apng"), "").unwrap();
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.apng"));
     }
 
@@ -216,7 +235,7 @@ mod tests {
         fs::write(shell_master.join("surface0.png"), "").unwrap();
         fs::write(shell_master.join("surface000.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
     }
 
@@ -228,7 +247,7 @@ mod tests {
         let thumbnail_path = tmp.path().join("thumbnail.png");
         fs::write(&thumbnail_path, "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, thumbnail_path);
         assert_eq!(info.kind, ThumbnailKind::Thumbnail);
     }
@@ -240,7 +259,7 @@ mod tests {
         fs::write(shell_master.join("surface0.png"), "").unwrap();
         fs::write(tmp.path().join("thumbnail.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
     }
 
@@ -253,7 +272,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,1\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::SelfAlpha);
     }
 
@@ -264,7 +283,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,0\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }
 
@@ -275,7 +294,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }
 
@@ -288,7 +307,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -299,7 +318,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface1.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -310,7 +329,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface0x.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -320,7 +339,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("Surface0.PNG"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("Surface0.PNG"));
     }
 
@@ -360,7 +379,7 @@ mod tests {
         let thumbnail_path = tmp.path().join("thumbnail.png");
         fs::write(&thumbnail_path, "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, thumbnail_path);
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }

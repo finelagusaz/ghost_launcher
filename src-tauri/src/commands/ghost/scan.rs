@@ -1,12 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 
 use ghost_meta::{AlphaMode, ThumbnailKind};
 
 use super::fingerprint::{
-    compute_fingerprint_hash, metadata_modified_string, push_absent_parent_token, push_entry_token,
+    build_entry_token, compute_fingerprint_hash, metadata_modified_string,
+    push_absent_parent_token,
 };
 use super::path_utils::normalize_path;
 use super::types::Ghost;
@@ -147,40 +149,55 @@ pub(crate) fn walk_parent(
         }
     };
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        // fs::metadata は Windows NTFS の遅延タイムスタンプ問題を回避するため entry.metadata() を使わない
-        let entry_meta = match fs::metadata(&path) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let directory_name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        let descript_path = path.join("ghost").join("master").join("descript.txt");
-        let descript_state = push_entry_token(
-            tokens,
-            parent_label,
-            &normalized_parent,
-            &directory_name,
-            &entry_meta,
-            &descript_path,
-        );
+    // エントリを Vec に収集（par_iter の前提）
+    // is_dir() のフィルタは逐次で行い、OS ディレクトリハンドルを早期に解放する
+    let paths: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
 
-        // descript.txt が存在するエントリのみ Ghost として収集する
-        if let Some((source, ref mut ghost_list)) = ghosts {
-            if descript_state == "present" {
-                if let Ok(meta) = ghost_meta::read_ghost(&path) {
-                    ghost_list.push(ghost_from_meta(meta, source.to_string()));
-                }
+    // 並列処理: 各エントリのトークン生成 + Ghost 読み取り
+    struct EntryResult {
+        token: String,
+        ghost: Option<Ghost>,
+    }
+
+    let source_str = ghosts.as_ref().map(|(s, _)| s.to_string());
+    let results: Vec<EntryResult> = paths
+        .par_iter()
+        .filter_map(|path| {
+            // fs::metadata は Windows NTFS の遅延タイムスタンプ問題を回避するため entry.metadata() を使わない
+            let entry_meta = fs::metadata(path).ok()?;
+            let directory_name = path.file_name()?.to_str()?.to_string();
+            let descript_path = path.join("ghost").join("master").join("descript.txt");
+
+            let (token, descript_state) = build_entry_token(
+                parent_label,
+                &normalized_parent,
+                &directory_name,
+                &entry_meta,
+                &descript_path,
+            );
+
+            let ghost = if source_str.is_some() && descript_state == "present" {
+                ghost_meta::read_ghost(path)
+                    .ok()
+                    .map(|meta| ghost_from_meta(meta, source_str.as_ref().unwrap().clone()))
+            } else {
+                None
+            };
+
+            Some(EntryResult { token, ghost })
+        })
+        .collect();
+
+    // 逐次: 結果をマージ
+    for result in results {
+        tokens.push(result.token);
+        if let Some(ghost) = result.ghost {
+            if let Some((_, ref mut ghost_list)) = ghosts {
+                ghost_list.push(ghost);
             }
         }
     }

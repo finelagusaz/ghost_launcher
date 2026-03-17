@@ -1,7 +1,3 @@
-// IPC 型（Rust の struct から ts-rs で自動生成）
-export type { Ghost } from "./generated/Ghost";
-export type { ScanGhostsResponse } from "./generated/ScanGhostsResponse";
-
 // TS 専用型（フロントエンド固有）
 
 export type ThumbnailKind = "surface" | "thumbnail" | "";
