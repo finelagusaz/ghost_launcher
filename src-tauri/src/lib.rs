@@ -73,6 +73,12 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "CREATE TABLE IF NOT EXISTS ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT ''\n);",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 10,
+            description: "add_parent_mtimes_to_ghost_fingerprints",
+            sql: "ALTER TABLE ghost_fingerprints ADD COLUMN parent_mtimes TEXT NOT NULL DEFAULT '';",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 

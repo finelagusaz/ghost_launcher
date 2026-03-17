@@ -30,12 +30,13 @@ pub(crate) fn configure_connection(conn: &Connection) -> Result<(), String> {
 }
 
 /// ゴースト一覧を SQLite に直接書き込む（DELETE + INSERT、1 トランザクション）。
-/// fingerprint も同一トランザクション内で保存する。
+/// fingerprint と parent_mtimes も同一トランザクション内で保存する。
 pub(crate) fn store_ghosts(
     conn: &Connection,
     request_key: &str,
     ghosts: &[Ghost],
     fingerprint: &str,
+    parent_mtimes: &str,
 ) -> Result<usize, String> {
     let tx = conn
         .unchecked_transaction()
@@ -92,11 +93,11 @@ pub(crate) fn store_ghosts(
             .map_err(|e| format!("INSERT エラー: {e}"))?;
         }
 
-        // fingerprint を同一トランザクションで保存
+        // fingerprint + parent_mtimes を同一トランザクションで保存
         tx.execute(
-            "INSERT OR REPLACE INTO ghost_fingerprints (request_key, fingerprint, updated_at)\
-             VALUES (?1, ?2, datetime('now'))",
-            rusqlite::params![request_key, fingerprint],
+            "INSERT OR REPLACE INTO ghost_fingerprints (request_key, fingerprint, parent_mtimes, updated_at)\
+             VALUES (?1, ?2, ?3, datetime('now'))",
+            rusqlite::params![request_key, fingerprint, parent_mtimes],
         )
         .map_err(|e| format!("fingerprint 保存エラー: {e}"))?;
     }
@@ -148,7 +149,7 @@ mod tests {
     #[test]
     fn store_ghosts_が空の配列で成功する() {
         let conn = setup_db();
-        let result = store_ghosts(&conn, "rk1", &[], "fp-empty");
+        let result = store_ghosts(&conn, "rk1", &[], "fp-empty", "");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 0);
     }
@@ -160,7 +161,7 @@ mod tests {
             make_ghost("Alice", "alice", "ssp"),
             make_ghost("Bob", "bob", "ssp"),
         ];
-        let total = store_ghosts(&conn, "rk1", &ghosts, "fp-test").unwrap();
+        let total = store_ghosts(&conn, "rk1", &ghosts, "fp-test", "mtimes").unwrap();
         assert_eq!(total, 2);
 
         // DB から件数確認
@@ -179,7 +180,7 @@ mod tests {
         let conn = setup_db();
         // 全角英字 "Ａｌｉｃｅ" → NFKC → "Alice" → lower → "alice"
         let ghosts = vec![make_ghost("Ａｌｉｃｅ", "alice_dir", "ssp")];
-        store_ghosts(&conn, "rk1", &ghosts, "fp-nfkc").unwrap();
+        store_ghosts(&conn, "rk1", &ghosts, "fp-nfkc", "").unwrap();
 
         let name_lower: String = conn
             .query_row(
@@ -195,13 +196,13 @@ mod tests {
     fn store_ghosts_が既存データを置換する() {
         let conn = setup_db();
         let ghosts_v1 = vec![make_ghost("Old", "old", "ssp")];
-        store_ghosts(&conn, "rk1", &ghosts_v1, "fp-v1").unwrap();
+        store_ghosts(&conn, "rk1", &ghosts_v1, "fp-v1", "mt-v1").unwrap();
 
         let ghosts_v2 = vec![
             make_ghost("New1", "new1", "ssp"),
             make_ghost("New2", "new2", "ssp"),
         ];
-        store_ghosts(&conn, "rk1", &ghosts_v2, "fp-v2").unwrap();
+        store_ghosts(&conn, "rk1", &ghosts_v2, "fp-v2", "mt-v2").unwrap();
 
         let count: i64 = conn
             .query_row(
@@ -228,8 +229,8 @@ mod tests {
         let conn = setup_db();
         let ghosts_a = vec![make_ghost("A", "a", "ssp")];
         let ghosts_b = vec![make_ghost("B", "b", "ssp")];
-        store_ghosts(&conn, "rk-a", &ghosts_a, "fp-a").unwrap();
-        store_ghosts(&conn, "rk-b", &ghosts_b, "fp-b").unwrap();
+        store_ghosts(&conn, "rk-a", &ghosts_a, "fp-a", "").unwrap();
+        store_ghosts(&conn, "rk-b", &ghosts_b, "fp-b", "").unwrap();
 
         let count_a: i64 = conn
             .query_row(
@@ -244,7 +245,7 @@ mod tests {
     #[test]
     fn store_ghosts_が_fingerprint_を保存する() {
         let conn = setup_db();
-        store_ghosts(&conn, "rk1", &[], "fp-123abc").unwrap();
+        store_ghosts(&conn, "rk1", &[], "fp-123abc", "mt-test").unwrap();
 
         let fp: String = conn
             .query_row(
@@ -260,7 +261,7 @@ mod tests {
     fn store_ghosts_が_ghost_identity_key_を正しく構築する() {
         let conn = setup_db();
         let ghosts = vec![make_ghost("Test", "test_dir", "ssp")];
-        store_ghosts(&conn, "rk1", &ghosts, "fp-id").unwrap();
+        store_ghosts(&conn, "rk1", &ghosts, "fp-id", "").unwrap();
 
         let identity_key: String = conn
             .query_row(
@@ -272,6 +273,56 @@ mod tests {
         // source="ssp" → normalize → "ssp", dir="test_dir" → normalize → "test_dir"
         let expected = format!("ssp{}test_dir", GHOST_KEY_SEPARATOR);
         assert_eq!(identity_key, expected);
+    }
+
+    #[test]
+    fn store_ghosts_が_parent_mtimes_を保存する() {
+        let conn = setup_db();
+        store_ghosts(&conn, "rk1", &[], "fp-1", "c:/ssp/ghost:12345\nc:/extra:67890").unwrap();
+
+        let mtimes: String = conn
+            .query_row(
+                "SELECT parent_mtimes FROM ghost_fingerprints WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(mtimes, "c:/ssp/ghost:12345\nc:/extra:67890");
+    }
+
+    #[test]
+    fn check_parent_mtimes_match_が一致時にtrueを返す() {
+        let conn = setup_db();
+        store_ghosts(&conn, "rk1", &[], "fp-1", "c:/ssp/ghost:12345").unwrap();
+
+        assert!(super::super::fingerprint::check_parent_mtimes_match(
+            &conn,
+            "rk1",
+            "c:/ssp/ghost:12345"
+        ));
+    }
+
+    #[test]
+    fn check_parent_mtimes_match_が不一致時にfalseを返す() {
+        let conn = setup_db();
+        store_ghosts(&conn, "rk1", &[], "fp-1", "c:/ssp/ghost:12345").unwrap();
+
+        assert!(!super::super::fingerprint::check_parent_mtimes_match(
+            &conn,
+            "rk1",
+            "c:/ssp/ghost:99999"
+        ));
+    }
+
+    #[test]
+    fn check_parent_mtimes_match_がレコード未存在時にfalseを返す() {
+        let conn = setup_db();
+
+        assert!(!super::super::fingerprint::check_parent_mtimes_match(
+            &conn,
+            "rk-nonexistent",
+            "c:/ssp/ghost:12345"
+        ));
     }
 
     #[test]

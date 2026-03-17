@@ -25,6 +25,10 @@ pub fn scan_ghosts_with_meta(
 
 /// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
 /// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
+///
+/// 2 層フィンガープリント:
+/// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
+/// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
 #[tauri::command]
 pub fn scan_and_store(
     app: tauri::AppHandle,
@@ -35,18 +39,64 @@ pub fn scan_and_store(
     use path_utils::normalize_path;
     use tauri::Manager;
 
-    // fingerprint 計算 + ゴーストスキャン
+    // request_key の構築（JS 側の buildRequestKey と同一ロジック）
+    let normalized_ssp = normalize_path(std::path::Path::new(&ssp_path));
+    let sorted_folders = scan::unique_sorted_additional_folders(&additional_folders);
+    let normalized_folders: Vec<String> =
+        sorted_folders.iter().map(|(_, _, n)| n.clone()).collect();
+    let request_key = format!("{}::{}", normalized_ssp, normalized_folders.join("|"));
+
+    // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
+    // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
+    // 既存ゴースト内の descript.txt 編集は検出できない（「再読込」で対応）。
+    if cached_fingerprint.is_some() {
+        let current_mtimes =
+            fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
+
+        let config_dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
+        let db_path = config_dir.join("ghosts.db");
+
+        if db_path.exists() {
+            if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                let _ = store::configure_connection(&conn);
+                if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
+                    // Layer 1 hit: 構造変化なし → フルスキャンをスキップ
+                    return Ok(ScanStoreResult {
+                        cache_hit: true,
+                        total: 0,
+                        fingerprint: cached_fingerprint.unwrap_or_default(),
+                        request_key,
+                    });
+                }
+            }
+        }
+    }
+
+    // Layer 2: フル fingerprint 計算 + ゴーストスキャン
     let (ghosts, fingerprint) =
         scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
     let cache_hit = cached_fingerprint.as_deref() == Some(fingerprint.as_str());
 
-    // request_key の構築（JS 側の buildRequestKey と同一ロジック）
-    let normalized_ssp = normalize_path(std::path::Path::new(&ssp_path));
-    let sorted_folders = scan::unique_sorted_additional_folders(&additional_folders);
-    let normalized_folders: Vec<String> = sorted_folders.iter().map(|(_, _, n)| n.clone()).collect();
-    let request_key = format!("{}::{}", normalized_ssp, normalized_folders.join("|"));
-
     if cache_hit {
+        // Layer 2 hit: 親 mtime は変わったがゴースト構成は同じ
+        // parent_mtimes を更新して次回 Layer 1 で hit するようにする
+        let config_dir = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
+        let db_path = config_dir.join("ghosts.db");
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            let _ = store::configure_connection(&conn);
+            let current_mtimes =
+                fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
+            let _ = conn.execute(
+                "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
+                rusqlite::params![current_mtimes, request_key],
+            );
+        }
         return Ok(ScanStoreResult {
             cache_hit: true,
             total: 0,
@@ -55,19 +105,19 @@ pub fn scan_and_store(
         });
     }
 
-    // DB パスの解決（tauri-plugin-sql と同じ app_config_dir を使用）
+    // Cache miss: DB に書き込み
+    let parent_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
     let config_dir = app
         .path()
         .app_config_dir()
         .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
     let db_path = config_dir.join("ghosts.db");
 
-    // rusqlite で直接書き込み
     let conn = rusqlite::Connection::open(&db_path)
         .map_err(|e| format!("DB オープンエラー: {e}"))?;
     store::configure_connection(&conn)?;
 
-    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint)?;
+    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &parent_mtimes)?;
 
     Ok(ScanStoreResult {
         cache_hit: false,

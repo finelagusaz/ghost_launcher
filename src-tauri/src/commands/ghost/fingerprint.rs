@@ -2,6 +2,9 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
+use super::path_utils::normalize_path;
+use super::scan::unique_sorted_additional_folders;
+
 /// fs::Metadata から更新時刻の nanos 文字列を取得するヘルパー
 pub(crate) fn metadata_modified_string(meta: &fs::Metadata) -> String {
     meta.modified()
@@ -63,6 +66,58 @@ pub(crate) fn build_entry_token(
         descript_modified
     );
     (token, descript_state)
+}
+
+/// 各親ディレクトリの mtime を収集し、"path:mtime_nanos" 形式の文字列を返す。
+/// ソート済みで結合するため、フォルダ順序に依存しない。
+pub(crate) fn collect_parent_mtimes(
+    ssp_path: &str,
+    additional_folders: &[String],
+) -> String {
+    let mut entries: Vec<String> = Vec::new();
+
+    // SSP の ghost/ ディレクトリ
+    let ghost_dir = std::path::PathBuf::from(ssp_path).join("ghost");
+    let normalized = normalize_path(&ghost_dir);
+    let mtime = fs::metadata(&ghost_dir)
+        .as_ref()
+        .map(metadata_modified_string)
+        .unwrap_or_else(|_| "missing".to_string());
+    entries.push(format!("{}:{}", normalized, mtime));
+
+    // 追加フォルダ（正規化・重複排除・ソート済み）
+    for (_, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+        let mtime = fs::metadata(&folder_path)
+            .as_ref()
+            .map(metadata_modified_string)
+            .unwrap_or_else(|_| "missing".to_string());
+        entries.push(format!("{}:{}", normalized_folder, mtime));
+    }
+
+    entries.sort();
+    entries.join("\n")
+}
+
+/// Layer 1 高速チェック: 親ディレクトリの mtime が前回と一致するか判定する。
+/// 一致すればゴーストフォルダの追加・削除がないことが保証される（NTFS の特性）。
+/// ただし既存ゴースト内の descript.txt 編集は検出できない（Layer 2 が必要）。
+pub(crate) fn check_parent_mtimes_match(
+    conn: &rusqlite::Connection,
+    request_key: &str,
+    current_mtimes: &str,
+) -> bool {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT parent_mtimes FROM ghost_fingerprints WHERE request_key = ?1",
+            [request_key],
+            |row| row.get(0),
+        )
+        .ok();
+
+    match stored {
+        Some(ref s) if !s.is_empty() => s == current_mtimes,
+        _ => false,
+    }
 }
 
 /// トークン列からフィンガープリントハッシュを計算する
