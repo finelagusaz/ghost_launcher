@@ -37,6 +37,9 @@ cd src-tauri && cargo check
 # Rust テストの実行
 cargo test --manifest-path src-tauri/Cargo.toml
 
+# ghost-meta クレートのテスト実行
+cargo test --manifest-path crates/ghost-meta/Cargo.toml
+
 # アプリ全体をビルド
 npm run tauri build
 
@@ -83,13 +86,13 @@ ghost_launcher/
 ### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
 
 - `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
-- `commands/ghost/` — ゴースト一覧取得コマンド群。`scan.rs`（`ghost-meta` 呼び出し + 型変換）、`fingerprint.rs`（差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
+- `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 直接書き込み）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
 - `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動
 - `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
 
 ### フロントエンド（`src/`）
 
-- `lib/` — Tauri コマンド呼び出しラッパー・スキャンオーケストレーション・キャッシュリポジトリ・起動ロジック・設定ストア
+- `lib/` — Tauri コマンド呼び出しラッパー・キャッシュ寿命管理・起動ロジック・設定ストア
 - `hooks/` — 設定・ゴーストスキャン・検索・仮想スクロール・テーマ検出などの React カスタムフック
 - `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox
 

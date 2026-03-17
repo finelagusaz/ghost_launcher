@@ -18,6 +18,8 @@
 
 **DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
 
+**rusqlite 直接書き込み（scan_and_store）**: `scan_and_store` コマンドは `tauri-plugin-sql`（sqlx）を経由せず rusqlite で直接 SQLite に書き込む。rusqlite の接続は sqlx 側の PRAGMA を継承しないため、接続直後に `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;` を独立して設定する必要がある。`rusqlite::Connection::execute_batch` は `sqlite3_exec` を使用するため、セミコロン区切りの複数文を正しく実行できる（sqlx の `sqlite3_prepare_v2` とは異なる）。
+
 ## IPC 型の管理
 
 **ts-rs による自動生成**: IPC 境界を越える Rust struct には `#[cfg_attr(test, derive(TS))]` + `#[cfg_attr(test, ts(export))]` を付与する。`cargo test` 実行時に `src/types/generated/` へ TypeScript 型定義が自動生成される。手書きで TS 型を定義しない。
