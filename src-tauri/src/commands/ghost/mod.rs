@@ -2,9 +2,10 @@
 mod fingerprint;
 mod path_utils;
 mod scan;
+pub(crate) mod store;
 mod types;
 
-pub use types::ScanGhostsResponse;
+pub use types::{ScanGhostsResponse, ScanStoreResult};
 
 #[tauri::command]
 pub fn scan_ghosts_with_meta(
@@ -19,6 +20,60 @@ pub fn scan_ghosts_with_meta(
         ghosts: if cache_hit { vec![] } else { ghosts },
         fingerprint,
         cache_hit,
+    })
+}
+
+/// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
+/// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
+#[tauri::command]
+pub fn scan_and_store(
+    app: tauri::AppHandle,
+    ssp_path: String,
+    additional_folders: Vec<String>,
+    cached_fingerprint: Option<String>,
+) -> Result<ScanStoreResult, String> {
+    use path_utils::normalize_path;
+    use tauri::Manager;
+
+    // fingerprint 計算 + ゴーストスキャン
+    let (ghosts, fingerprint) =
+        scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
+    let cache_hit = cached_fingerprint.as_deref() == Some(fingerprint.as_str());
+
+    // request_key の構築（JS 側の buildRequestKey と同一ロジック）
+    let normalized_ssp = normalize_path(std::path::Path::new(&ssp_path));
+    let sorted_folders = scan::unique_sorted_additional_folders(&additional_folders);
+    let normalized_folders: Vec<String> = sorted_folders.iter().map(|(_, _, n)| n.clone()).collect();
+    let request_key = format!("{}::{}", normalized_ssp, normalized_folders.join("|"));
+
+    if cache_hit {
+        return Ok(ScanStoreResult {
+            cache_hit: true,
+            total: 0,
+            fingerprint,
+            request_key,
+        });
+    }
+
+    // DB パスの解決（tauri-plugin-sql と同じ app_config_dir を使用）
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?;
+    let db_path = config_dir.join("ghosts.db");
+
+    // rusqlite で直接書き込み
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("DB オープンエラー: {e}"))?;
+    store::configure_connection(&conn)?;
+
+    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint)?;
+
+    Ok(ScanStoreResult {
+        cache_hit: false,
+        total,
+        fingerprint,
+        request_key,
     })
 }
 

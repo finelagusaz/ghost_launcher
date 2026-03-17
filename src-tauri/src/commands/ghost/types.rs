@@ -43,6 +43,16 @@ pub struct ScanGhostsResponse {
     pub cache_hit: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(TS))]
+#[cfg_attr(test, ts(export))]
+pub struct ScanStoreResult {
+    pub cache_hit: bool,
+    pub total: usize,
+    pub fingerprint: String,
+    pub request_key: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
