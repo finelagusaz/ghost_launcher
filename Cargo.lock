@@ -1254,6 +1254,7 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-window-state",
  "ts-rs",
+ "unicode-normalization",
 ]
 
 [[package]]
