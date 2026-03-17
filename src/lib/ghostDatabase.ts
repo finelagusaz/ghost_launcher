@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import { Ghost, GhostView } from "../types";
 
-let dbInstance: Database | null = null;
+let dbInitPromise: Promise<Database> | null = null;
 
 const VACUUM_FREE_RATIO = 0.25;
 const VACUUM_FREE_BYTES = 1_048_576;
@@ -43,25 +43,38 @@ async function loadDb(): Promise<Database> {
   return db;
 }
 
-export async function getDb(): Promise<Database> {
-  if (!dbInstance) {
-    console.log("[ghostDatabase] Loading SQLite database...");
-    try {
-      dbInstance = await loadDb();
-    } catch (e) {
-      const msg = String(e);
-      if (msg.includes("migration") || msg.includes("duplicate column")) {
-        console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
-        await invoke("reset_ghost_db");
-        dbInstance = await loadDb();
-        console.log("[ghostDatabase] DB をリセットして再接続しました");
-      } else {
-        throw e;
-      }
-    }
+async function initializeDb(): Promise<Database> {
+  try {
+    const db = await loadDb();
     console.log("[ghostDatabase] Database loaded successfully");
+    return db;
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("migration") || msg.includes("duplicate column")) {
+      console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
+      await invoke("reset_ghost_db");
+      const db = await loadDb();
+      console.log("[ghostDatabase] DB をリセットして再接続しました");
+      return db;
+    }
+    // リカバリ不能: Promise をリセットして次回再試行可能にする
+    dbInitPromise = null;
+    throw e;
   }
-  return dbInstance;
+}
+
+export function getDb(): Promise<Database> {
+  if (!dbInitPromise) {
+    console.log("[ghostDatabase] Loading SQLite database...");
+    dbInitPromise = initializeDb();
+  }
+  return dbInitPromise;
+}
+
+/// DB 初期化を早期にキックオフする（fire-and-forget）。
+/// React のレンダリング前に呼ぶことで、最初の DB アクセスを高速化する。
+export function warmUpDb(): void {
+  void getDb().catch((e) => console.warn("[ghostDatabase] warmup に失敗しました", e));
 }
 
 export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {

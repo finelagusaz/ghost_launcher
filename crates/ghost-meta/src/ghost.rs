@@ -45,7 +45,15 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
     let kero_name = fields.get("kero.name").cloned();
     let craftman = fields.get("craftman").cloned();
     let craftmanw = fields.get("craftmanw").cloned();
-    let thumbnail = resolve_thumbnail(ghost_root);
+
+    // shell/master/descript.txt を 1 回だけパースし、resolve_thumbnail に渡す。
+    // resolve_thumbnail 内での 2 回目のパースを省略する（I/O 削減）。
+    let shell_descript_path = ghost_root
+        .join("shell")
+        .join("master")
+        .join("descript.txt");
+    let shell_fields = parse_descript(&shell_descript_path).ok();
+    let thumbnail = resolve_thumbnail(ghost_root, shell_fields.as_ref());
 
     Ok(GhostMeta {
         name,

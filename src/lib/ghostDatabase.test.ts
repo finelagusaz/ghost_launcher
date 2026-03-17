@@ -45,6 +45,30 @@ describe("ghostDatabase - getDb マイグレーションエラー回復", () => 
   });
 });
 
+describe("ghostDatabase - getDb Promise 重複防止", () => {
+  it("並行呼び出しで loadDb が 1 回だけ実行される", async () => {
+    const { getDb } = await import("./ghostDatabase");
+    const [db1, db2] = await Promise.all([getDb(), getDb()]);
+
+    expect(db1).toBe(db2);
+    expect(mockLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it("初回失敗後に再呼び出しで再試行できる", async () => {
+    mockLoad
+      .mockRejectedValueOnce(new Error("disk I/O error"))
+      .mockResolvedValueOnce({ execute: mockExecute, select: mockSelect });
+
+    const { getDb } = await import("./ghostDatabase");
+    await expect(getDb()).rejects.toThrow("disk I/O error");
+
+    // Promise がリセットされているので再試行可能
+    const db = await getDb();
+    expect(db).toBeDefined();
+    expect(mockLoad).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("ghostDatabase - getDb", () => {
 
   it("初回接続時に PRAGMA journal_mode=WAL を設定する", async () => {
