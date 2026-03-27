@@ -9,5 +9,5 @@ encoding_rs = "0.8"
 lto = true
 codegen-units = 1
 strip = "symbols"
-opt-level = "s"
+opt-level = 3
 panic = "abort"
