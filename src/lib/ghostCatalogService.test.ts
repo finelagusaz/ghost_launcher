@@ -7,6 +7,12 @@ vi.mock("./ghostDatabase", () => ({
   hasGhosts: vi.fn(),
   cleanupOldGhostCaches: vi.fn(),
   getCachedFingerprint: vi.fn(),
+  getDb: vi.fn().mockResolvedValue({ select: vi.fn().mockResolvedValue([]) }),
+}));
+
+vi.mock("./dbMonitor", () => ({
+  reportScanComplete: vi.fn(),
+  reportDbSize: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("refreshGhostCatalog", () => {

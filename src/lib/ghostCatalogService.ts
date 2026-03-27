@@ -1,13 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts } from "./ghostDatabase";
+import { cleanupOldGhostCaches, getCachedFingerprint, getDb, hasGhosts } from "./ghostDatabase";
 import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
-
-interface ScanStoreResult {
-  cache_hit: boolean;
-  total: number;
-  fingerprint: string;
-  request_key: string;
-}
+import { reportDbSize, reportScanComplete } from "./dbMonitor";
+import type { ScanStoreResult } from "./dbMonitor";
 
 export interface RefreshGhostCatalogParams {
   sspPath: string;
@@ -37,15 +32,22 @@ export async function refreshGhostCatalog({
 
   // Rust が scan + DB 書き込み + fingerprint 保存を一括で行う。
   // Ghost 配列は IPC を横断しない。
+  const scanStart = performance.now();
   const result = await invoke<ScanStoreResult>("scan_and_store", {
     sspPath,
     additionalFolders,
     cachedFingerprint,
   });
+  const scanDurationMs = Math.round(performance.now() - scanStart);
 
   if (result.cache_hit) {
     return { skipped: true };
   }
+
+  reportScanComplete(result, scanDurationMs);
+  void getDb()
+    .then((db) => reportDbSize(db, "scan_complete"))
+    .catch(() => {});
 
   // 寿命管理は JS 側で fire-and-forget（失敗許容）
   void cleanupOldGhostCaches(result.request_key).catch((error) => {
