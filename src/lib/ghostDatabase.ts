@@ -1,6 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { GhostView } from "../types";
+import { GhostView, SortOrder } from "../types";
 import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
@@ -148,7 +148,7 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
 }
 
 const GHOST_SELECT_COLUMNS =
-  "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+  "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, ghost_identity_key";
 
 const GHOST_SEARCH_LOWER_COLUMNS = [
   "name_lower",
@@ -162,15 +162,39 @@ const GHOST_SEARCH_LOWER_COLUMNS = [
 const GHOST_SEARCH_WHERE =
   GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
 
-export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
+const GHOST_SELECT_COLUMNS_PREFIXED =
+  GHOST_SELECT_COLUMNS.split(", ").map((c) => `g.${c}`).join(", ");
+
+function buildOrderBy(sortOrder: SortOrder): { orderBy: string; join: string } {
+  switch (sortOrder) {
+    case "recent":
+      return {
+        join: "LEFT JOIN (SELECT ghost_identity_key, MAX(launched_at) AS last_launched FROM ghost_launches GROUP BY ghost_identity_key) gl ON g.ghost_identity_key = gl.ghost_identity_key",
+        orderBy: "gl.last_launched DESC NULLS LAST, g.name_lower ASC",
+      };
+    case "frequency":
+      return {
+        join: "LEFT JOIN (SELECT ghost_identity_key, COUNT(*) AS launch_count FROM ghost_launches GROUP BY ghost_identity_key) gl ON g.ghost_identity_key = gl.ghost_identity_key",
+        orderBy: "gl.launch_count DESC NULLS LAST, g.name_lower ASC",
+      };
+    default:
+      return { join: "", orderBy: "g.name_lower ASC" };
+  }
+}
+
+export async function searchGhostsInitialPage(requestKey: string, limit: number, sortOrder: SortOrder = "name"): Promise<GhostView[]> {
   return measureSearch("searchGhostsInitialPage", async () => {
     const db = await getDb();
+    const { join, orderBy } = buildOrderBy(sortOrder);
+    const from = join
+      ? `ghosts g ${join}`
+      : "ghosts g";
     const rows = await db.select<GhostView[]>(
-      `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
+      `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ${from} WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ?`,
       [requestKey, limit]
     );
 
-    console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}) → rows=${rows.length}`);
+    console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}, sort=${sortOrder}) → rows=${rows.length}`);
     return rows;
   });
 }
@@ -196,23 +220,43 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
   return countResult.length > 0 ? countResult[0].count : 0;
 }
 
-export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
+export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number, sortOrder: SortOrder = "name"): Promise<{ ghosts: GhostView[], total: number }> {
   return measureSearch("searchGhosts", async () => {
     const db = await getDb();
 
     const normalizedQuery = normalizeForKey(query);
     const likePattern = `%${normalizedQuery}%`;
+    const { join, orderBy } = buildOrderBy(sortOrder);
+    const from = join ? `ghosts g ${join}` : "ghosts g";
+    const searchWhere = GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
 
     const [total, rows] = await Promise.all([
       countGhostsByQuery(requestKey, query),
       db.select<GhostView[]>(
-        `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
+        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ${from} WHERE g.request_key = ? AND (${searchWhere}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
         [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
       ),
     ]);
 
-    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
+    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}, sort=${sortOrder}) → total=${total}`);
     console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
     return { ghosts: rows, total };
   });
+}
+
+export async function recordLaunch(ghostIdentityKey: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?, datetime('now'))",
+    [ghostIdentityKey]
+  );
+}
+
+export async function getRandomGhost(requestKey: string): Promise<GhostView | null> {
+  const db = await getDb();
+  const rows = await db.select<GhostView[]>(
+    `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY RANDOM() LIMIT 1`,
+    [requestKey]
+  );
+  return rows.length > 0 ? rows[0] : null;
 }

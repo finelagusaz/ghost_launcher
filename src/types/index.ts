@@ -2,6 +2,8 @@
 
 export type ThumbnailKind = "surface" | "thumbnail" | "";
 
+export type SortOrder = "name" | "recent" | "frequency" | "random";
+
 /** DB クエリ結果。_lower カラムを含み、diff_fingerprint は SELECT 対象外 */
 export interface GhostView {
   name: string;
@@ -21,4 +23,5 @@ export interface GhostView {
   craftman_lower: string;
   craftmanw_lower: string;
   directory_name_lower: string;
+  ghost_identity_key: string;
 }

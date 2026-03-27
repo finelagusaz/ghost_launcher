@@ -35,5 +35,12 @@
   "card.launching": "Запуск...",
   "card.launchError": "Не удалось запустить. Проверьте настройки папки SSP и информацию о духе, затем попробуйте снова.{{detail}}",
   "search.label": "Поиск духов",
-  "search.placeholder": "Поиск по имени духа или автора"
+  "search.placeholder": "Поиск по имени духа или автора",
+  "sort.label": "Сортировка",
+  "sort.name": "По имени",
+  "sort.recent": "Недавно запущенные",
+  "sort.frequency": "По частоте запуска",
+  "sort.random": "Случайно",
+  "header.randomLaunch": "Случайный запуск",
+  "header.randomLaunch.empty": "Нет доступных духов для запуска"
 }

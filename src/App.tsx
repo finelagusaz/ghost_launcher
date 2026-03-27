@@ -20,6 +20,9 @@ import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { buildAdditionalFolders, buildRequestKey } from "./lib/ghostScanUtils";
+import { getRandomGhost, recordLaunch } from "./lib/ghostDatabase";
+import { invoke } from "@tauri-apps/api/core";
+import type { SortOrder } from "./types";
 
 const useStyles = makeStyles({
   app: {
@@ -75,6 +78,7 @@ function App() {
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("name");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const LIMIT = 500;
 
@@ -102,7 +106,8 @@ function App() {
     deferredSearchQuery,
     LIMIT,
     offset,
-    refreshTrigger
+    refreshTrigger,
+    sortOrder,
   );
 
   const handleLoadMore = useCallback((targetOffset: number) => {
@@ -114,6 +119,34 @@ function App() {
   const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
   const handleOpenSettings = openSettings;
   const handleCloseSettings = closeSettings;
+
+  const [randomLaunchError, setRandomLaunchError] = useState<string | null>(null);
+  const handleRandomLaunch = useCallback(async () => {
+    if (!searchRequestKey || !sspPath) return;
+    setRandomLaunchError(null);
+    try {
+      const ghost = await getRandomGhost(searchRequestKey);
+      if (!ghost) {
+        setRandomLaunchError(t("header.randomLaunch.empty"));
+        return;
+      }
+      await invoke("launch_ghost", {
+        sspPath,
+        ghostDirectoryName: ghost.directory_name,
+        ghostSource: ghost.source,
+      });
+      if (ghost.ghost_identity_key) {
+        void recordLaunch(ghost.ghost_identity_key).catch(() => {});
+      }
+    } catch (e) {
+      setRandomLaunchError(e instanceof Error ? e.message : String(e));
+    }
+  }, [searchRequestKey, sspPath, t]);
+
+  const handleSortChange = useCallback((value: SortOrder) => {
+    setSortOrder(value);
+    setOffset(0);
+  }, [setOffset]);
 
   if (settingsLoading) {
     return (
@@ -138,10 +171,13 @@ function App() {
           loadedStart={loadedStart}
           sspPath={sspPath}
           searchQuery={searchQuery}
+          sortOrder={sortOrder}
           loading={ghostsLoading}
           searchLoading={searchLoading}
-          error={error ?? dbError}
+          error={error ?? dbError ?? randomLaunchError}
           onSearchChange={setSearchQuery}
+          onSortChange={handleSortChange}
+          onRandomLaunch={handleRandomLaunch}
           onOpenSettings={handleOpenSettings}
           onLoadMore={handleLoadMore}
         />

@@ -22,3 +22,23 @@ npm run e2e
 
 - セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）
 - SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップ
+
+## テスト追加の手順
+
+1. `e2e/` に `*.e2e.ts` ファイルを作成（`ghost-list.e2e.ts` をテンプレートにする）
+2. `base.extend<{ harness: Harness }>` で harness フィクスチャを定義し、`createHarness`/`disposeHarness` でセッションを管理
+3. `helpers/ui.ts` のヘルパーを使う: `waitForAppReady`（初期ロード待機）、`waitForGhosts`（スキャン完了待機）、`openSettings`/`closeSettings`
+4. 要素取得は `data-testid` 属性を優先（`By.css("[data-testid='...']")`）。テキストマッチが必要な場合は XPath で日英両方を記述
+
+## 主要な data-testid 一覧
+
+| testid | 要素 | ファイル |
+|--------|------|----------|
+| `settings-button` | ヘッダー設定ボタン | AppHeader.tsx |
+| `open-settings-button` | 空状態の設定誘導ボタン | GhostContent.tsx |
+| `settings-close-button` | 設定ダイアログ閉じるボタン | App.tsx |
+| `launch-button` | ゴースト起動ボタン | GhostCard.tsx |
+| `ghost-name` | ゴースト名テキスト | GhostCard.tsx |
+| `ghost-list-viewport` | 仮想スクロールコンテナ | GhostList.tsx |
+| `empty-state` | 空状態メッセージ | GhostList.tsx / GhostContent.tsx |
+| `random-launch-button` | ランダム起動ボタン | AppHeader.tsx |

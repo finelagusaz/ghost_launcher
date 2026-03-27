@@ -240,8 +240,8 @@ describe("ghostDatabase - searchGhostsInitialPage", () => {
       (c[0] as string).includes("SELECT"));
     expect(call).toBeDefined();
     const sql = call![0] as string;
-    expect(sql).toContain("WHERE request_key = ?");
-    expect(sql).toContain("ORDER BY name_lower ASC");
+    expect(sql).toContain("WHERE g.request_key = ?");
+    expect(sql).toContain("ORDER BY g.name_lower ASC");
     expect(sql).toContain("LIMIT ?");
     expect(sql).not.toContain("LIKE");
     expect(sql).not.toContain("OFFSET");

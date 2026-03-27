@@ -35,5 +35,12 @@
   "card.launching": "启动中...",
   "card.launchError": "启动失败。请检查SSP文件夹设置和幽灵信息后重试。{{detail}}",
   "search.label": "搜索幽灵",
-  "search.placeholder": "按名称或作者搜索"
+  "search.placeholder": "按名称或作者搜索",
+  "sort.label": "排序方式",
+  "sort.name": "名称",
+  "sort.recent": "最近启动",
+  "sort.frequency": "启动次数",
+  "sort.random": "随机",
+  "header.randomLaunch": "随机启动",
+  "header.randomLaunch.empty": "没有可启动的幽灵"
 }
