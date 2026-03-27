@@ -36,5 +36,12 @@
   "card.launching": "Launching...",
   "card.launchError": "Failed to launch. Please check SSP folder settings and ghost information, then try again.{{detail}}",
   "search.label": "Search ghosts",
-  "search.placeholder": "Search by name or author"
+  "search.placeholder": "Search by name or author",
+  "sort.label": "Sort by",
+  "sort.name": "Name",
+  "sort.recent": "Recently launched",
+  "sort.frequency": "Most launched",
+  "sort.random": "Random",
+  "header.randomLaunch": "Random launch",
+  "header.randomLaunch.empty": "No ghosts available to launch"
 }

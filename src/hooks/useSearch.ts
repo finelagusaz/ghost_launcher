@@ -1,16 +1,27 @@
 import { useState, useEffect, useRef } from "react";
-import type { GhostView } from "../types";
+import type { GhostView, SortOrder } from "../types";
 import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../lib/ghostDatabase";
 
 // バッファの最大サイズ。これを超えるマージは全置換にフォールバックする
 export const MAX_BUFFER_SIZE = 2000;
+
+// Fisher-Yates シャッフル（in-place）
+function shuffleArray<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 
 export function useSearch(
   requestKey: string | null,
   query: string,
   limit: number,
   offset: number,
-  refreshTrigger: number
+  refreshTrigger: number,
+  sortOrder: SortOrder = "name",
 ): { ghosts: GhostView[]; total: number; loadedStart: number; loading: boolean; dbError: string | null } {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [total, setTotal] = useState(0);
@@ -25,7 +36,7 @@ export function useSearch(
 
   useEffect(() => {
     let isActive = true;
-    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}`;
+    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}\0${sortOrder}`;
     const isReset = resetKey !== resetKeyRef.current;
 
     async function fetchGhosts() {
@@ -46,8 +57,9 @@ export function useSearch(
         const isInitialLoad = query === "" && offset === 0;
 
         if (isInitialLoad) {
-          const initialGhosts = await searchGhostsInitialPage(requestKey, limit);
+          let initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
           if (!isActive) return;
+          if (sortOrder === "random") initialGhosts = shuffleArray(initialGhosts);
 
           resetKeyRef.current = resetKey;
           setGhosts(initialGhosts);
@@ -68,7 +80,8 @@ export function useSearch(
           return;
         }
 
-        const result = await searchGhosts(requestKey, query, limit, offset);
+        const result = await searchGhosts(requestKey, query, limit, offset, sortOrder);
+        if (sortOrder === "random") result.ghosts = shuffleArray(result.ghosts);
         if (!isActive) return;
 
         resetKeyRef.current = resetKey;
@@ -124,7 +137,7 @@ export function useSearch(
     return () => {
       isActive = false;
     };
-  }, [requestKey, query, limit, offset, refreshTrigger]);
+  }, [requestKey, query, limit, offset, refreshTrigger, sortOrder]);
 
   return { ghosts, total, loadedStart, loading, dbError };
 }

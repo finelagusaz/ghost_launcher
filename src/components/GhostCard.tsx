@@ -14,6 +14,7 @@ import {
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
+import { recordLaunch } from "../lib/ghostDatabase";
 import type { GhostView } from "../types";
 
 interface Props {
@@ -226,6 +227,9 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
         ghostDirectoryName: ghost.directory_name,
         ghostSource: ghost.source,
       });
+      if (ghost.ghost_identity_key) {
+        void recordLaunch(ghost.ghost_identity_key).catch(() => {});
+      }
     } catch (e) {
       setError(t("card.launchError", { detail: formatErrorDetail(e) }));
     } finally {

@@ -86,7 +86,7 @@ ghost_launcher/
 ### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
 
 - `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
-- `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 直接書き込み）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
+- `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 差分 UPSERT）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
 - `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動
 - `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
 

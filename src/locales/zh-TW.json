@@ -35,5 +35,12 @@
   "card.launching": "啟動中...",
   "card.launchError": "啟動失敗。請確認SSP資料夾設定與幽靈資訊後再試一次。{{detail}}",
   "search.label": "搜尋幽靈",
-  "search.placeholder": "以名稱或作者搜尋"
+  "search.placeholder": "以名稱或作者搜尋",
+  "sort.label": "排序方式",
+  "sort.name": "名稱",
+  "sort.recent": "最近啟動",
+  "sort.frequency": "啟動次數",
+  "sort.random": "隨機",
+  "header.randomLaunch": "隨機啟動",
+  "header.randomLaunch.empty": "沒有可啟動的幽靈"
 }

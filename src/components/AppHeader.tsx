@@ -1,13 +1,14 @@
-import { memo } from "react";
+import { memo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
-import { ArrowClockwiseRegular, SettingsRegular } from "@fluentui/react-icons";
+import { Button, Text, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
+import { ArrowClockwiseRegular, ArrowShuffleRegular, SettingsRegular } from "@fluentui/react-icons";
 
 interface Props {
   sspPath: string | null;
   ghostsLoading: boolean;
   onRefresh: () => void;
   onOpenSettings: () => void;
+  onRandomLaunch: () => Promise<void>;
 }
 
 const useStyles = makeStyles({
@@ -41,9 +42,19 @@ const useStyles = makeStyles({
   },
 });
 
-export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings }: Props) {
+export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRefresh, onOpenSettings, onRandomLaunch }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
+  const [randomLaunching, setRandomLaunching] = useState(false);
+
+  const handleRandomLaunch = useCallback(async () => {
+    setRandomLaunching(true);
+    try {
+      await onRandomLaunch();
+    } finally {
+      setRandomLaunching(false);
+    }
+  }, [onRandomLaunch]);
 
   return (
     <header className={styles.header}>
@@ -54,14 +65,25 @@ export const AppHeader = memo(function AppHeader({ sspPath, ghostsLoading, onRef
       </div>
       <div className={styles.headerActions}>
         {sspPath && (
-          <Button
-            icon={<ArrowClockwiseRegular />}
-            appearance="secondary"
-            onClick={onRefresh}
-            disabled={ghostsLoading}
-          >
-            {t("header.refresh")}
-          </Button>
+          <>
+            <Tooltip content={t("header.randomLaunch")} relationship="label">
+              <Button
+                icon={<ArrowShuffleRegular />}
+                appearance="subtle"
+                onClick={handleRandomLaunch}
+                disabled={ghostsLoading || randomLaunching}
+                data-testid="random-launch-button"
+              />
+            </Tooltip>
+            <Button
+              icon={<ArrowClockwiseRegular />}
+              appearance="secondary"
+              onClick={onRefresh}
+              disabled={ghostsLoading}
+            >
+              {t("header.refresh")}
+            </Button>
+          </>
         )}
         <Button icon={<SettingsRegular />} appearance="secondary" onClick={onOpenSettings} data-testid="settings-button">
           {t("header.settings")}

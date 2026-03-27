@@ -57,7 +57,7 @@ describe("useSearch", () => {
       expect(result.current.ghosts).toHaveLength(2);
     });
 
-    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100);
+    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100, "name");
     expect(result.current.total).toBe(2);
   });
 
@@ -259,7 +259,7 @@ describe("useSearch", () => {
     });
 
     expect(searchGhostsInitialPage).toHaveBeenCalledTimes(1);
-    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100);
+    expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100, "name");
   });
 
   it("検索でエラーが発生した場合は dbError にメッセージを設定する", async () => {
