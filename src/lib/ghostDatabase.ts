@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import { GhostView } from "../types";
+import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
 
@@ -47,6 +48,7 @@ async function initializeDb(): Promise<Database> {
   try {
     const db = await loadDb();
     console.log("[ghostDatabase] Database loaded successfully");
+    void reportDbSize(db, "startup").catch(() => {});
     return db;
   } catch (e) {
     const msg = String(e);
@@ -161,14 +163,16 @@ const GHOST_SEARCH_WHERE =
   GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
 
 export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
-  const db = await getDb();
-  const rows = await db.select<GhostView[]>(
-    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
-    [requestKey, limit]
-  );
+  return measureSearch("searchGhostsInitialPage", async () => {
+    const db = await getDb();
+    const rows = await db.select<GhostView[]>(
+      `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
+      [requestKey, limit]
+    );
 
-  console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}) → rows=${rows.length}`);
-  return rows;
+    console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}) → rows=${rows.length}`);
+    return rows;
+  });
 }
 
 export async function countGhostsByQuery(requestKey: string, query: string): Promise<number> {
@@ -193,20 +197,22 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
 }
 
 export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
-  const db = await getDb();
+  return measureSearch("searchGhosts", async () => {
+    const db = await getDb();
 
-  const normalizedQuery = normalizeForKey(query);
-  const likePattern = `%${normalizedQuery}%`;
+    const normalizedQuery = normalizeForKey(query);
+    const likePattern = `%${normalizedQuery}%`;
 
-  const [total, rows] = await Promise.all([
-    countGhostsByQuery(requestKey, query),
-    db.select<GhostView[]>(
-      `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
-      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
-    ),
-  ]);
+    const [total, rows] = await Promise.all([
+      countGhostsByQuery(requestKey, query),
+      db.select<GhostView[]>(
+        `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
+        [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
+      ),
+    ]);
 
-  console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
-  console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
-  return { ghosts: rows, total };
+    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
+    console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
+    return { ghosts: rows, total };
+  });
 }
