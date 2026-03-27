@@ -65,9 +65,6 @@ fn resolve_surface0(
     shell_descript: Option<&HashMap<String, String>>,
 ) -> Option<ThumbnailInfo> {
     let shell_master = ghost_root.join("shell").join("master");
-    if !shell_master.is_dir() {
-        return None;
-    }
 
     let mut apng_files: Vec<String> = Vec::new();
     let mut png_files: Vec<String> = Vec::new();

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::Connection;
 use unicode_normalization::UnicodeNormalization;
 
@@ -24,12 +26,18 @@ fn build_ghost_identity_key(ghost: &Ghost) -> String {
 pub(crate) fn configure_connection(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;\
-         PRAGMA busy_timeout=5000;",
+         PRAGMA busy_timeout=5000;\
+         PRAGMA synchronous=NORMAL;\
+         PRAGMA cache_size=-65536;\
+         PRAGMA temp_store=MEMORY;\
+         PRAGMA mmap_size=134217728;",
     )
     .map_err(|e| format!("PRAGMA 設定エラー: {e}"))
 }
 
-/// ゴースト一覧を SQLite に直接書き込む（DELETE + INSERT、1 トランザクション）。
+/// ゴースト一覧を SQLite に差分書き込みする（1 トランザクション）。
+/// 既存行の (ghost_identity_key, row_fingerprint) をカバリングインデックスから読み、
+/// スキャン結果と比較して INSERT / UPDATE / DELETE を最小限に実行する。
 /// fingerprint と parent_mtimes も同一トランザクション内で保存する。
 pub(crate) fn store_ghosts(
     conn: &Connection,
@@ -42,55 +50,142 @@ pub(crate) fn store_ghosts(
         .unchecked_transaction()
         .map_err(|e| format!("トランザクション開始エラー: {e}"))?;
 
-    // 既存データを削除
-    tx.execute("DELETE FROM ghosts WHERE request_key = ?1", [request_key])
-        .map_err(|e| format!("DELETE エラー: {e}"))?;
-
-    // prepared statement で一括 INSERT（stmt のスコープを制限して tx.commit() 前に drop）
-    {
+    // フェーズ 1: 既存の (identity_key -> row_fingerprint) をカバリングインデックスから読む
+    let mut existing: HashMap<String, String> = {
         let mut stmt = tx
             .prepare_cached(
-                "INSERT INTO ghosts (\
-                    request_key, ghost_identity_key, row_fingerprint,\
-                    name, sakura_name, kero_name, craftman, craftmanw,\
-                    directory_name, path, source,\
-                    name_lower, sakura_name_lower, kero_name_lower,\
-                    craftman_lower, craftmanw_lower, directory_name_lower,\
-                    thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind,\
-                    updated_at\
-                ) VALUES (\
-                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,\
-                    ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,\
-                    datetime('now')\
-                )",
+                "SELECT ghost_identity_key, row_fingerprint \
+                 FROM ghosts WHERE request_key = ?1",
             )
-            .map_err(|e| format!("INSERT 準備エラー: {e}"))?;
+            .map_err(|e| format!("SELECT 準備エラー: {e}"))?;
+        stmt.query_map([request_key], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| format!("SELECT エラー: {e}"))?
+            .filter_map(|r| r.ok())
+            .collect()
+    };
 
-        for ghost in ghosts {
-            let identity_key = build_ghost_identity_key(ghost);
-            stmt.execute(rusqlite::params![
-                request_key,
-                identity_key,
-                ghost.diff_fingerprint,
-                ghost.name,
-                ghost.sakura_name,
-                ghost.kero_name,
-                ghost.craftman,
-                ghost.craftmanw,
-                ghost.directory_name,
-                ghost.path,
-                ghost.source,
-                normalize_for_key(&ghost.name),
-                normalize_for_key(&ghost.sakura_name),
-                normalize_for_key(&ghost.kero_name),
-                normalize_for_key(&ghost.craftman),
-                normalize_for_key(&ghost.craftmanw),
-                normalize_for_key(&ghost.directory_name),
-                ghost.thumbnail_path,
-                ghost.thumbnail_use_self_alpha as i32,
-                ghost.thumbnail_kind,
-            ])
-            .map_err(|e| format!("INSERT エラー: {e}"))?;
+    // フェーズ 2: スキャン結果を INSERT / UPDATE / skip に分類
+    let mut to_insert: Vec<(&Ghost, String)> = Vec::new();
+    let mut to_update: Vec<(&Ghost, String)> = Vec::new();
+
+    for ghost in ghosts {
+        let identity_key = build_ghost_identity_key(ghost);
+        match existing.remove(&identity_key) {
+            None => to_insert.push((ghost, identity_key)),
+            Some(ref stored_fp) if stored_fp != &ghost.diff_fingerprint => {
+                to_update.push((ghost, identity_key));
+            }
+            Some(_) => {} // row_fingerprint 一致 → スキップ
+        }
+    }
+    // existing に残ったキーはスキャン結果に存在しない → DELETE 対象
+    let to_delete: Vec<String> = existing.into_keys().collect();
+
+    // フェーズ 3: 差分のみ書き込む
+    {
+        if !to_insert.is_empty() {
+            let mut stmt = tx
+                .prepare_cached(
+                    "INSERT INTO ghosts (\
+                        request_key, ghost_identity_key, row_fingerprint,\
+                        name, sakura_name, kero_name, craftman, craftmanw,\
+                        directory_name, path, source,\
+                        name_lower, sakura_name_lower, kero_name_lower,\
+                        craftman_lower, craftmanw_lower, directory_name_lower,\
+                        thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind,\
+                        updated_at\
+                    ) VALUES (\
+                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,\
+                        ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,\
+                        datetime('now')\
+                    )",
+                )
+                .map_err(|e| format!("INSERT 準備エラー: {e}"))?;
+
+            for (ghost, identity_key) in &to_insert {
+                stmt.execute(rusqlite::params![
+                    request_key,
+                    identity_key,
+                    ghost.diff_fingerprint,
+                    ghost.name,
+                    ghost.sakura_name,
+                    ghost.kero_name,
+                    ghost.craftman,
+                    ghost.craftmanw,
+                    ghost.directory_name,
+                    ghost.path,
+                    ghost.source,
+                    normalize_for_key(&ghost.name),
+                    normalize_for_key(&ghost.sakura_name),
+                    normalize_for_key(&ghost.kero_name),
+                    normalize_for_key(&ghost.craftman),
+                    normalize_for_key(&ghost.craftmanw),
+                    normalize_for_key(&ghost.directory_name),
+                    ghost.thumbnail_path,
+                    ghost.thumbnail_use_self_alpha as i32,
+                    ghost.thumbnail_kind,
+                ])
+                .map_err(|e| format!("INSERT エラー: {e}"))?;
+            }
+        }
+
+        if !to_update.is_empty() {
+            let mut stmt = tx
+                .prepare_cached(
+                    "UPDATE ghosts SET \
+                        row_fingerprint = ?3,\
+                        name = ?4, sakura_name = ?5, kero_name = ?6,\
+                        craftman = ?7, craftmanw = ?8,\
+                        directory_name = ?9, path = ?10, source = ?11,\
+                        name_lower = ?12, sakura_name_lower = ?13, kero_name_lower = ?14,\
+                        craftman_lower = ?15, craftmanw_lower = ?16,\
+                        directory_name_lower = ?17,\
+                        thumbnail_path = ?18, thumbnail_use_self_alpha = ?19,\
+                        thumbnail_kind = ?20,\
+                        updated_at = datetime('now')\
+                    WHERE request_key = ?1 AND ghost_identity_key = ?2",
+                )
+                .map_err(|e| format!("UPDATE 準備エラー: {e}"))?;
+
+            for (ghost, identity_key) in &to_update {
+                stmt.execute(rusqlite::params![
+                    request_key,
+                    identity_key,
+                    ghost.diff_fingerprint,
+                    ghost.name,
+                    ghost.sakura_name,
+                    ghost.kero_name,
+                    ghost.craftman,
+                    ghost.craftmanw,
+                    ghost.directory_name,
+                    ghost.path,
+                    ghost.source,
+                    normalize_for_key(&ghost.name),
+                    normalize_for_key(&ghost.sakura_name),
+                    normalize_for_key(&ghost.kero_name),
+                    normalize_for_key(&ghost.craftman),
+                    normalize_for_key(&ghost.craftmanw),
+                    normalize_for_key(&ghost.directory_name),
+                    ghost.thumbnail_path,
+                    ghost.thumbnail_use_self_alpha as i32,
+                    ghost.thumbnail_kind,
+                ])
+                .map_err(|e| format!("UPDATE エラー: {e}"))?;
+            }
+        }
+
+        if !to_delete.is_empty() {
+            let mut stmt = tx
+                .prepare_cached(
+                    "DELETE FROM ghosts \
+                     WHERE request_key = ?1 AND ghost_identity_key = ?2",
+                )
+                .map_err(|e| format!("DELETE 準備エラー: {e}"))?;
+
+            for identity_key in &to_delete {
+                stmt.execute(rusqlite::params![request_key, identity_key])
+                    .map_err(|e| format!("DELETE エラー: {e}"))?;
+            }
         }
 
         // fingerprint + parent_mtimes を同一トランザクションで保存
@@ -331,5 +426,105 @@ mod tests {
         assert_eq!(normalize_for_key("HELLO"), "hello");
         assert_eq!(normalize_for_key("テスト"), "テスト");
         assert_eq!(normalize_for_key(""), "");
+    }
+
+    #[test]
+    fn store_ghosts_が変更なしのゴーストをスキップする() {
+        let conn = setup_db();
+        let ghosts = vec![make_ghost("Alice", "alice", "ssp")];
+        store_ghosts(&conn, "rk1", &ghosts, "fp-1", "").unwrap();
+
+        let updated_at_1: String = conn
+            .query_row(
+                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // 同一データで再度書き込み → updated_at は変わらない（UPDATE が発行されない）
+        store_ghosts(&conn, "rk1", &ghosts, "fp-2", "").unwrap();
+
+        let updated_at_2: String = conn
+            .query_row(
+                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(updated_at_1, updated_at_2);
+
+        // DB の件数は変わらない
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn store_ghosts_がフィンガープリント変化時のみupdateする() {
+        let conn = setup_db();
+        let ghosts_v1 = vec![make_ghost("Alice", "alice", "ssp")];
+        store_ghosts(&conn, "rk1", &ghosts_v1, "fp-1", "").unwrap();
+
+        // diff_fingerprint が異なる同一ゴースト → UPDATE される
+        let mut ghost_v2 = make_ghost("Alice-Updated", "alice", "ssp");
+        ghost_v2.diff_fingerprint = "fp-changed".to_string();
+        store_ghosts(&conn, "rk1", &[ghost_v2], "fp-2", "").unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let (name, fp): (String, String) = conn
+            .query_row(
+                "SELECT name, row_fingerprint FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Alice-Updated");
+        assert_eq!(fp, "fp-changed");
+    }
+
+    #[test]
+    fn store_ghosts_が削除されたゴーストを除去する() {
+        let conn = setup_db();
+        let ghosts = vec![
+            make_ghost("Alice", "alice", "ssp"),
+            make_ghost("Bob", "bob", "ssp"),
+        ];
+        store_ghosts(&conn, "rk1", &ghosts, "fp-1", "").unwrap();
+
+        // Alice のみ残す → Bob は DELETE される
+        let ghosts_v2 = vec![make_ghost("Alice", "alice", "ssp")];
+        store_ghosts(&conn, "rk1", &ghosts_v2, "fp-2", "").unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let name: String = conn
+            .query_row(
+                "SELECT name FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Alice");
     }
 }

@@ -18,7 +18,9 @@
 
 **DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
 
-**rusqlite 直接書き込み（scan_and_store）**: `scan_and_store` コマンドは `tauri-plugin-sql`（sqlx）を経由せず rusqlite で直接 SQLite に書き込む。rusqlite の接続は sqlx 側の PRAGMA を継承しないため、接続直後に `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;` を独立して設定する必要がある。`rusqlite::Connection::execute_batch` は `sqlite3_exec` を使用するため、セミコロン区切りの複数文を正しく実行できる（sqlx の `sqlite3_prepare_v2` とは異なる）。
+**rusqlite 直接書き込み（scan_and_store）**: `scan_and_store` コマンドは `tauri-plugin-sql`（sqlx）を経由せず rusqlite で直接 SQLite に書き込む。rusqlite の接続は sqlx 側の PRAGMA を継承しないため、`configure_connection` で独立して PRAGMA を設定する（WAL・busy_timeout・synchronous=NORMAL・cache_size・temp_store・mmap_size）。`rusqlite::Connection::execute_batch` は `sqlite3_exec` を使用するため、セミコロン区切りの複数文を正しく実行できる（sqlx の `sqlite3_prepare_v2` とは異なる）。
+
+**store_ghosts の差分 UPSERT**: `store_ghosts` は DELETE-all + INSERT-all ではなく、既存行の `(ghost_identity_key, row_fingerprint)` をカバリングインデックスから読み、スキャン結果と比較して INSERT/UPDATE/DELETE を最小限に実行する。`ghost_identity_key` は NFKC(source) + `\x1f` + NFKC(directory_name) で構成される論理主キー、`row_fingerprint` は 9 メタデータフィールドの SHA-256。変更なしの行は完全にスキップされる。
 
 ## IPC 型の管理
 
