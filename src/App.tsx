@@ -164,7 +164,6 @@ function App() {
           ghostsLoading={ghostsLoading}
           onRefresh={handleRefresh}
           onOpenSettings={handleOpenSettings}
-          onRandomLaunch={handleRandomLaunch}
         />
         <GhostContent
           ghosts={searchResultGhosts}
@@ -178,6 +177,7 @@ function App() {
           error={error ?? dbError ?? randomLaunchError}
           onSearchChange={setSearchQuery}
           onSortChange={handleSortChange}
+          onRandomLaunch={handleRandomLaunch}
           onOpenSettings={handleOpenSettings}
           onLoadMore={handleLoadMore}
         />

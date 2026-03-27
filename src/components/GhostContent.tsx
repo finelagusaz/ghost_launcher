@@ -1,7 +1,7 @@
-import { memo } from "react";
+import { memo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Dropdown, Option, Text, makeStyles, tokens } from "@fluentui/react-components";
-import { SettingsRegular } from "@fluentui/react-icons";
+import { Button, Dropdown, Option, Text, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
+import { ArrowShuffleRegular, SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
 import { SearchBox } from "./SearchBox";
 import type { GhostView, SortOrder } from "../types";
@@ -18,6 +18,7 @@ interface Props {
   error: string | null;
   onSearchChange: (value: string) => void;
   onSortChange: (value: SortOrder) => void;
+  onRandomLaunch: () => Promise<void>;
   onOpenSettings: () => void;
   onLoadMore: (targetOffset: number) => void;
 }
@@ -72,11 +73,22 @@ export const GhostContent = memo(function GhostContent({
   error,
   onSearchChange,
   onSortChange,
+  onRandomLaunch,
   onOpenSettings,
   onLoadMore,
 }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
+  const [randomLaunching, setRandomLaunching] = useState(false);
+
+  const handleRandomLaunch = useCallback(async () => {
+    setRandomLaunching(true);
+    try {
+      await onRandomLaunch();
+    } finally {
+      setRandomLaunching(false);
+    }
+  }, [onRandomLaunch]);
 
   if (!sspPath) {
     return (
@@ -109,6 +121,15 @@ export const GhostContent = memo(function GhostContent({
             ))}
           </Dropdown>
         </div>
+        <Tooltip content={t("header.randomLaunch")} relationship="label">
+          <Button
+            icon={<ArrowShuffleRegular />}
+            appearance="subtle"
+            onClick={handleRandomLaunch}
+            disabled={loading || randomLaunching}
+            data-testid="random-launch-button"
+          />
+        </Tooltip>
       </div>
       <div className={styles.content}>
         <GhostList
