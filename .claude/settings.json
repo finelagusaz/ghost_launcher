@@ -8,6 +8,11 @@
             "type": "command",
             "command": "bash scripts/hooks/check-ts-types.sh",
             "timeout": 30000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/check-rust-clippy.sh",
+            "timeout": 60000
           }
         ]
       }
