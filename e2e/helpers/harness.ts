@@ -65,7 +65,10 @@ async function spawnTauriDriver(): Promise<ChildProcessWithoutNullStreams> {
       `tauri-driver not found at ${tauriDriverPath}. Run: npm run e2e:setup`,
     );
   }
-  const nativeDriverPath = await downloadEdgeDriver();
+  // システム Edge とは独立に Tauri の WebView2 Runtime バージョンを
+  // 指定したい場合は EDGEDRIVER_VERSION で上書き（例: "147.0.3912.98"）
+  const pinnedVersion = process.env.EDGEDRIVER_VERSION?.trim();
+  const nativeDriverPath = await downloadEdgeDriver(pinnedVersion);
   const proc = spawn(tauriDriverPath, ["--native-driver", nativeDriverPath], {
     stdio: "pipe",
   });
