@@ -63,19 +63,23 @@ ghost_launcher/
 │   └── src/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
-│       │   └── ssp.rs          # ゴースト起動コマンド
+│       │   ├── ssp.rs          # ゴースト起動コマンド
+│       │   ├── db.rs           # DB リセット（マイグレーション失敗時の自動回復）
+│       │   └── locale.rs       # ユーザー言語ファイル読込
 │       └── lib.rs              # Tauri アプリビルダー
 ├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
 │   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
 ├── e2e/                        # E2E テスト → e2e/CLAUDE.md
 │   ├── helpers/
-│   │   └── harness.ts          # tauri-driver 起動・WebDriver セッション管理
+│   │   ├── harness.ts          # tauri-driver 起動・WebDriver セッション管理
+│   │   └── ui.ts               # 共通 UI ヘルパー（waitForAppReady など）
 │   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
 │   └── i18n.e2e.ts             # 言語切り替え・NFKC 正規化の E2E テスト
 ├── docs/
-│   └── ui-guidelines.md        # UI デザインガイドライン
-├── workspace/
-│   └── retrospective.md        # 過去の振り返り
+│   ├── ui-guidelines.md        # UI デザインガイドライン
+│   └── locale-customization.md # ユーザー言語カスタマイズ仕様
+├── Cargo.toml                  # workspace ルート（src-tauri + crates/ghost-meta）
+├── RETROSPECTIVE.md            # 過去の振り返り（サイクル毎に上書き）
 └── SPEC.md                     # 機能仕様書
 ```
 
@@ -190,6 +194,7 @@ GitHub Flow に準拠する。
 
 - `SPEC.md` — 機能仕様書。振る舞いを変更する場合は実装と同期させる
 - `docs/ui-guidelines.md` — UI デザインガイドライン
+- `docs/locale-customization.md` — ユーザー言語カスタマイズ仕様
 - `RETROSPECTIVE.md` — 過去の振り返り（デバッグ教訓・アーキテクチャ上の学び）
   - **更新タイミング**: サイクル終了後（実装・レビュー・追加修正まで完了したとき）
   - **更新方法**: 上書き（追記しない）。前回サイクルの内容を新サイクルの振り返りで置き換える
