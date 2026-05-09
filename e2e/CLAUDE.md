@@ -18,6 +18,8 @@ npm run e2e:setup
 npm run e2e
 ```
 
+**EdgeDriver と WebView2 Runtime のバージョン整合**: `edgedriver` パッケージは既定でシステム Edge から版を判定する。システム Edge と WebView2 Runtime の版が乖離している環境（Edge 148 だが WebView2 Runtime 147 など）では `SessionNotCreatedError` で全テストが失敗する。WebView2 Runtime の版は次のレジストリから取得できる: `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\ClientState\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` の `pv` 値。乖離時は `$env:EDGEDRIVER_VERSION = "147.0.3912.98"` のように WebView2 Runtime の版を環境変数で指定してから実行する。
+
 ## 記述パターン
 
 - セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）
