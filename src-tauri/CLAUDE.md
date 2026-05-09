@@ -30,6 +30,8 @@
 
 ## その他
 
+**rusqlite と sqlx-sqlite の libsqlite3-sys 共有制約**: `rusqlite` と `sqlx-sqlite`（`tauri-plugin-sql` 経由）は両方とも `links = "sqlite3"` を宣言するため、`libsqlite3-sys` を必ず同一バージョンで共有しなければならない（cargo の links 制約）。`tauri-plugin-sql` 2.4.0 系は `sqlx-sqlite 0.8.x`（libsqlite3-sys ^0.30）に固定されているため、`rusqlite` の上限は **0.32**（libsqlite3-sys 0.30）。`rusqlite` の major bump は `tauri-plugin-sql` が新 `sqlx`（libsqlite3-sys 0.37+）系に追従するまで待機する。
+
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`crates/ghost-meta/src/descript.rs`）。
 
 **ファイルシステム操作の OS 差異**: macOS と Windows の挙動差に注意。`entry.metadata()` は Windows FindNextFile キャッシュを参照し陳腐化する場合がある。`fs::metadata(path)` は常に最新値を返す。

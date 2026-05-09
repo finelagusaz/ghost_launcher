@@ -7,6 +7,7 @@
 - `e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当
 - E2E テストはリリースビルドが前提（`npm run tauri build` 後に実行）
 - **CI には含まれないため、UI 操作・言語表示・フォーム入力に関わる変更をした場合はローカルで手動実行が必須**
+- **既知の失敗テスト（依存更新と独立した既存問題）**: issue #69（SearchBox placeholder 反映）、#70（スクロール追加読込）。これらの失敗は環境/実装側の課題であり、依存更新後に再発しても deps 起因と即断しないこと
 
 ## 実行方法
 
@@ -18,7 +19,7 @@ npm run e2e:setup
 npm run e2e
 ```
 
-**EdgeDriver と WebView2 Runtime のバージョン整合**: `edgedriver` パッケージは既定でシステム Edge から版を判定する。システム Edge と WebView2 Runtime の版が乖離している環境（Edge 148 だが WebView2 Runtime 147 など）では `SessionNotCreatedError` で全テストが失敗する。WebView2 Runtime の版は次のレジストリから取得できる: `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\ClientState\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` の `pv` 値。乖離時は `$env:EDGEDRIVER_VERSION = "147.0.3912.98"` のように WebView2 Runtime の版を環境変数で指定してから実行する。
+**EdgeDriver と WebView2 Runtime のバージョン整合**: `edgedriver` パッケージは既定でシステム Edge から版を判定する。システム Edge と WebView2 Runtime の版が乖離している環境（Edge 148 だが WebView2 Runtime 147 など）では `SessionNotCreatedError` で全テストが失敗する。WebView2 Runtime の版は次のレジストリから取得できる: `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\ClientState\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` の `pv` 値。乖離時は `$env:EDGEDRIVER_VERSION = "147.0.3912.98"` のように WebView2 Runtime の版を環境変数で指定してから実行する。なお `edgedriver` の `download()` は cacheDir 内バイナリを版に関係なく返すため、harness は版指定時のみ `os.tmpdir()/edgedriver-{version}/` をバージョン別 cacheDir として渡す（`harness.ts` 参照）。
 
 ## 記述パターン
 
