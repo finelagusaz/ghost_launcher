@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/hooks/check-ts-types.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-ts-types.sh\"",
             "timeout": 30000
           },
           {
             "type": "command",
-            "command": "bash scripts/hooks/check-rust-clippy.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-rust-clippy.sh\"",
             "timeout": 60000
           }
         ]
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash scripts/hooks/warn-migration-edit.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-migration-edit.sh\""
           }
         ]
       }
