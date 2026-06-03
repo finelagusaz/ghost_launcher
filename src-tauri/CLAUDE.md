@@ -30,7 +30,7 @@
 
 ## その他
 
-**rusqlite と sqlx-sqlite の libsqlite3-sys 共有制約**: `rusqlite` と `sqlx-sqlite`（`tauri-plugin-sql` 経由）は両方とも `links = "sqlite3"` を宣言するため、`libsqlite3-sys` を必ず同一バージョンで共有しなければならない（cargo の links 制約）。`tauri-plugin-sql` 2.4.0 系は `sqlx-sqlite 0.8.x`（libsqlite3-sys ^0.30）に固定されているため、`rusqlite` の上限は **0.32**（libsqlite3-sys 0.30）。`rusqlite` の major bump は `tauri-plugin-sql` が新 `sqlx`（libsqlite3-sys 0.37+）系に追従するまで待機する。
+**rusqlite と sqlx-sqlite の libsqlite3-sys 共有制約**: `rusqlite` と `sqlx-sqlite`（`tauri-plugin-sql` 経由）は両方とも `links = "sqlite3"` を宣言するため、`libsqlite3-sys` を必ず同一バージョンで共有しなければならない（cargo の links 制約）。`tauri-plugin-sql` 2.4.0 系は `sqlx-sqlite 0.8.x`（libsqlite3-sys ^0.30）に固定されているため、`rusqlite` の上限は **0.32**（libsqlite3-sys 0.30）。`rusqlite` の major bump は `tauri-plugin-sql` が新 `sqlx`（libsqlite3-sys 0.37+）系に追従するまで待機する。**解錠条件**: `sqlx-sqlite 0.9` は libsqlite3-sys 要求を `>=0.30.1, <0.38.0` へ拡大したため、`tauri-plugin-sql` が `sqlx 0.9` 対応版を公開した時点で `rusqlite` は **0.39**（libsqlite3-sys 0.37）まで引き上げ可能になる（0.40 は libsqlite3-sys 0.38 要求で依然不可）。2026-06 時点で sqlx 0.9 対応の `tauri-plugin-sql` は未公開。
 
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`crates/ghost-meta/src/descript.rs`）。
 
