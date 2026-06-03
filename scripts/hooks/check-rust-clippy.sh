@@ -1,13 +1,15 @@
 #!/bin/bash
-# PostToolUse hook: .rs ファイル編集後に cargo clippy を実行
-# Edit/Write の file_path が .rs で終わる場合のみ clippy を走らせる
+# PostToolUse hook (Edit|Write): .rs 編集後に cargo clippy を実行する。
+# tool 入力は stdin の JSON で渡る（.tool_input.file_path）。$TOOL_INPUT は存在しない。
 
-case "$TOOL_INPUT" in
-  *'.rs"'*)
-    output=$(cargo clippy --manifest-path src-tauri/Cargo.toml --quiet 2>&1)
-    exit_code=$?
-    if [ $exit_code -ne 0 ]; then
-      echo "$output" | tail -15
-    fi
-    ;;
+file_path=$(jq -r '.tool_input.file_path // empty' 2>/dev/null)
+case "$file_path" in
+  *.rs) ;;
+  *) exit 0 ;;
 esac
+
+# --manifest-path が相対指定のため、プロジェクトルートへ移動してから走らせる。
+cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
+if ! output=$(cargo clippy --manifest-path src-tauri/Cargo.toml --quiet 2>&1); then
+  echo "$output" | tail -15
+fi
