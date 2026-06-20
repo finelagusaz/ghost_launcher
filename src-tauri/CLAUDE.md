@@ -22,6 +22,8 @@
 
 **store_ghosts の差分 UPSERT**: `store_ghosts` は DELETE-all + INSERT-all ではなく、既存行の `(ghost_identity_key, row_fingerprint)` をカバリングインデックスから読み、スキャン結果と比較して INSERT/UPDATE/DELETE を最小限に実行する。`ghost_identity_key` は NFKC(source) + `\x1f` + NFKC(directory_name) で構成される論理主キー、`row_fingerprint` は 9 メタデータフィールドの SHA-256。変更なしの行は完全にスキップされる。
 
+**永続テーブルのマイグレーション**: `ghost_launches` や将来の `favorites` 等の永続テーブル（ユーザー蓄積データ）は、揮発キャッシュの `ghosts` と異なり**マイグレーションで `DELETE FROM` してはならない**。破壊的スキーマ変更はデータ移行 SQL を必須とし、段階移行（新列追加 → バックフィル → 参照切替）で行う。ゴーストへの外部参照は `ghosts.id`（再投入で値が変わる）ではなく `ghost_identity_key` を使う。データモデルの根拠とキー構成は `SPEC.md` §4.5 を参照。
+
 ## IPC 型の管理
 
 **ts-rs による自動生成**: IPC 境界を越える Rust struct には `#[cfg_attr(test, derive(TS))]` + `#[cfg_attr(test, ts(export))]` を付与する。`cargo test` 実行時に `src/types/generated/` へ TypeScript 型定義が自動生成される。手書きで TS 型を定義しない。
