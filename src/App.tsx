@@ -150,6 +150,11 @@ function App() {
     setOffset(0);
   }, [setOffset]);
 
+  // キャッシュ表示中（ゴーストあり）はスキャンエラーを抑制し、表示を維持する。
+  // キャッシュが無い場合のみエラーを表示する（SPEC 9 エラーハンドリング）
+  const hasCachedDisplay = searchResultGhosts.length > 0 || searchTotal > 0;
+  const scanError = hasCachedDisplay ? null : error;
+
   if (settingsLoading) {
     return (
       <div className={styles.loading}>
@@ -176,7 +181,7 @@ function App() {
           sortOrder={sortOrder}
           loading={ghostsLoading}
           searchLoading={searchLoading}
-          error={error ?? dbError ?? randomLaunchError}
+          error={scanError ?? dbError ?? randomLaunchError}
           onSearchChange={setSearchQuery}
           onSortChange={handleSortChange}
           onRandomLaunch={handleRandomLaunch}

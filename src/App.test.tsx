@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 
 vi.mock("react-i18next", () => ({
@@ -22,25 +22,36 @@ vi.mock("./hooks/useSettings", () => ({
   }),
 }));
 
-// 初回スキャンが進行中（ghostsLoading=true のまま）= キャッシュ未活用バグの再現条件
-vi.mock("./hooks/useGhosts", () => ({
-  useGhosts: () => ({ loading: true, error: null, refresh: vi.fn() }),
-}));
-
-// useSearch の呼び出し引数（特に requestKey）を捕捉する
-const { useSearchSpy } = vi.hoisted(() => ({
-  useSearchSpy: vi.fn(() => ({
-    ghosts: [],
+// useGhosts / useSearch の戻り値はテストごとに差し替える。GhostContent が受け取る
+// props を捕捉し、App の合成ロジック（requestKey ゲート・エラー抑制）を検証する
+const mocks = vi.hoisted(() => ({
+  ghostsState: { loading: true, error: null as string | null, refresh: () => {} },
+  searchState: {
+    ghosts: [] as unknown[],
     total: 0,
     loadedStart: 0,
     loading: false,
-    dbError: null,
-  })),
-}));
-vi.mock("./hooks/useSearch", () => ({
-  useSearch: useSearchSpy,
+    dbError: null as string | null,
+  },
+  useSearchSpy: vi.fn(),
+  ghostContentSpy: vi.fn(),
 }));
 
+vi.mock("./hooks/useGhosts", () => ({
+  useGhosts: () => mocks.ghostsState,
+}));
+vi.mock("./hooks/useSearch", () => ({
+  useSearch: (...args: unknown[]) => {
+    mocks.useSearchSpy(...args);
+    return mocks.searchState;
+  },
+}));
+vi.mock("./components/GhostContent", () => ({
+  GhostContent: (props: Record<string, unknown>) => {
+    mocks.ghostContentSpy(props);
+    return null;
+  },
+}));
 // plugin-sql のロードを避けるため DB アクセス関数はモック化する
 vi.mock("./lib/ghostDatabase", () => ({
   getRandomGhost: vi.fn(),
@@ -49,13 +60,60 @@ vi.mock("./lib/ghostDatabase", () => ({
 
 import App from "./App";
 
+function makeGhost(name: string) {
+  return {
+    name,
+    directory_name: name.toLowerCase(),
+    path: `/${name}`,
+    source: "ssp",
+    name_lower: name.toLowerCase(),
+    directory_name_lower: name.toLowerCase(),
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.ghostsState = { loading: true, error: null, refresh: () => {} };
+  mocks.searchState = { ghosts: [], total: 0, loadedStart: 0, loading: false, dbError: null };
+});
+
 describe("App - 起動時のキャッシュ即時表示", () => {
   it("初回スキャン中（ghostsLoading=true）でも sspPath が確定していればキャッシュを即時クエリする", () => {
+    mocks.ghostsState = { loading: true, error: null, refresh: () => {} };
+
     render(<App />);
 
     // useSearch の第1引数 requestKey が非 null = スキャン完了を待たずに DB を引く
-    const lastCall = useSearchSpy.mock.calls.at(-1);
+    const lastCall = mocks.useSearchSpy.mock.calls.at(-1);
     expect(lastCall?.[0]).not.toBeNull();
     expect(typeof lastCall?.[0]).toBe("string");
+  });
+});
+
+describe("App - スキャンエラー時のキャッシュ保持（SPEC 9 エラーハンドリング）", () => {
+  it("キャッシュ表示中（ゴーストあり）はスキャンエラーを抑制する", () => {
+    mocks.ghostsState = { loading: false, error: "scan failed", refresh: () => {} };
+    mocks.searchState = {
+      ghosts: [makeGhost("Reimu"), makeGhost("Marisa")],
+      total: 2,
+      loadedStart: 0,
+      loading: false,
+      dbError: null,
+    };
+
+    render(<App />);
+
+    const props = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
+    expect(props?.error).toBeNull();
+  });
+
+  it("キャッシュなし（ゴースト空）ではスキャンエラーを表示する", () => {
+    mocks.ghostsState = { loading: false, error: "scan failed", refresh: () => {} };
+    mocks.searchState = { ghosts: [], total: 0, loadedStart: 0, loading: false, dbError: null };
+
+    render(<App />);
+
+    const props = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
+    expect(props?.error).toBe("scan failed");
   });
 });
