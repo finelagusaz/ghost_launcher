@@ -26,6 +26,12 @@ async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
   }
 }
 
+/** 現在 DOM に描画されているゴースト名の一覧を取得する（仮想化の窓内のカードのみ） */
+async function visibleGhostNames(driver: WebDriver): Promise<string[]> {
+  const els = await driver.findElements(By.css("[data-testid='ghost-name']"));
+  return Promise.all(els.map((el) => el.getText()));
+}
+
 // --- テストケース ---
 
 test("起動テスト: アプリが起動しウィンドウが表示される", async ({ harness }) => {
@@ -117,7 +123,7 @@ test("検索: 検索ボックスに入力すると一覧がフィルタされる
   }, 10_000);
 });
 
-test("スクロール＆ページネーション: 下にスクロールすると追加読込がトリガーされる", async ({ harness }) => {
+test("スクロール＆ページネーション: 下にスクロールすると後続のゴーストが表示される", async ({ harness }) => {
   const { driver } = harness;
   await waitForAppReady(driver);
 
@@ -127,29 +133,34 @@ test("スクロール＆ページネーション: 下にスクロールすると
     test.skip();
     return;
   }
-  const countBefore = initialButtons.length;
 
-  // total 表示を取得して追加読込が可能か確認
+  // 仮想化は total >= 80 で有効化される（GhostList.tsx の shouldVirtualize）。
+  // 仮想化されない件数では全件が同時に描画され、スクロールしても描画内容が
+  // 変わらないためスキップする。
   const countText = await driver.findElement(By.css("[aria-live='polite']")).getText();
   const totalMatch = countText.match(/(\d+)/);
-  if (!totalMatch || parseInt(totalMatch[1], 10) <= countBefore) {
-    // 全件読み込み済みならスキップ
+  if (!totalMatch || parseInt(totalMatch[1], 10) < 80) {
     test.skip();
     return;
   }
 
-  // ビューポートの末尾までスクロール
+  // 仮想化リストは DOM のカード枚数を一定の窓に保つため「枚数の増加」では検証できない。
+  // 代わりに「窓が移動し、スクロール前に無かったゴーストが描画される」ことを検証する。
+  const namesBefore = new Set(await visibleGhostNames(driver));
+
+  // ビューポートの末尾までスクロール（scrollTop 代入は scroll イベントを発火する）
   await driver.executeScript(`
     const viewport = document.querySelector("[data-testid='ghost-list-viewport']");
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   `);
 
-  // 追加読み込みによってカード数が増えるのを待機
+  // 末尾行は当初 SkeletonCard（ghost-name を持たない）で、追加読込の完了後に
+  // GhostCard へ差し替わる。スクロール前に無かったゴースト名の出現を待機する。
   await driver.wait(async () => {
-    const elements = await driver.findElements(By.css("[data-testid='launch-button']"));
-    return elements.length > countBefore;
+    const namesNow = await visibleGhostNames(driver);
+    return namesNow.some((name) => name.length > 0 && !namesBefore.has(name));
   }, 15_000);
 
-  const cardsAfter = await driver.findElements(By.css("[data-testid='launch-button']"));
-  expect(cardsAfter.length).toBeGreaterThan(countBefore);
+  const namesAfter = await visibleGhostNames(driver);
+  expect(namesAfter.some((name) => name.length > 0 && !namesBefore.has(name))).toBe(true);
 });
