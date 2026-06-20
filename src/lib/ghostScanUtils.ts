@@ -7,9 +7,13 @@ export function normalizePathKey(path: string): string {
 }
 
 export function buildAdditionalFolders(folders: string[]): string[] {
+  // ソート順は Rust 側（scan.rs の String::cmp）と一致させる必要がある。
+  // request_key の書き込み（Rust）と読み出し（JS）でキーが食い違うと
+  // 同じフォルダ構成でもクエリが 0 件になる。localeCompare はロケール依存で
+  // '_'(0x5F) を '2'(0x32) より前に並べてしまうため、コードポイント順で比較する。
   const sorted = folders
     .map((folder) => ({ raw: folder, key: normalizePathKey(folder) }))
-    .sort((a, b) => a.key.localeCompare(b.key));
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
   const unique: string[] = [];
   let lastKey: string | null = null;

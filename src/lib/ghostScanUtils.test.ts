@@ -22,6 +22,19 @@ describe("buildAdditionalFolders", () => {
     ]);
     expect(result).toHaveLength(2);
   });
+
+  // Rust 側（scan.rs の String::cmp）とソート順を一致させる不変条件。
+  // localeCompare では '_'(0x5F) が '2'(0x32) より前に来てしまい、
+  // ghost_dev が ghost2 より前にソートされ request_key が Rust と食い違う。
+  // コードポイント順では '2' < '_' なので ghost2 が先でなければならない。
+  it("コードポイント順でソートする（ghost2 が ghost_dev より前）", () => {
+    const result = buildAdditionalFolders([
+      "C:\\g\\ghost_dev",
+      "C:\\g\\ghost2",
+      "C:\\g\\ghost",
+    ]);
+    expect(result).toEqual(["C:\\g\\ghost", "C:\\g\\ghost2", "C:\\g\\ghost_dev"]);
+  });
 });
 
 describe("buildRequestKey", () => {
