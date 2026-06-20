@@ -97,7 +97,9 @@ function App() {
     ghostsLoading,
   });
 
-  const searchRequestKey = (refreshTrigger > 0 && sspPath)
+  // キャッシュ即時表示（stale-while-revalidate）: sspPath 確定時点で DB を引き、
+  // 初回スキャン完了（refreshTrigger の増加）で再クエリして最新へ差し替える
+  const searchRequestKey = sspPath
     ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
     : null;
 
