@@ -46,5 +46,11 @@ jobs:
       - name: Test Rust crates
         run: cargo test --workspace
 
+      - name: Verify generated types are committed
+        shell: bash
+        run: |
+          git diff --exit-code src/types/generated/
+          test -z "$(git ls-files --others --exclude-standard src/types/generated/)"
+
       - name: Test ghost-meta with optional features
         run: cargo test -p ghost-meta --features thumbnail,serde
