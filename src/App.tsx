@@ -19,7 +19,7 @@ import { useAppShellState } from "./hooks/useAppShellState";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { buildAdditionalFolders, buildRequestKey } from "./lib/ghostScanUtils";
+import { requestKeyFromSettings } from "./lib/ghostScanUtils";
 import { getRandomGhost, recordLaunch } from "./lib/ghostDatabase";
 import { invoke } from "@tauri-apps/api/core";
 import type { SortOrder } from "./types";
@@ -100,7 +100,7 @@ function App() {
   // キャッシュ即時表示（stale-while-revalidate）: sspPath 確定時点で DB を引き、
   // 初回スキャン完了（refreshTrigger の増加）で再クエリして最新へ差し替える
   const searchRequestKey = sspPath
-    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+    ? requestKeyFromSettings(sspPath, ghostFolders)
     : null;
 
   const { ghosts: searchResultGhosts, total: searchTotal, loadedStart, loading: searchLoading, dbError } = useSearch(

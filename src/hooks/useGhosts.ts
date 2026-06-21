@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { refreshGhostCatalog } from "../lib/ghostCatalogService";
-import { buildAdditionalFolders, buildRequestKey, buildScanErrorMessage } from "../lib/ghostScanUtils";
+import { requestKeyFromSettings, buildScanErrorMessage } from "../lib/ghostScanUtils";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -23,8 +23,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       return;
     }
 
-    const additionalFolders = buildAdditionalFolders(ghostFoldersRef.current);
-    const requestKey = buildRequestKey(sspPath, additionalFolders);
+    const requestKey = requestKeyFromSettings(sspPath, ghostFoldersRef.current);
     const forceFullScan = options.forceFullScan === true;
     const inFlightKey = `${requestKey}::${forceFullScan ? "force" : "auto"}`;
 
