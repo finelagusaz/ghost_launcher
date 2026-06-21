@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(TS))]
-#[cfg_attr(test, ts(export))]
 pub struct Ghost {
     /// 差分更新判定用の軽量フィンガープリント
     pub diff_fingerprint: String,

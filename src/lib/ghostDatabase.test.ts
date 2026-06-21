@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import cases from "../test/fixtures/normalize-key-cases.json";
 
 const mockExecute = vi.fn().mockResolvedValue({ rowsAffected: 0 });
 const mockSelect = vi.fn().mockResolvedValue([]);
@@ -372,5 +373,12 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     );
     expect(deleteCall).toBeDefined();
     expect(deleteCall![1]).toEqual(["rk-other"]);
+  });
+});
+
+describe("normalizeForKey パリティ（共有 fixture）", () => {
+  it.each(cases)("normalizeForKey($input) === $expected", async ({ input, expected }) => {
+    const { normalizeForKey } = await import("./ghostDatabase");
+    expect(normalizeForKey(input)).toBe(expected);
   });
 });

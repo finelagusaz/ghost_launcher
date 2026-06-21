@@ -421,11 +421,19 @@ mod tests {
     }
 
     #[test]
-    fn normalize_for_key_が_nfkc_正規化と小文字化を行う() {
-        assert_eq!(normalize_for_key("Ａｌｉｃｅ"), "alice");
-        assert_eq!(normalize_for_key("HELLO"), "hello");
-        assert_eq!(normalize_for_key("テスト"), "テスト");
-        assert_eq!(normalize_for_key(""), "");
+    fn normalize_for_key_が共有_fixture_の期待値と一致する() {
+        // JS の normalizeForKey と同一の fixture を参照し、言語間パリティを縛る。
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/normalize-key-cases.json"
+        );
+        let raw = std::fs::read_to_string(path).expect("fixture を読めること");
+        let cases: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
+        for case in cases {
+            let input = case["input"].as_str().unwrap();
+            let expected = case["expected"].as_str().unwrap();
+            assert_eq!(normalize_for_key(input), expected, "input={input:?}");
+        }
     }
 
     #[test]
