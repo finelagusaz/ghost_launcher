@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { refreshGhostCatalog } from "./ghostCatalogService";
 import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts } from "./ghostDatabase";
 import { invoke } from "@tauri-apps/api/core";
+import { requestKeyFromSettings } from "./ghostScanUtils";
 
 vi.mock("./ghostDatabase", () => ({
   hasGhosts: vi.fn(),
@@ -83,6 +84,7 @@ describe("refreshGhostCatalog", () => {
     expect(invoke).toHaveBeenCalledWith("scan_and_store", {
       sspPath: "C:/SSP",
       additionalFolders: [],
+      requestKey: "c:/ssp::",
       cachedFingerprint: null,
     });
   });
@@ -112,5 +114,19 @@ describe("refreshGhostCatalog", () => {
     });
 
     expect(cleanupOldGhostCaches).not.toHaveBeenCalled();
+  });
+
+  it("requestKey に requestKeyFromSettings の出力を渡す", async () => {
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 0, fingerprint: "fp", request_key: "x" });
+
+    await refreshGhostCatalog({
+      sspPath: "C:/SSP",
+      ghostFolders: ["C:/Ghosts"],
+      forceFullScan: true,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", expect.objectContaining({
+      requestKey: requestKeyFromSettings("C:/SSP", ["C:/Ghosts"]),
+    }));
   });
 });
