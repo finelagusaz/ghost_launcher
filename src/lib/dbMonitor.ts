@@ -7,12 +7,8 @@ const RING_BUFFER_SIZE = 100;
 
 let latencyBuffer: number[] = [];
 
-export interface ScanStoreResult {
-  cache_hit: boolean;
-  total: number;
-  fingerprint: string;
-  request_key: string;
-}
+import type { ScanStoreResult } from "../types/generated/ScanStoreResult";
+export type { ScanStoreResult };
 
 function emitLog(obj: Record<string, unknown>): void {
   console.log(`[dbMonitor] ${JSON.stringify(obj)}`);
