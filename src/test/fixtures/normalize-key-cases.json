@@ -1,0 +1,11 @@
+[
+  { "input": "ABC", "expected": "abc" },
+  { "input": "Ａｌｉｃｅ", "expected": "alice" },
+  { "input": "HELLO", "expected": "hello" },
+  { "input": "ｱ", "expected": "ア" },
+  { "input": "ﬁ", "expected": "fi" },
+  { "input": "が", "expected": "が" },
+  { "input": "が", "expected": "が" },
+  { "input": "テスト", "expected": "テスト" },
+  { "input": "", "expected": "" }
+]

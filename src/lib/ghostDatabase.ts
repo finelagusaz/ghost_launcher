@@ -79,7 +79,7 @@ export function warmUpDb(): void {
   void getDb().catch((e) => console.warn("[ghostDatabase] warmup に失敗しました", e));
 }
 
-function normalizeForKey(value: string): string {
+export function normalizeForKey(value: string): string {
   return value.normalize("NFKC").toLowerCase();
 }
 
