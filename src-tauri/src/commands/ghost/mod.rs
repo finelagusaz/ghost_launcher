@@ -7,6 +7,15 @@ mod types;
 
 pub use types::ScanStoreResult;
 
+/// request_key が空なら Err を返す。JS 単一権威の信頼境界での最小防御。
+/// 空キーで書き込むと全ゴーストが request_key='' パーティションに同居する事故を防ぐ。
+fn ensure_request_key(request_key: &str) -> Result<(), String> {
+    if request_key.is_empty() {
+        return Err("request_key が空です".to_string());
+    }
+    Ok(())
+}
+
 /// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
 /// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
 ///
@@ -18,17 +27,12 @@ pub fn scan_and_store(
     app: tauri::AppHandle,
     ssp_path: String,
     additional_folders: Vec<String>,
+    request_key: String,
     cached_fingerprint: Option<String>,
 ) -> Result<ScanStoreResult, String> {
-    use path_utils::normalize_path;
     use tauri::Manager;
 
-    // request_key の構築（JS 側の buildRequestKey と同一ロジック）
-    let normalized_ssp = normalize_path(std::path::Path::new(&ssp_path));
-    let sorted_folders = scan::unique_sorted_additional_folders(&additional_folders);
-    let normalized_folders: Vec<String> =
-        sorted_folders.iter().map(|(_, _, n)| n.clone()).collect();
-    let request_key = format!("{}::{}", normalized_ssp, normalized_folders.join("|"));
+    ensure_request_key(&request_key)?;
 
     // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）
     let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
@@ -117,6 +121,12 @@ mod tests {
             .map_err(|error| format!("failed to create ghost dir {}: {}", base.display(), error))?;
         fs::write(base.join("descript.txt"), descript)
             .map_err(|error| format!("failed to write descript: {}", error))
+    }
+
+    #[test]
+    fn ensure_request_key_は空文字を拒否し非空を許可する() {
+        assert!(super::ensure_request_key("").is_err());
+        assert!(super::ensure_request_key("c:/ssp::").is_ok());
     }
 
     #[test]
