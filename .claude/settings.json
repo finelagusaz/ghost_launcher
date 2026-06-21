@@ -26,6 +26,19 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-migration-edit.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-generated-edit.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-protected-file-edit.sh\""
+          }
+        ]
       }
     ]
   }
