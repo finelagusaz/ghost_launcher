@@ -1,4 +1,7 @@
 import type Database from "@tauri-apps/plugin-sql";
+import type { ScanStoreResult } from "../types/generated/ScanStoreResult";
+
+export type { ScanStoreResult };
 
 const ALERT_GHOST_COUNT = 100_000;
 const ALERT_P95_MS = 300;
@@ -6,9 +9,6 @@ const ALERT_DB_SIZE_BYTES = 100 * 1024 * 1024;
 const RING_BUFFER_SIZE = 100;
 
 let latencyBuffer: number[] = [];
-
-import type { ScanStoreResult } from "../types/generated/ScanStoreResult";
-export type { ScanStoreResult };
 
 function emitLog(obj: Record<string, unknown>): void {
   console.log(`[dbMonitor] ${JSON.stringify(obj)}`);
