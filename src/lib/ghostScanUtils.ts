@@ -7,10 +7,9 @@ export function normalizePathKey(path: string): string {
 }
 
 export function buildAdditionalFolders(folders: string[]): string[] {
-  // ソート順は Rust 側（scan.rs の String::cmp）と一致させる必要がある。
-  // request_key の書き込み（Rust）と読み出し（JS）でキーが食い違うと
-  // 同じフォルダ構成でもクエリが 0 件になる。localeCompare はロケール依存で
-  // '_'(0x5F) を '2'(0x32) より前に並べてしまうため、コードポイント順で比較する。
+  // ソート順は JS 内部で決定的であればよい（Lv1 で request_key は JS 単一権威）。
+  // localeCompare はロケール依存で '_'(0x5F) を '2'(0x32) より前に並べ、環境差を
+  // 生むため使わない。コードポイント順（UTF-16 コードユニット順）で比較する。
   const sorted = folders
     .map((folder) => ({ raw: folder, key: normalizePathKey(folder) }))
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -33,6 +32,12 @@ export function buildRequestKey(sspPath: string, additionalFolders: string[]): s
   const normalizedSspPath = normalizePathKey(sspPath);
   const normalizedFolders = additionalFolders.map((folder) => normalizePathKey(folder));
   return `${normalizedSspPath}::${normalizedFolders.join("|")}`;
+}
+
+/// 設定値（sspPath + 生のフォルダ配列）から request_key を組み立てる単一の入口。
+/// buildAdditionalFolders を必ず経由させ、呼び出し側での付け忘れを防ぐ。
+export function requestKeyFromSettings(sspPath: string, ghostFolders: string[]): string {
+  return buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders));
 }
 
 export function formatErrorDetail(error: unknown): string {
