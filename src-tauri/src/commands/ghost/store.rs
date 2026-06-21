@@ -12,7 +12,7 @@ fn normalize_for_key(s: &str) -> String {
     s.nfkc().collect::<String>().to_lowercase()
 }
 
-/// ghost_identity_key を構築する（JS 側の buildGhostIdentityKey と同一ロジック）
+/// ghost_identity_key を構築する（Rust のみで計算し DB 列に書く。JS は列値を読むだけで再計算しない）
 fn build_ghost_identity_key(ghost: &Ghost) -> String {
     format!(
         "{}{}{}",

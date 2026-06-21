@@ -36,6 +36,7 @@ export async function refreshGhostCatalog({
   const result = await invoke<ScanStoreResult>("scan_and_store", {
     sspPath,
     additionalFolders,
+    requestKey,
     cachedFingerprint,
   });
   const scanDurationMs = Math.round(performance.now() - scanStart);
@@ -50,7 +51,7 @@ export async function refreshGhostCatalog({
     .catch(() => {});
 
   // 寿命管理は JS 側で fire-and-forget（失敗許容）
-  void cleanupOldGhostCaches(result.request_key).catch((error) => {
+  void cleanupOldGhostCaches(requestKey).catch((error) => {
     console.warn("[ghostCatalogService] キャッシュ寿命管理のクリーンアップに失敗しました", error);
   });
 
