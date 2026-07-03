@@ -14,8 +14,12 @@
 
 **外部 UI ライブラリの DOM 出力**: 外部 UI ライブラリの DOM 出力を仮定してアサーションを書かない。先に小さなデバッグテスト（`console.log(element.outerHTML)`）で実際の出力を確認してから assertion を書く。
 
+**テストファイルは型検査されない**: tsconfig は `*.test.ts` を exclude し vitest も型検査しないため、テスト内の型エラーは build/CI で検出されない。コンパイル時の整合検査（`GHOST_VIEW_COLUMNS` の網羅チェック等）は必ず本番ソース側に置く。
+
 ## アーキテクチャメモ
 
 **非同期 singleton の初期化**: 複数のセットアップステップを持つ singleton は、初期化 Promise をキャッシュして並行呼び出しを共有する。エラー時のみ Promise をリセットして再試行可能にする（例: `getDb()` の `dbInitPromise` パターン）。
 
 **循環依存の回避（src/lib/）**: モジュール A が B をインポートし、B も A のエクスポートを必要とする場合、B は A の値（例: `Database` インスタンス）を関数パラメータで受け取り、A の直接インポートを避ける。例: `dbMonitor.ts` の `reportDbSize(db, trigger)` は `getDb()` を内部で呼ばず、呼び出し元から `db` を受け取る。
+
+**モジュールスコープ可変状態と React**: モジュールスコープの可変状態（例: `ghostDatabase.ts` の `randomSortSeed`）は React の effect 依存・リセット判定に映らない。クエリ挙動を変える状態変更は epoch として `useState` 化し、`useSearch` の resetKey / deps に配線する（`sortEpoch` パターン）。怠ると旧状態のバッファと新状態のページがマージ縫合される。
