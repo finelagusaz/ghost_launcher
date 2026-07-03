@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Ghost {
     /// 差分更新判定用の軽量フィンガープリント
     pub diff_fingerprint: String,
@@ -38,50 +38,4 @@ pub struct ScanStoreResult {
     pub total: usize,
     pub fingerprint: String,
     pub request_key: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// IPC 境界の JSON フィールド名が TS 型定義と一致することを保証する。
-    /// フィールドの追加・リネーム時にこのテストが壊れるので、TS 側も同時に更新が必要。
-    #[test]
-    fn ghost_の_json_フィールド名が_ts_型と一致する() {
-        let ghost = Ghost {
-            diff_fingerprint: String::new(),
-            name: String::new(),
-            sakura_name: String::new(),
-            kero_name: String::new(),
-            craftman: String::new(),
-            craftmanw: String::new(),
-            directory_name: String::new(),
-            path: String::new(),
-            source: String::new(),
-            thumbnail_path: String::new(),
-            thumbnail_use_self_alpha: false,
-            thumbnail_kind: String::new(),
-        };
-        let json: serde_json::Value = serde_json::to_value(&ghost).unwrap();
-        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(|k| k.as_str()).collect();
-        keys.sort();
-        assert_eq!(
-            keys,
-            vec![
-                "craftman",
-                "craftmanw",
-                "diff_fingerprint",
-                "directory_name",
-                "kero_name",
-                "name",
-                "path",
-                "sakura_name",
-                "source",
-                "thumbnail_kind",
-                "thumbnail_path",
-                "thumbnail_use_self_alpha",
-            ]
-        );
-    }
-
 }
