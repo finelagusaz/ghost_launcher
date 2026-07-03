@@ -63,9 +63,10 @@ ghost_launcher/
 │   └── src/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
-│       │   ├── ssp.rs          # ゴースト起動コマンド
+│       │   ├── ssp.rs          # ゴースト起動・SSP パス検証コマンド
 │       │   ├── db.rs           # DB リセット（マイグレーション失敗時の自動回復）
 │       │   └── locale.rs       # ユーザー言語ファイル読込
+│       ├── db_path.rs          # ghosts.db パス解決の単一権威
 │       └── lib.rs              # Tauri アプリビルダー
 ├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
 │   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
@@ -91,7 +92,7 @@ ghost_launcher/
 
 - `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
 - `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 差分 UPSERT）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
-- `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動
+- `commands/ssp.rs` — `launch_ghost`（`ssp.exe /g {ghost}` 起動）・`validate_ssp_path` コマンド
 - `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
 
 ### フロントエンド（`src/`）
@@ -126,6 +127,7 @@ ghost_launcher/
    - 変更しないと判断したファイルについても、その根拠を確認する
    - `.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
 3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く（Red: テストが失敗することを確認する）。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
+   - 削除リファクタリングは Red が書けないため、「削除対象の本番使用ゼロ」を grep で前提検証し、期待外のヒットが出たら中止する
    - テストの種類と置き場: フック → `renderHook`（`src/hooks/*.test.ts`）、ライブラリ → 純粋関数（`src/lib/*.test.ts`）、コンポーネント → `render` + jsdom（`src/components/*.test.tsx`）
 4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く（Green: テストが通ることを確認する）
 5. **検証する** — コミット前チェックリスト（後述）の全項目が通ることを確認する
