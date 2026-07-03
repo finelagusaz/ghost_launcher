@@ -25,6 +25,9 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
 | F-10 | ウィンドウ状態保存         | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化                    |
+| F-11 | ソート順切替               | 名前順・最近起動順・起動回数順・ランダム順の切替。起動履歴（ghost_launches）を基盤とする |
+| F-12 | ランダム起動               | 一覧から無作為に 1 体選んで起動するボタン                                           |
+| F-13 | 起動履歴記録               | ゴースト起動時に ghost_identity_key と起動日時を永続記録                            |
 
 ---
 
@@ -61,62 +64,35 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
    (ghost/ ディレクトリ)        (ゴースト一覧 + fingerprint)
 ```
 
-### 3.2 バックエンド（Rust）モジュール構成
+### 3.2 バックエンド（Rust）構成
 
 **`src-tauri/src/`（Tauri コマンド層）**
 
-| ファイル                        | 責務                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| `lib.rs`                        | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション              |
-| `main.rs`                       | エントリポイント（`ghost_launcher_lib::run()` 呼び出し）                             |
-| `commands/ghost/mod.rs`         | `scan_and_store` Tauri コマンド公開                                                  |
-| `commands/ghost/scan.rs`        | `ghost-meta` クレートを呼び出してゴースト走査し、`Ghost` 型へ変換                    |
-| `commands/ghost/fingerprint.rs` | フィンガープリントトークン・ハッシュ生成ヘルパー                                     |
-| `commands/ghost/path_utils.rs`  | パス正規化（`\` → `/`、小文字化）                                                    |
-| `commands/ghost/types.rs`       | `Ghost`・`ScanStoreResult` 型定義                                                    |
-| `commands/ssp.rs`               | `launch_ghost` コマンド（`ssp.exe /g {ghost}` を起動）                               |
-| `commands/db.rs`                | `reset_ghost_db` コマンド（ghosts.db + WAL/SHM を削除してマイグレーション競合を解消）|
-| `commands/locale.rs`            | `read_user_locale` コマンド（実行ファイル横の `locales/{lang}.json` を読み込み）      |
+| モジュール          | 責務                                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション定義・起動時 DB 検査 |
+| `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
+| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・IPC 型定義（types） |
+| `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
+| `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
+| `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 
-**`crates/ghost-meta/`（ワークスペースクレート — ゴーストメタデータ解析）**
+**`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
 
-| ファイル         | 責務                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `descript.rs`    | `descript.txt` パーサー（UTF-8 BOM / charset フィールド / Shift_JIS フォールバック）     |
-| `ghost.rs`       | `GhostMeta` 構造体定義・`read_ghost`（単体読込）・`scan_ghosts`（ディレクトリ一括走査） |
-| `thumbnail.rs`   | サムネイル解決（surface0*.apng → surface0*.png → thumbnail.png フォールバック）          |
+descript.txt のパース（文字コード判定含む）・単体ゴースト読込・サムネイル解決を提供する。
+ファイル構成と公開 API はクレートのソースを権威とする。
 
-### 3.3 フロントエンド（React/TypeScript）モジュール構成
+### 3.3 フロントエンド（React/TypeScript）構成
 
-| ファイル                   | 責務                                                                     |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `main.tsx`                 | ルートレンダリング。FluentProvider でテーマ設定                          |
-| `App.tsx`                  | アプリ全体のレイアウト・状態管理の統合                                   |
-| `types/index.ts`           | TS 専用型定義（`GhostView`, `SortOrder`, `ThumbnailKind`）               |
-| **lib/**                   |                                                                          |
-| `settingsStore.ts`         | `LazyStore("settings.json")` のシングルトン                              |
-| `ghostScanClient.ts`       | Tauri `invoke` ラッパー（`scanGhostsWithMeta`）                          |
-| `ghostScanOrchestrator.ts` | 重複排除付きスキャン実行（`executeScan`）                                 |
-| `ghostScanUtils.ts`        | パス正規化・リクエストキー生成・エラーメッセージ構築                     |
-| `ghostDatabase.ts`         | SQLite への読み書き（`replaceGhostsByRequestKey`, `hasGhosts`, `searchGhosts`, `cleanupOldGhostCaches`） |
-| `ghostCatalogService.ts`   | キャッシュ判定・スキャン実行・SQLite 保存・fingerprint 更新・寿命管理のユースケース手順 |
-| `ghostLaunchUtils.ts`      | 起動エラーメッセージ構築・ソースフォルダラベル取得                       |
-| `i18n.ts`                  | i18next 初期化・ユーザーロケールファイル読み込み                         |
-| **hooks/**                 |                                                                          |
-| `useSettings.ts`           | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化              |
-| `useGhosts.ts`             | React 状態（loading / error）管理と refresh トリガ。実処理は `ghostCatalogService.ts` に委譲 |
-| `useSearch.ts`             | SQLite 部分一致検索。バッファマージモデル（隣接/重複範囲をマージし旧データを保持） |
-| `useVirtualizedList.ts`    | 仮想スクロール計算。`totalCount` で固定スクロール空間を確保              |
-| `useElementHeight.ts`      | ResizeObserver による要素高さ追跡                                        |
-| `useSystemTheme.ts`        | OS テーマ（light/dark）検出・追従                                        |
-| **components/**            |                                                                          |
-| `AppHeader.tsx`            | タイトル・再読込ボタン・設定ボタン                                       |
-| `SettingsPanel.tsx`        | SSP フォルダ選択・追加フォルダ管理 UI                                    |
-| `GhostContent.tsx`         | ゴースト一覧エリア（検索ボックス + リスト）のコンテナ                    |
-| `GhostList.tsx`            | ゴーストリスト表示（仮想スクロール・スケルトン描画・debounce fetch）     |
-| `GhostCard.tsx`            | 個別ゴースト表示カード（名前・ディレクトリ名・ソースバッジ・起動ボタン） |
-| `SkeletonCard.tsx`         | 未読込領域のプレースホルダーカード（Fluent UI Skeleton）                  |
-| `SearchBox.tsx`            | 検索入力フィールド                                                       |
+| レイヤー      | 責務                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| `lib/`        | Tauri IPC ラッパー（スキャン・起動・検証）・SQLite 読み書き・キャッシュ判定と寿命管理・設定ストア・i18n 初期化・DB 監視ログ |
+| `hooks/`      | React 状態と lib の橋渡し（設定・スキャン・検索・仮想スクロール・テーマ・シェル状態）        |
+| `components/` | 表示のみ。IPC を直接呼ばず、lib / hooks 経由でデータを受け取る                              |
+| `types/`      | TS 専用型（GhostView・SortOrder 等）と ts-rs 生成型（types/generated/、手書き禁止）         |
+
+依存方向は `components → hooks → lib → IPC` の一方向。ファイル毎の関数名は列挙しない
+（実装事実はコードと `src/CLAUDE.md` が権威）。
 
 ---
 
