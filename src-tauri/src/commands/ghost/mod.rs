@@ -30,19 +30,13 @@ pub fn scan_and_store(
     request_key: String,
     cached_fingerprint: Option<String>,
 ) -> Result<ScanStoreResult, String> {
-    use tauri::Manager;
-
     ensure_request_key(&request_key)?;
 
     // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）
     let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
 
-    // DB パスを 1 回だけ解決
-    let db_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("app_config_dir 取得エラー: {e}"))?
-        .join("ghosts.db");
+    // DB パスを 1 回だけ解決（reset_ghost_db・sanitize_ghost_db と同一の単一権威を経由）
+    let db_path = crate::db_path::ghost_db_path(&app)?;
 
     // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
     // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。

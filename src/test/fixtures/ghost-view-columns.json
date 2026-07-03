@@ -1,0 +1,20 @@
+[
+  "name",
+  "sakura_name",
+  "kero_name",
+  "craftman",
+  "craftmanw",
+  "directory_name",
+  "path",
+  "source",
+  "name_lower",
+  "sakura_name_lower",
+  "kero_name_lower",
+  "craftman_lower",
+  "craftmanw_lower",
+  "directory_name_lower",
+  "thumbnail_path",
+  "thumbnail_use_self_alpha",
+  "thumbnail_kind",
+  "ghost_identity_key"
+]
