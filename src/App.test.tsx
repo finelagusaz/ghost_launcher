@@ -56,6 +56,7 @@ vi.mock("./components/GhostContent", () => ({
 vi.mock("./lib/ghostDatabase", () => ({
   getRandomGhost: vi.fn(),
   recordLaunch: vi.fn(),
+  reseedRandomSort: vi.fn(),
 }));
 
 import App from "./App";
