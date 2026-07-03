@@ -262,6 +262,35 @@ describe("useSearch", () => {
     expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100, "name");
   });
 
+  it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
+    vi.mocked(searchGhosts)
+      .mockResolvedValueOnce({ ghosts: [reimu, marisa], total: 5 })
+      .mockResolvedValueOnce({ ghosts: [alice], total: 5 });
+
+    const { result, rerender } = renderHook(
+      ({ sortEpoch }) => useSearch("rk1", "ki", 2, 3, 1, "random", sortEpoch),
+      { initialProps: { sortEpoch: 0 } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.ghosts).toHaveLength(2);
+    });
+    expect(result.current.loadedStart).toBe(3);
+
+    rerender({ sortEpoch: 1 });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(searchGhosts).toHaveBeenCalledTimes(2);
+    });
+
+    // マージ（[alice, marisa] 長さ2）ではなく全置換（[alice] 長さ1）であること
+    expect(result.current.ghosts).toHaveLength(1);
+    expect(result.current.ghosts[0].name).toBe("Alice");
+    expect(result.current.loadedStart).toBe(3);
+  });
+
   it("検索でエラーが発生した場合は dbError にメッセージを設定する", async () => {
     vi.mocked(searchGhostsInitialPage).mockRejectedValueOnce(
       new Error("database is locked")

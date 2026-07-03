@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   Badge,
   Button,
@@ -14,7 +14,7 @@ import {
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
-import { recordLaunch } from "../lib/ghostDatabase";
+import { launchGhost } from "../lib/sspClient";
 import type { GhostView } from "../types";
 
 interface Props {
@@ -222,14 +222,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
     setLaunching(true);
     setError(null);
     try {
-      await invoke("launch_ghost", {
-        sspPath,
-        ghostDirectoryName: ghost.directory_name,
-        ghostSource: ghost.source,
-      });
-      if (ghost.ghost_identity_key) {
-        void recordLaunch(ghost.ghost_identity_key).catch(() => {});
-      }
+      await launchGhost(sspPath, ghost);
     } catch (e) {
       setError(t("card.launchError", { detail: formatErrorDetail(e) }));
     } finally {

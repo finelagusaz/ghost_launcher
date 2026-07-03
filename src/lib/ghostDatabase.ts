@@ -190,8 +190,29 @@ const GHOST_SEARCH_WHERE =
 const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
   GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
 
+// random ソート用のセッションシード。ORDER BY 式を固定することで、
+// 仮想スクロールの offset ページングとバッファマージに対して順序が安定する。
+// 素数の剰余で id を攪拌する。剰余の衝突は第 2 キー g.id で安定化する。
+const RANDOM_SORT_MODULUS = 1000003;
+
+function newRandomSortSeed(): number {
+  return Math.floor(Math.random() * (RANDOM_SORT_MODULUS - 1)) + 1;
+}
+
+let randomSortSeed = newRandomSortSeed();
+
+/// random ソートの並びを引き直す（ソートで「ランダム」を選択したときに呼ぶ）
+export function reseedRandomSort(): void {
+  randomSortSeed = newRandomSortSeed();
+}
+
 function buildOrderBy(sortOrder: SortOrder): { orderBy: string; join: string } {
   switch (sortOrder) {
+    case "random":
+      return {
+        join: "",
+        orderBy: `(g.id * ${randomSortSeed}) % ${RANDOM_SORT_MODULUS}, g.id`,
+      };
     case "recent":
       return {
         join: "LEFT JOIN (SELECT ghost_identity_key, MAX(launched_at) AS last_launched FROM ghost_launches GROUP BY ghost_identity_key) gl ON g.ghost_identity_key = gl.ghost_identity_key",

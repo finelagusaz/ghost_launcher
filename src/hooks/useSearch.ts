@@ -5,16 +5,6 @@ import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../li
 // バッファの最大サイズ。これを超えるマージは全置換にフォールバックする
 export const MAX_BUFFER_SIZE = 2000;
 
-// Fisher-Yates シャッフル（in-place）
-function shuffleArray<T>(arr: T[]): T[] {
-  const result = [...arr];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
 export function useSearch(
   requestKey: string | null,
   query: string,
@@ -22,6 +12,10 @@ export function useSearch(
   offset: number,
   refreshTrigger: number,
   sortOrder: SortOrder = "name",
+  // ランダム再選択によるシード変更を可視化する epoch。resetKey/deps に含めることで、
+  // モジュールスコープの reseedRandomSort() だけでは検知できない「同値再選択」でも
+  // 全置換フェッチを強制し、旧シードのバッファが新シードのページと縫合されるのを防ぐ
+  sortEpoch: number = 0,
 ): { ghosts: GhostView[]; total: number; loadedStart: number; loading: boolean; dbError: string | null } {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [total, setTotal] = useState(0);
@@ -36,7 +30,7 @@ export function useSearch(
 
   useEffect(() => {
     let isActive = true;
-    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}\0${sortOrder}`;
+    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}\0${sortOrder}\0${sortEpoch}`;
     const isReset = resetKey !== resetKeyRef.current;
 
     async function fetchGhosts() {
@@ -57,9 +51,8 @@ export function useSearch(
         const isInitialLoad = query === "" && offset === 0;
 
         if (isInitialLoad) {
-          let initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
+          const initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
           if (!isActive) return;
-          if (sortOrder === "random") initialGhosts = shuffleArray(initialGhosts);
 
           resetKeyRef.current = resetKey;
           setGhosts(initialGhosts);
@@ -81,7 +74,6 @@ export function useSearch(
         }
 
         const result = await searchGhosts(requestKey, query, limit, offset, sortOrder);
-        if (sortOrder === "random") result.ghosts = shuffleArray(result.ghosts);
         if (!isActive) return;
 
         resetKeyRef.current = resetKey;
@@ -137,7 +129,7 @@ export function useSearch(
     return () => {
       isActive = false;
     };
-  }, [requestKey, query, limit, offset, refreshTrigger, sortOrder]);
+  }, [requestKey, query, limit, offset, refreshTrigger, sortOrder, sortEpoch]);
 
   return { ghosts, total, loadedStart, loading, dbError };
 }

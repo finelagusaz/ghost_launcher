@@ -260,6 +260,45 @@ describe("ghostDatabase - searchGhostsInitialPage", () => {
   });
 });
 
+describe("ghostDatabase - random ソートの安定シード", () => {
+  it("searchGhosts が random でシード付き ORDER BY を発行する", async () => {
+    const { searchGhosts } = await import("./ghostDatabase");
+    await searchGhosts("rk", "", 10, 0, "random");
+    const sql = mockSelect.mock.calls
+      .map((c) => c[0] as string)
+      .find((q) => q.includes("ORDER BY"));
+    expect(sql).toMatch(/\(g\.id \* \d+\) % 1000003, g\.id/);
+  });
+
+  it("同一シード中は searchGhostsInitialPage も同じ ORDER BY 式を使う", async () => {
+    const { searchGhosts, searchGhostsInitialPage } = await import("./ghostDatabase");
+    await searchGhosts("rk", "", 10, 0, "random");
+    await searchGhostsInitialPage("rk", 10, "random");
+    const sqls = mockSelect.mock.calls
+      .map((c) => c[0] as string)
+      .filter((q) => q.includes("% 1000003"));
+    const seedOf = (q: string) => q.match(/g\.id \* (\d+)/)?.[1];
+    expect(sqls.length).toBeGreaterThanOrEqual(2);
+    expect(seedOf(sqls[0])).toBe(seedOf(sqls[1]));
+  });
+
+  it("reseedRandomSort でシードが変わる", async () => {
+    const randomSpy = vi
+      .spyOn(Math, "random")
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9);
+    const { searchGhosts, reseedRandomSort } = await import("./ghostDatabase");
+    await searchGhosts("rk", "", 10, 0, "random");
+    reseedRandomSort();
+    await searchGhosts("rk", "", 10, 0, "random");
+    const sqls = mockSelect.mock.calls
+      .map((c) => c[0] as string)
+      .filter((q) => q.includes("% 1000003"));
+    expect(sqls[0]).not.toEqual(sqls[1]);
+    randomSpy.mockRestore();
+  });
+});
+
 describe("ghostDatabase - countGhostsByQuery", () => {
   it("空クエリ時は LIKE なしで件数取得する", async () => {
     mockSelect.mockResolvedValue([{ count: 42 }]);

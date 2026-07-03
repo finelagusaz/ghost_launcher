@@ -20,8 +20,8 @@ import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings } from "./lib/ghostScanUtils";
-import { getRandomGhost, recordLaunch } from "./lib/ghostDatabase";
-import { invoke } from "@tauri-apps/api/core";
+import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
+import { launchGhost } from "./lib/sspClient";
 import type { SortOrder } from "./types";
 
 const useStyles = makeStyles({
@@ -79,6 +79,10 @@ function App() {
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("name");
+  // ランダム再選択でシードを引き直したことを useSearch に伝える epoch。
+  // reseedRandomSort() 自体はモジュール変数の変更のみで React から不可視のため、
+  // これを resetKey に含めて全置換フェッチを強制する（App.tsx#handleSortChange 参照）
+  const [sortEpoch, setSortEpoch] = useState(0);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const LIMIT = 500;
 
@@ -110,6 +114,7 @@ function App() {
     offset,
     refreshTrigger,
     sortOrder,
+    sortEpoch,
   );
 
   const handleLoadMore = useCallback((targetOffset: number) => {
@@ -132,20 +137,19 @@ function App() {
         setRandomLaunchError(t("header.randomLaunch.empty"));
         return;
       }
-      await invoke("launch_ghost", {
-        sspPath,
-        ghostDirectoryName: ghost.directory_name,
-        ghostSource: ghost.source,
-      });
-      if (ghost.ghost_identity_key) {
-        void recordLaunch(ghost.ghost_identity_key).catch(() => {});
-      }
+      await launchGhost(sspPath, ghost);
     } catch (e) {
       setRandomLaunchError(e instanceof Error ? e.message : String(e));
     }
   }, [searchRequestKey, sspPath, t]);
 
   const handleSortChange = useCallback((value: SortOrder) => {
+    // 「ランダム」を選ぶたびに並びを引き直す。同値再選択は sortOrder/offset が
+    // 変わらず effect が再実行されないため、sortEpoch を進めて可視状態として配線する
+    if (value === "random") {
+      reseedRandomSort();
+      setSortEpoch((e) => e + 1);
+    }
     setSortOrder(value);
     setOffset(0);
   }, [setOffset]);
