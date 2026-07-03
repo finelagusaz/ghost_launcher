@@ -98,7 +98,7 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 
 ## 4. データモデル
 
-### 4.1 Ghost（Rust / TypeScript 共通）
+### 4.1 Ghost（Rust 内部型）
 
 | フィールド                   | 型        | 説明                                                                            |
 | ---------------------------- | --------- | ------------------------------------------------------------------------------- |
@@ -114,6 +114,8 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 | `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過 |
 | `thumbnail_kind`             | `String`  | `"surface"` / `"thumbnail"` / `""`（サムネイルなし）                            |
 | `diff_fingerprint`           | `String`  | 差分更新判定用の軽量フィンガープリント（メタデータ全フィールドの SHA-256）       |
+
+IPC を渡らない走査結果の内部表現。DB への書き込みは rusqlite がフィールド単位で行う。
 
 ### 4.2 GhostView（フロントエンド表示型）
 
@@ -570,7 +572,7 @@ stateDiagram-v2
 
 - トリガー: `main` への push・PR
 - 実行環境: `windows-latest`
-- ステップ: `npm run build` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo check`
+- ステップ: `npm run build` → `npm test` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo test --workspace` → ts-rs 生成型の再生成照合（`git diff --exit-code`）→ ghost-meta feature テスト
 - 備考: E2E テストはリリースビルドと tauri-driver が必要なため CI には含まない。ローカルで手動実行する。
 
 ### 11.2 リリース（`release.yml`）
