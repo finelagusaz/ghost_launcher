@@ -14,7 +14,7 @@
 
 **マイグレーション SQL の不変性（絶対厳守）**: sqlx は適用済みマイグレーションの SQL 文字列の SHA-384 チェックサムを `_sqlx_migrations` テーブルに記録し、起動時に再検証する。空白・インデントを含む**あらゆる変更**がチェックサム不一致を引き起こし「migration N was previously applied but has been modified」でクラッシュする。このため: (1) 一度でもリリース・コミットした migration の SQL は**絶対に編集しない**。(2) 複数行 SQL は Rust のインデントが文字列に混入しないよう `"ALTER TABLE ...\nCREATE INDEX ..."` のように **`\n` を明示**して書く（raw 改行 + インデントを使うとリファクタリング時にインデントが変わり即クラッシュする）。
 
-**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db はキャッシュ DB であり、再スキャンで復旧可能なため安全。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
+**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db の再作成でゴーストキャッシュは再スキャンで復旧するが、同居する永続テーブル `ghost_launches`（起動履歴）は失われる（改善検討は issue #93）。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
 **DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
 
