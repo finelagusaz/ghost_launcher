@@ -227,7 +227,5 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
         )?;
     }
 
-    ghosts.sort_by_cached_key(|ghost| ghost.name.to_lowercase());
-
     Ok((ghosts, compute_fingerprint_hash(&tokens)))
 }
