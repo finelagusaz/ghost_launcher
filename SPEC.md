@@ -115,18 +115,15 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 | `thumbnail_kind`             | `String`  | `"surface"` / `"thumbnail"` / `""`（サムネイルなし）                            |
 | `diff_fingerprint`           | `String`  | 差分更新判定用の軽量フィンガープリント（メタデータ全フィールドの SHA-256）       |
 
-### 4.2 GhostView（フロントエンド拡張）
+### 4.2 GhostView（フロントエンド表示型）
 
-`Ghost` に加えて以下を持つ（すべて NFKC 正規化・小文字版、検索用）:
+SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerprint` 等の内部カラムは含まない）。
+選択列は `src/test/fixtures/ghost-view-columns.json` を単一権威として、TS 型・SELECT 文・DB スキーマの
+三者が機械照合される（TS コンパイル時検査 + vitest + cargo test）。
 
-| フィールド             | 型       | 元フィールド     |
-| ---------------------- | -------- | ---------------- |
-| `name_lower`           | `string` | `name`           |
-| `sakura_name_lower`    | `string` | `sakura_name`    |
-| `kero_name_lower`      | `string` | `kero_name`      |
-| `craftman_lower`       | `string` | `craftman`       |
-| `craftmanw_lower`      | `string` | `craftmanw`      |
-| `directory_name_lower` | `string` | `directory_name` |
+`Ghost`（§4.1）のメタデータフィールドに加えて、NFKC 正規化・小文字版の検索用 6 列
+（`name_lower` / `sakura_name_lower` / `kero_name_lower` / `craftman_lower` /
+`craftmanw_lower` / `directory_name_lower`）と、永続参照キー `ghost_identity_key` を持つ。
 
 ### 4.3 ghosts テーブル（SQLite 揮発キャッシュ）
 
@@ -174,6 +171,7 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 | `request_key`| `TEXT` | PRIMARY KEY。スキャン対象を識別するキー |
 | `fingerprint`| `TEXT` | ディレクトリ構成のフィンガープリント     |
 | `updated_at` | `TEXT` | 最終更新日時                           |
+| `parent_mtimes` | `TEXT` | 親ディレクトリ mtime のスナップショット（Layer 1 高速差分判定用、§7.4） |
 
 #### ghost_launches テーブル（永続）
 
