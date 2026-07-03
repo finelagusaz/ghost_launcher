@@ -20,7 +20,7 @@ import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings } from "./lib/ghostScanUtils";
-import { getRandomGhost } from "./lib/ghostDatabase";
+import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
 import { launchGhost } from "./lib/sspClient";
 import type { SortOrder } from "./types";
 
@@ -139,6 +139,8 @@ function App() {
   }, [searchRequestKey, sspPath, t]);
 
   const handleSortChange = useCallback((value: SortOrder) => {
+    // 「ランダム」を選ぶたびに並びを引き直す（同値再選択は sortOrder が変わらないため次回 fetch から反映）
+    if (value === "random") reseedRandomSort();
     setSortOrder(value);
     setOffset(0);
   }, [setOffset]);

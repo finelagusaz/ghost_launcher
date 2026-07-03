@@ -5,16 +5,6 @@ import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../li
 // バッファの最大サイズ。これを超えるマージは全置換にフォールバックする
 export const MAX_BUFFER_SIZE = 2000;
 
-// Fisher-Yates シャッフル（in-place）
-function shuffleArray<T>(arr: T[]): T[] {
-  const result = [...arr];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
 export function useSearch(
   requestKey: string | null,
   query: string,
@@ -57,9 +47,8 @@ export function useSearch(
         const isInitialLoad = query === "" && offset === 0;
 
         if (isInitialLoad) {
-          let initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
+          const initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
           if (!isActive) return;
-          if (sortOrder === "random") initialGhosts = shuffleArray(initialGhosts);
 
           resetKeyRef.current = resetKey;
           setGhosts(initialGhosts);
@@ -81,7 +70,6 @@ export function useSearch(
         }
 
         const result = await searchGhosts(requestKey, query, limit, offset, sortOrder);
-        if (sortOrder === "random") result.ghosts = shuffleArray(result.ghosts);
         if (!isActive) return;
 
         resetKeyRef.current = resetKey;
