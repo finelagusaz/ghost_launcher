@@ -2,8 +2,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
-use super::path_utils::normalize_path;
-use super::scan::unique_sorted_additional_folders;
+use super::path_utils::{normalize_path, unique_sorted_additional_folders};
 
 /// fs::Metadata から更新時刻の nanos 文字列を取得するヘルパー
 pub(crate) fn metadata_modified_string(meta: &fs::Metadata) -> String {
@@ -141,7 +140,8 @@ pub(crate) fn build_fingerprint(
     ssp_path: &str,
     additional_folders: &[String],
 ) -> Result<String, String> {
-    use super::scan::{unique_sorted_additional_folders, walk_parent};
+    use super::path_utils::unique_sorted_additional_folders;
+    use super::scan::walk_parent;
 
     let mut tokens = vec!["fingerprint-version|1".to_string()];
     let ghost_dir = Path::new(ssp_path).join("ghost");

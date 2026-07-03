@@ -34,10 +34,20 @@ export function buildRequestKey(sspPath: string, additionalFolders: string[]): s
   return `${normalizedSspPath}::${normalizedFolders.join("|")}`;
 }
 
-/// 設定値（sspPath + 生のフォルダ配列）から request_key を組み立てる単一の入口。
-/// buildAdditionalFolders を必ず経由させ、呼び出し側での付け忘れを防ぐ。
+/// スキャン入力（正規化済み追加フォルダ + request_key）を設定値から組み立てる単一の入口。
+/// additionalFolders と requestKey を別々に組み立てると不一致事故の温床になる
+/// （過去障害: request_key 二重計算でゴースト一覧が空表示）。
+export function scanInputsFromSettings(
+  sspPath: string,
+  ghostFolders: string[],
+): { additionalFolders: string[]; requestKey: string } {
+  const additionalFolders = buildAdditionalFolders(ghostFolders);
+  return { additionalFolders, requestKey: buildRequestKey(sspPath, additionalFolders) };
+}
+
+/// 設定値から request_key のみが必要な場合の入口。scanInputsFromSettings へ委譲する。
 export function requestKeyFromSettings(sspPath: string, ghostFolders: string[]): string {
-  return buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders));
+  return scanInputsFromSettings(sspPath, ghostFolders).requestKey;
 }
 
 export function formatErrorDetail(error: unknown): string {

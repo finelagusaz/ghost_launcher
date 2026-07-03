@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { normalizePathKey, buildAdditionalFolders, buildRequestKey, requestKeyFromSettings } from "./ghostScanUtils";
+import {
+  normalizePathKey,
+  buildAdditionalFolders,
+  buildRequestKey,
+  requestKeyFromSettings,
+  scanInputsFromSettings,
+} from "./ghostScanUtils";
 
 describe("normalizePathKey", () => {
   it("バックスラッシュをスラッシュに変換する", () => {
@@ -59,5 +65,16 @@ describe("requestKeyFromSettings", () => {
   // 畳むと別フォルダを同一視してしまう。
   it("NFKC を適用せず半角カナをそのまま保持する", () => {
     expect(requestKeyFromSettings("C:\\SSP", ["C:\\g\\ｱ"])).toBe("c:/ssp::c:/g/ｱ");
+  });
+});
+
+describe("scanInputsFromSettings", () => {
+  it("requestKeyFromSettings と同一のキーと、正規化済みフォルダ配列を返す", () => {
+    const sspPath = "C:\\SSP";
+    const folders = ["C:\\Ghosts\\Extra", "c:/ghosts/extra", "C:/Ghosts/Another"];
+    const inputs = scanInputsFromSettings(sspPath, folders);
+    expect(inputs.requestKey).toBe(requestKeyFromSettings(sspPath, folders));
+    expect(inputs.additionalFolders).toEqual(buildAdditionalFolders(folders));
+    expect(inputs.additionalFolders).toHaveLength(2); // 重複排除済み
   });
 });

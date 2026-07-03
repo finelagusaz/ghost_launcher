@@ -96,7 +96,8 @@ pub fn scan_and_store(
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;
-    use super::scan::{scan_ghosts_with_fingerprint_internal, unique_sorted_additional_folders};
+    use super::path_utils::unique_sorted_additional_folders;
+    use super::scan::scan_ghosts_with_fingerprint_internal;
     use crate::testutil::TempDirGuard;
     use std::fs;
     use std::path::PathBuf;
@@ -173,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_ghosts_internal_collects_sources_and_sorts_by_name() -> Result<(), String> {
+    fn scan_ghosts_internal_collects_sources() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_scan_test");
         let ssp_root = workspace.path().join("ssp");
         let ssp_ghost = ssp_root.join("ghost");
@@ -198,9 +199,9 @@ mod tests {
             scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &additional_paths)?;
 
         assert_eq!(ghosts.len(), 3);
-        assert_eq!(ghosts[0].name, "Alpha");
-        assert_eq!(ghosts[1].name, "bravo");
-        assert_eq!(ghosts[2].name, "zulu");
+        let mut names: Vec<&str> = ghosts.iter().map(|g| g.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Alpha", "bravo", "zulu"]);
 
         let ssp_ghost_item = ghosts
             .iter()

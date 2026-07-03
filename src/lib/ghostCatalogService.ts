@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { cleanupOldGhostCaches, getCachedFingerprint, getDb, hasGhosts } from "./ghostDatabase";
-import { buildAdditionalFolders, buildRequestKey } from "./ghostScanUtils";
+import { scanInputsFromSettings } from "./ghostScanUtils";
 import { reportDbSize, reportScanComplete } from "./dbMonitor";
 import type { ScanStoreResult } from "./dbMonitor";
 
@@ -19,8 +19,7 @@ export async function refreshGhostCatalog({
   ghostFolders,
   forceFullScan,
 }: RefreshGhostCatalogParams): Promise<RefreshGhostCatalogResult> {
-  const additionalFolders = buildAdditionalFolders(ghostFolders);
-  const requestKey = buildRequestKey(sspPath, additionalFolders);
+  const { additionalFolders, requestKey } = scanInputsFromSettings(sspPath, ghostFolders);
 
   // DB が空なら fingerprint を送らない → Rust は必ずフルスキャン結果を返す。
   // これにより cache_hit=true 時は dbHasData=true が論理的に保証される。
