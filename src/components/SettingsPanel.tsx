@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "@tauri-apps/api/core";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
@@ -14,6 +13,7 @@ import {
 } from "@fluentui/react-components";
 import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
 import { SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
+import { validateSspPath } from "../lib/sspClient";
 
 interface Props {
   sspPath: string | null;
@@ -109,7 +109,7 @@ export function SettingsPanel({
 
     setValidating(true);
     try {
-      await invoke("validate_ssp_path", { sspPath: selected });
+      await validateSspPath(selected);
       onPathChange(selected);
       setValidationError(null);
     } catch (e) {

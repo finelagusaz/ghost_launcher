@@ -20,8 +20,8 @@ import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings } from "./lib/ghostScanUtils";
-import { getRandomGhost, recordLaunch } from "./lib/ghostDatabase";
-import { invoke } from "@tauri-apps/api/core";
+import { getRandomGhost } from "./lib/ghostDatabase";
+import { launchGhost } from "./lib/sspClient";
 import type { SortOrder } from "./types";
 
 const useStyles = makeStyles({
@@ -132,14 +132,7 @@ function App() {
         setRandomLaunchError(t("header.randomLaunch.empty"));
         return;
       }
-      await invoke("launch_ghost", {
-        sspPath,
-        ghostDirectoryName: ghost.directory_name,
-        ghostSource: ghost.source,
-      });
-      if (ghost.ghost_identity_key) {
-        void recordLaunch(ghost.ghost_identity_key).catch(() => {});
-      }
+      await launchGhost(sspPath, ghost);
     } catch (e) {
       setRandomLaunchError(e instanceof Error ? e.message : String(e));
     }
