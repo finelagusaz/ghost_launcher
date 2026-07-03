@@ -72,7 +72,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション定義・起動時 DB 検査 |
 | `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
-| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・IPC 型定義（types） |
+| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
 | `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
@@ -359,9 +359,9 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 - `hooks/useGhosts.ts`
   - React 状態（loading / error）と画面からの `refresh` トリガのみを担当
 - `lib/ghostCatalogService.ts`
-  - キャッシュ判定、スキャン実行、SQLite 保存、fingerprint 更新のユースケース手順を担当
+  - キャッシュ判定と scan_and_store 呼び出し（走査・書込・fingerprint 更新は Rust 側が一括実行）、寿命管理のユースケース手順を担当
 - `lib/ghostDatabase.ts`
-  - SQLite への ghost・fingerprint 読み書き抽象化を担当
+  - SQLite の読み取り（検索・件数・fingerprint 取得）と寿命管理削除の抽象化を担当
 
 ### 8.3 強制リフレッシュ
 
@@ -466,11 +466,9 @@ stateDiagram-v2
     CheckFingerprintCache --> ExecuteScan : fingerprint あり（cachedFingerprint=値）
 
     ExecuteScan --> Done : cache_hit=true（スキップ）
-    ExecuteScan --> SaveToSQLite : cache_hit=false
+    ExecuteScan --> LifecycleCleanup : cache_hit=false（Rust が差分 UPSERT と fingerprint 更新まで完了）
     ExecuteScan --> HandleError : スキャン失敗
 
-    SaveToSQLite --> UpdateFingerprint : SQLite 置換保存
-    UpdateFingerprint --> LifecycleCleanup : fingerprint を SQLite に保存
     LifecycleCleanup --> Done : 世代超過・TTL 超過キャッシュを削除
 
     HandleError --> Done : エラー表示
