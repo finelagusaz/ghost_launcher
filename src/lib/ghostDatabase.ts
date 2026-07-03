@@ -147,8 +147,33 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   return total > 0;
 }
 
-const GHOST_SELECT_COLUMNS =
-  "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, ghost_identity_key";
+// SELECT 対象列の単一権威。satisfies が GhostView に無い列名（typo・削除漏れ）を弾く。
+// 列を増減するときは GhostView（src/types/index.ts）と
+// src/test/fixtures/ghost-view-columns.json も更新する（Rust 側テストがスキーマと照合）。
+export const GHOST_VIEW_COLUMNS = [
+  "name",
+  "sakura_name",
+  "kero_name",
+  "craftman",
+  "craftmanw",
+  "directory_name",
+  "path",
+  "source",
+  "name_lower",
+  "sakura_name_lower",
+  "kero_name_lower",
+  "craftman_lower",
+  "craftmanw_lower",
+  "directory_name_lower",
+  "thumbnail_path",
+  "thumbnail_use_self_alpha",
+  "thumbnail_kind",
+  "ghost_identity_key",
+] as const satisfies readonly (keyof GhostView)[];
+
+// GhostView のフィールドで GHOST_VIEW_COLUMNS に列挙されていないもの。
+// 列挙漏れがあると never でなくなり、下の型注釈が never に解決されて代入が型エラーになる。
+type MissingGhostViewColumns = Exclude<keyof GhostView, (typeof GHOST_VIEW_COLUMNS)[number]>;
 
 const GHOST_SEARCH_LOWER_COLUMNS = [
   "name_lower",
@@ -162,8 +187,8 @@ const GHOST_SEARCH_LOWER_COLUMNS = [
 const GHOST_SEARCH_WHERE =
   GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
 
-const GHOST_SELECT_COLUMNS_PREFIXED =
-  GHOST_SELECT_COLUMNS.split(", ").map((c) => `g.${c}`).join(", ");
+const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
+  GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
 
 function buildOrderBy(sortOrder: SortOrder): { orderBy: string; join: string } {
   switch (sortOrder) {

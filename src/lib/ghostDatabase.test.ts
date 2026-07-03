@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import cases from "../test/fixtures/normalize-key-cases.json";
+import ghostViewColumns from "../test/fixtures/ghost-view-columns.json";
 
 const mockExecute = vi.fn().mockResolvedValue({ rowsAffected: 0 });
 const mockSelect = vi.fn().mockResolvedValue([]);
@@ -19,6 +20,15 @@ beforeEach(() => {
   mockExecute.mockClear();
   mockSelect.mockClear();
   mockLoad.mockClear();
+});
+
+describe("ghostDatabase - GhostView 列同期", () => {
+  it("GHOST_VIEW_COLUMNS が共有 fixture と一致する", async () => {
+    // Rust 側テスト（lib.rs）が同じ fixture を ghosts スキーマと照合することで、
+    // GhostView 型（コンパイル時検査）・SELECT 列・SQLite スキーマの三者同期を縛る
+    const { GHOST_VIEW_COLUMNS } = await import("./ghostDatabase");
+    expect([...GHOST_VIEW_COLUMNS]).toEqual(ghostViewColumns);
+  });
 });
 
 describe("ghostDatabase - getDb マイグレーションエラー回復", () => {

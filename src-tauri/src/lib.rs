@@ -1,8 +1,7 @@
 mod commands;
+mod db_path;
 #[cfg(test)]
 pub(crate) mod testutil;
-
-use tauri::Manager;
 
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
@@ -107,6 +106,40 @@ mod tests {
     }
 
     #[test]
+    fn ghost_viewの全選択列がghostsスキーマに存在する() {
+        // JS 側（ghostDatabase.ts の GHOST_VIEW_COLUMNS）と同じ fixture を参照し、
+        // GhostView 型・SELECT 列・SQLite スキーマの三者同期を縛る。
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/ghost-view-columns.json"
+        );
+        let raw = std::fs::read_to_string(path).expect("fixture を読めること");
+        let expected_columns: Vec<String> = serde_json::from_str(&raw).unwrap();
+        assert!(!expected_columns.is_empty(), "fixture が空でないこと");
+
+        let conn = Connection::open_in_memory().unwrap();
+        let mut applied = migrations();
+        applied.sort_by_key(|m| m.version);
+        for m in applied {
+            conn.execute_batch(m.sql).unwrap();
+        }
+        let schema_columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(ghosts)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+
+        for column in &expected_columns {
+            assert!(
+                schema_columns.contains(column),
+                "GhostView の選択列 {column} が ghosts テーブルに存在しない（fixture: ghost-view-columns.json）"
+            );
+        }
+    }
+
+    #[test]
     fn マイグレーション7は既存の同一request_key行があっても適用できる() {
         // DELETE が CREATE UNIQUE INDEX より先に実行されることを確認するリグレッションテスト。
         // 修正前は同一 request_key の複数行が全て ghost_identity_key='' となり
@@ -204,10 +237,10 @@ mod tests {
 /// 未適用マイグレーションが ADD COLUMN しようとするカラムが既に存在する場合、
 /// DB ファイルを削除して再作成を促す。ghosts.db はキャッシュなので安全。
 fn sanitize_ghost_db(app: &tauri::App) {
-    let Ok(app_data_dir) = app.path().app_data_dir() else {
+    let Ok(db_dir) = db_path::ghost_db_dir(app) else {
         return;
     };
-    let db_path = app_data_dir.join("ghosts.db");
+    let db_path = db_dir.join(db_path::GHOST_DB_FILES[0]);
     if !db_path.exists() {
         return;
     }
@@ -218,8 +251,8 @@ fn sanitize_ghost_db(app: &tauri::App) {
     };
 
     if should_delete {
-        for filename in ["ghosts.db", "ghosts.db-wal", "ghosts.db-shm"] {
-            let _ = std::fs::remove_file(app_data_dir.join(filename));
+        for filename in db_path::GHOST_DB_FILES {
+            let _ = std::fs::remove_file(db_dir.join(filename));
         }
     }
 }
