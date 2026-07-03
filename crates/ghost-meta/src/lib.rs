@@ -13,6 +13,5 @@ pub mod thumbnail;
 #[cfg(test)]
 pub(crate) mod testutil;
 
-pub use descript::parse_descript;
-pub use ghost::{read_ghost, scan_ghosts, GhostMeta};
+pub use ghost::{read_ghost, GhostMeta};
 pub use thumbnail::{resolve_thumbnail, AlphaMode, ThumbnailInfo, ThumbnailKind};

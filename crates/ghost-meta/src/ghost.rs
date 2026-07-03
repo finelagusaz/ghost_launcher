@@ -67,30 +67,6 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
     })
 }
 
-/// parent_dir 配下のゴーストを走査して全メタデータを返す。
-/// descript.txt が存在しないエントリはスキップする。
-/// parent_dir の read_dir に失敗した場合はエラーを返す。
-pub fn scan_ghosts(parent_dir: &Path) -> Result<Vec<GhostMeta>, GhostMetaError> {
-    let mut ghosts = Vec::new();
-
-    for entry in fs::read_dir(parent_dir)? {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        // descript.txt が存在するエントリのみ Ghost として扱う
-        if let Ok(meta) = read_ghost(&path) {
-            ghosts.push(meta);
-        }
-    }
-
-    Ok(ghosts)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,59 +147,6 @@ mod tests {
 
         let result = read_ghost(&tmp.path().join("no_descript"));
         assert!(matches!(result, Err(GhostMetaError::Io(_))));
-    }
-
-    // --- scan_ghosts ---
-
-    #[test]
-    fn scan_ghosts_が複数ゴーストを返す() {
-        let tmp = TempDirGuard::new("ghost_meta_scan_multi");
-        create_ghost(tmp.path(), "ghost_a", "charset,UTF-8\nname,Alpha\n");
-        create_ghost(tmp.path(), "ghost_b", "charset,UTF-8\nname,Beta\n");
-
-        let mut metas = scan_ghosts(tmp.path()).unwrap();
-        metas.sort_by(|a, b| a.name.cmp(&b.name));
-
-        assert_eq!(metas.len(), 2);
-        assert_eq!(metas[0].name, "Alpha");
-        assert_eq!(metas[1].name, "Beta");
-    }
-
-    #[test]
-    fn scan_ghosts_がdescripttxtなしのエントリをスキップする() {
-        let tmp = TempDirGuard::new("ghost_meta_scan_skip");
-        // descript.txt あり
-        create_ghost(tmp.path(), "valid_ghost", "charset,UTF-8\nname,Valid\n");
-        // descript.txt なし（ディレクトリのみ）
-        fs::create_dir_all(tmp.path().join("empty_dir")).unwrap();
-
-        let metas = scan_ghosts(tmp.path()).unwrap();
-        assert_eq!(metas.len(), 1);
-        assert_eq!(metas[0].name, "Valid");
-    }
-
-    #[test]
-    fn scan_ghosts_が空ディレクトリで空vecを返す() {
-        let tmp = TempDirGuard::new("ghost_meta_scan_empty");
-        let metas = scan_ghosts(tmp.path()).unwrap();
-        assert!(metas.is_empty());
-    }
-
-    #[test]
-    fn scan_ghosts_が存在しないディレクトリでioエラーを返す() {
-        let result = scan_ghosts(Path::new("/nonexistent/path"));
-        assert!(matches!(result, Err(GhostMetaError::Io(_))));
-    }
-
-    #[test]
-    fn scan_ghosts_がファイルエントリをスキップする() {
-        let tmp = TempDirGuard::new("ghost_meta_scan_files");
-        create_ghost(tmp.path(), "valid_ghost", "charset,UTF-8\nname,Valid\n");
-        // ファイル（ディレクトリではない）
-        fs::write(tmp.path().join("some_file.txt"), "").unwrap();
-
-        let metas = scan_ghosts(tmp.path()).unwrap();
-        assert_eq!(metas.len(), 1);
     }
 
     // --- thumbnail フィールド統合 ---
