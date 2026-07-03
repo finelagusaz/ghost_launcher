@@ -10,7 +10,7 @@ use super::fingerprint::{
     build_entry_token, compute_fingerprint_hash, metadata_modified_string,
     push_absent_parent_token,
 };
-use super::path_utils::normalize_path;
+use super::path_utils::{normalize_path, unique_sorted_additional_folders};
 use super::types::Ghost;
 
 /// GhostMeta から Ghost 構造体へ変換するヘルパー
@@ -70,23 +70,6 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
         thumbnail_use_self_alpha,
         thumbnail_kind,
     }
-}
-
-pub(crate) fn unique_sorted_additional_folders(
-    additional_folders: &[String],
-) -> Vec<(String, PathBuf, String)> {
-    let mut folders = additional_folders
-        .iter()
-        .map(|folder| {
-            let path = PathBuf::from(folder);
-            let normalized = normalize_path(&path);
-            (folder.clone(), path, normalized)
-        })
-        .collect::<Vec<_>>();
-
-    folders.sort_by(|a, b| a.2.cmp(&b.2));
-    folders.dedup_by(|a, b| a.2 == b.2);
-    folders
 }
 
 /// 親ディレクトリを走査し、フィンガープリントトークン生成（+ オプションで Ghost 収集）を行う。

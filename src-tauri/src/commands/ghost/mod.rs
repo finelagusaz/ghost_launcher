@@ -96,7 +96,8 @@ pub fn scan_and_store(
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;
-    use super::scan::{scan_ghosts_with_fingerprint_internal, unique_sorted_additional_folders};
+    use super::path_utils::unique_sorted_additional_folders;
+    use super::scan::scan_ghosts_with_fingerprint_internal;
     use crate::testutil::TempDirGuard;
     use std::fs;
     use std::path::PathBuf;
