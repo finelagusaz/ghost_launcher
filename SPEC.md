@@ -235,9 +235,9 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | 項目   | 内容                                                                                             |
 | ------ | ------------------------------------------------------------------------------------------------ |
 | 引数   | `ssp_path: String`, `additional_folders: Vec<String>`, `request_key: String`, `cached_fingerprint: Option<String>` |
-| 戻り値 | `ScanStoreResult { fingerprint: String, cache_hit: bool }`                                       |
+| 戻り値 | `ScanStoreResult { cache_hit: bool, total: usize, fingerprint: String, request_key: String }`（ts-rs により TS 型を自動生成・CI で照合） |
 | 処理   | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴーストをスキャンして SQLite に直接書き込む。`cached_fingerprint` が一致すれば `cache_hit: true` を返し書き込みをスキップ。`request_key` はフロントエンド（`ghostScanUtils.ts` の `requestKeyFromSettings`）が唯一計算し値として渡す（Rust は受領値をそのまま使う） |
-| ソート | ゴーストのソートはフロントエンドが担当。追加フォルダの正規化はロケール非依存のコードポイント順    |
+| ソート | 表示順はフロントエンドの SQL `ORDER BY`（§8.6）が唯一の権威。scan 結果自体は順序を持たない。追加フォルダの正規化はロケール非依存のコードポイント順 |
 | エラー | SSP の `ghost/` フォルダ不在時にエラー。追加フォルダの不在・読取不能は無視して続行               |
 
 ### 6.2 `launch_ghost`
@@ -249,6 +249,24 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
 | 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
 | エラー | `ssp.exe` 不在時・起動失敗時にエラー                                                                                                                            |
+
+### 6.3 `validate_ssp_path`
+
+| 項目   | 内容                                                         |
+| ------ | ------------------------------------------------------------ |
+| 引数   | `ssp_path: String`                                           |
+| 戻り値 | `()`                                                         |
+| 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
+| エラー | `ssp.exe` 不在時にエラーメッセージを返す                     |
+
+### 6.4 `reset_ghost_db`
+
+ghosts.db と WAL/SHM を削除してマイグレーション競合を解消する（§13 の自動回復経路）。
+パス解決は書込側と同一の単一権威（`db_path.rs`）を経由する。
+
+### 6.5 `read_user_locale`
+
+実行ファイル横の `locales/{lang}.json` を読み込む（docs/locale-customization.md 参照）。
 
 ---
 
@@ -279,6 +297,18 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 - 重複排除後、正規化パスのコードポイント順でソート（順序非依存性を保証）
 - `request_key` はフロントエンド（`ghostScanUtils.ts` の `requestKeyFromSettings`）が唯一計算し、`scan_and_store` に値として渡す。Rust は受領値をそのまま使う（不透明トークン）。ソートはロケール非依存のコードポイント順（`localeCompare` ではない）
 
+### 7.4 二層フィンガープリント
+
+`scan_and_store` はフル走査の前に軽量な事前判定を行う。
+
+- **Layer 1（親 mtime 判定, < 1ms）**: 親ディレクトリ（SSP の `ghost/` と各追加フォルダ）の
+  mtime スナップショットを `ghost_fingerprints.parent_mtimes` と比較し、一致すれば走査せず
+  `cache_hit: true` を返す。NTFS では直下のエントリ追加・削除でのみ親 mtime が変化するため、
+  ゴーストの増減はこの層で検出できる。既存ゴースト内の descript.txt 編集は検出できない
+  （「再読込」の強制フルスキャンで対応）
+- **Layer 2（フル fingerprint）**: §7.1〜7.2 のトークンハッシュ。Layer 1 不一致時に全エントリを
+  走査して計算し、`cached_fingerprint` と一致すれば書込をスキップして `parent_mtimes` のみ更新する
+
 ---
 
 ## 8. キャッシュ戦略
@@ -292,7 +322,8 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
    3. DB が空なら `cachedFingerprint=null` → Rust は必ず全件を返す
 3. **Rust スキャン**: `scan_and_store(requestKey, cachedFingerprint)` を実行。fingerprint 一致なら `cache_hit: true` を返し SQLite 書き込みをスキップ
 4. **キャッシュヒット時**: `cache_hit=true` → 即リターン（`skipped: true`）。SQLite 更新なし
-5. **キャッシュミス時**: スキャン結果を SQLite へ置換保存（`replaceGhostsByRequestKey`）し、fingerprint を SQLite へ更新（`setCachedFingerprint`）
+5. **キャッシュミス時**: Rust 側が走査結果を rusqlite の差分 UPSERT で直接書き込み、
+   fingerprint と parent_mtimes を同時に更新する（JS は Ghost 配列を受け取らない）
 6. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）。`ghosts` と `ghost_fingerprints` の両テーブルから一括削除
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
@@ -340,7 +371,7 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 
 ### 8.5 寿命管理
 
-スキャン結果の保存後（`replaceGhostsByRequestKey` 成功直後）に `cleanupOldGhostCaches` を実行し、不要な `request_key` キャッシュを削除する。
+スキャン結果の書込み完了後（`cache_hit=false` 時）に、不要な `request_key` キャッシュを削除する（JS 側で fire-and-forget、失敗許容）。
 
 | 項目                          | 仕様                                                       |
 | ----------------------------- | ---------------------------------------------------------- |
@@ -350,6 +381,14 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `currentRequestKey` の保護    | TTL 切れでも削除対象から除外し、戻り値に必ず含める          |
 | fingerprint の同期削除        | `ghost_fingerprints` テーブルからも同一 `request_key` を削除 |
 | 失敗時の挙動                  | 警告ログのみ。UI への影響なし                              |
+
+### 8.6 表示ソート
+
+一覧の表示順は SQLite の `ORDER BY` が唯一の権威。名前順（NFKC 小文字）・最近起動順・
+起動回数順（いずれも `ghost_launches` と LEFT JOIN）・ランダム順を提供する。
+ランダム順はセッション毎のシードで `ORDER BY (id * seed) % 素数` を固定し、仮想スクロールの
+ページングとバッファマージに対して順序整合を保つ。「ランダム」再選択でシードを引き直す
+（シード変更は sortEpoch として検索フックのリセット判定に配線され、全置換再取得を強制する）。
 
 ---
 
