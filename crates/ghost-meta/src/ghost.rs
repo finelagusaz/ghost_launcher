@@ -1,6 +1,7 @@
 use crate::descript::parse_descript;
 use crate::thumbnail::{resolve_thumbnail, ThumbnailInfo};
 use crate::GhostMetaError;
+#[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
 
