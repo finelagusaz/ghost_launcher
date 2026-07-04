@@ -84,6 +84,18 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "CREATE TABLE IF NOT EXISTS ghost_launches (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  ghost_identity_key TEXT NOT NULL,\n  launched_at TEXT NOT NULL\n);\nCREATE INDEX IF NOT EXISTS idx_ghost_launches_identity ON ghost_launches(ghost_identity_key);\nCREATE INDEX IF NOT EXISTS idx_ghost_launches_at ON ghost_launches(launched_at DESC);",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 12,
+            description: "add_launch_aggregates_to_ghosts",
+            sql: "ALTER TABLE ghosts ADD COLUMN last_launched TEXT;\nALTER TABLE ghosts ADD COLUMN launch_count INTEGER NOT NULL DEFAULT 0;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 13,
+            description: "drop_legacy_ghost_launches_from_cache_db",
+            sql: "DROP TABLE IF EXISTS ghost_launches;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -103,6 +115,31 @@ mod tests {
             conn.execute_batch(m.sql)
                 .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
         }
+    }
+
+    #[test]
+    fn migration12と13で集計列追加と旧履歴テーブル除去が行われる() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut applied = migrations();
+        applied.sort_by_key(|m| m.version);
+        for m in applied {
+            conn.execute_batch(m.sql).unwrap();
+        }
+        // ghosts に集計列が存在する
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(ghosts)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert!(cols.contains(&"last_launched".to_string()));
+        assert!(cols.contains(&"launch_count".to_string()));
+        // 旧 ghost_launches テーブルは ghosts.db から除去されている
+        let has_launches: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ghost_launches'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(has_launches, 0, "ghost_launches は user-data.db へ分離され ghosts.db からは除去される");
     }
 
     #[test]
@@ -235,7 +272,8 @@ mod tests {
 
 /// マイグレーション適用前に ghosts.db の整合性を検証する。
 /// 未適用マイグレーションが ADD COLUMN しようとするカラムが既に存在する場合、
-/// DB ファイルを削除して再作成を促す。ghosts.db はキャッシュなので安全。
+/// DB ファイルを削除して再作成を促す。ghosts.db は揮発キャッシュ（再スキャンで復旧）であり、
+/// 永続的な起動履歴は user-data.db へ分離済みのため、削除しても失われない。
 fn sanitize_ghost_db(app: &tauri::App) {
     let Ok(db_dir) = db_path::ghost_db_dir(app) else {
         return;
@@ -299,6 +337,25 @@ fn has_migration_conflict(conn: &rusqlite::Connection) -> bool {
     false
 }
 
+/// user-data.db を初期化し、旧 ghosts.db.ghost_launches の履歴を一度だけ移送する。
+/// Rust setup（JS の Database.load によるマイグレーションより先に走る）で呼ぶことで、
+/// migration 13 の旧テーブル DROP より前に移送を完了させる。
+fn init_user_data(app: &tauri::App) {
+    let Ok(user_conn) = commands::launch_history::open_user_data_db(app) else {
+        eprintln!("[user-data] user-data.db を初期化できませんでした");
+        return;
+    };
+    let Ok(ghosts_path) = db_path::ghost_db_path(app) else {
+        return;
+    };
+    // ghosts.db が存在するときだけ legacy 移送を試みる（空ファイルの事前生成を避ける）
+    if ghosts_path.exists() {
+        if let Ok(ghosts_conn) = rusqlite::Connection::open(&ghosts_path) {
+            let _ = commands::launch_history::migrate_legacy_launch_history(&ghosts_conn, &user_conn);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -312,12 +369,13 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             sanitize_ghost_db(app);
+            init_user_data(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::db::reset_ghost_db,
             commands::ghost::scan_and_store,
-
+            commands::launch_history::record_launch,
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,
             commands::locale::read_user_locale,

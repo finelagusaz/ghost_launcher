@@ -299,6 +299,28 @@ describe("ghostDatabase - random ソートの安定シード", () => {
   });
 });
 
+describe("buildOrderBy", () => {
+  it("recent は JOIN なしで last_launched 列を並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    const orderBy = buildOrderBy("recent");
+    expect(orderBy).toContain("g.last_launched DESC");
+    expect(orderBy).not.toContain("JOIN");
+    expect(orderBy).not.toContain("ghost_launches");
+  });
+
+  it("frequency は JOIN なしで launch_count 列を並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    const orderBy = buildOrderBy("frequency");
+    expect(orderBy).toContain("g.launch_count DESC");
+    expect(orderBy).not.toContain("JOIN");
+  });
+
+  it("name は name_lower を昇順で並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    expect(buildOrderBy("name")).toContain("g.name_lower ASC");
+  });
+});
+
 describe("ghostDatabase - countGhostsByQuery", () => {
   it("空クエリ時は LIKE なしで件数取得する", async () => {
     mockSelect.mockResolvedValue([{ count: 42 }]);
@@ -422,6 +444,16 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     );
     expect(deleteCall).toBeDefined();
     expect(deleteCall![1]).toEqual(["rk-other"]);
+  });
+});
+
+describe("recordLaunch", () => {
+  it("record_launch IPC を camelCase 引数で呼ぶ", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { recordLaunch } = await import("./ghostDatabase");
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await recordLaunch("sspmy_ghost");
+    expect(invoke).toHaveBeenCalledWith("record_launch", { ghostIdentityKey: "sspmy_ghost" });
   });
 });
 

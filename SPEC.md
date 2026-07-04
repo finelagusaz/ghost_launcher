@@ -25,7 +25,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
 | F-10 | ウィンドウ状態保存         | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化                    |
-| F-11 | ソート順切替               | 名前順・最近起動順・起動回数順・ランダム順の切替。起動履歴（ghost_launches）を基盤とする |
+| F-11 | ソート順切替               | 名前順・最近起動順・起動回数順・ランダム順の切替。最近起動順・起動回数順は `ghosts` の非正規化集計列（`last_launched`/`launch_count`）を基盤とし、起動履歴の権威は `user-data.db`（永続）の `ghost_launches` が持つ |
 | F-12 | ランダム起動               | 一覧から無作為に 1 体選んで起動するボタン                                           |
 | F-13 | 起動履歴記録               | ゴースト起動時に ghost_identity_key と起動日時を永続記録                            |
 
@@ -60,8 +60,8 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 └───────────────────────────────────────────────────────┘
          │                           │
          ▼                           ▼
-   ファイルシステム              SQLite + localStorage
-   (ghost/ ディレクトリ)        (ゴースト一覧 + fingerprint)
+   ファイルシステム         ghosts.db（揮発キャッシュ）+ user-data.db（永続）
+   (ghost/ ディレクトリ)   （ゴースト一覧 + fingerprint / 起動履歴）+ localStorage
 ```
 
 ### 3.2 バックエンド（Rust）構成
@@ -153,9 +153,12 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `kero_name_lower`        | `TEXT`    | `kero_name` の NFKC 正規化・小文字版（検索用）           |
 | `craftman_lower`         | `TEXT`    | `craftman` の NFKC 正規化・小文字版（検索用）            |
 | `craftmanw_lower`        | `TEXT`    | `craftmanw` の NFKC 正規化・小文字版（検索用）           |
+| `last_launched`          | `TEXT`    | 最終起動日時（非正規化集計列。`user-data.db` の `ghost_launches` から導出）|
+| `launch_count`           | `INTEGER` | 起動回数（非正規化集計列。同上）                          |
 
 - `ghosts` テーブルはファイルシステム索引の揮発キャッシュであり、スキャンで完全再投入可能
 - スキーマ変更時は `DELETE FROM ghosts` を migration に含め、次回起動時のフルスキャンで再投入させる
+- `last_launched`/`launch_count` は `user-data.db`（永続）が権威を持つ起動履歴の導出キャッシュ。`record_launch` コマンドが起動の都度即時更新し、スキャンでのキャッシュ再構築後にバックフィルで再導出する（§4.4 参照）。`ghosts` の行削除・再投入があっても `ghost_identity_key` で再結合されるため値は失われない
 
 ### 4.4 設定ストア（settings.json）
 
@@ -164,7 +167,8 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `ssp_path`      | `string`   | SSP インストールフォルダパス |
 | `ghost_folders` | `string[]` | 追加ゴーストフォルダの配列   |
 
-ゴーストキャッシュと fingerprint は SQLite（`ghosts.db`）に統合保存する。
+ゴーストキャッシュと fingerprint は SQLite（`ghosts.db`）に統合保存する。永続的な起動履歴は
+Rust 専有の別ファイル `user-data.db` に分離されている（§4.4 の `ghost_launches` テーブルを参照）。
 
 #### ghost_fingerprints テーブル
 
@@ -175,23 +179,28 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `updated_at` | `TEXT` | 最終更新日時                           |
 | `parent_mtimes` | `TEXT` | 親ディレクトリ mtime のスナップショット（Layer 1 高速差分判定用、§7.4） |
 
-#### ghost_launches テーブル（永続）
+#### ghost_launches テーブル（永続・`user-data.db`）
 
-ゴースト起動履歴の永続記録。`recent`（最終起動日時）・`frequency`（起動回数）ソートの基盤。
+ゴースト起動履歴の永続記録・権威データ。`ghosts.db` とは別ファイルの `user-data.db`
+（Rust 専有、rusqlite 直接アクセス、`tauri-plugin-sql`/sqlx を経由しない）に住み、
+マイグレーションシステム・自動リセット（`reset_ghost_db` / §13）の対象外である。
+`ghosts` テーブルの非正規化集計列 `last_launched`/`launch_count`（§4.3）は本テーブルからの
+導出キャッシュであり、`recent`/`frequency` ソート（§8.6）はその集計列を直接参照する
+（cross-DB の JOIN は行わない）。
 
 | カラム               | 型        | 説明                                             |
 | -------------------- | --------- | ------------------------------------------------ |
 | `id`                 | `INTEGER` | PRIMARY KEY AUTOINCREMENT（表固有の代理キー）     |
-| `ghost_identity_key` | `TEXT`    | 起動されたゴーストの一意キー（`ghosts` への参照） |
+| `ghost_identity_key` | `TEXT`    | 起動されたゴーストの一意キー（`ghosts` への論理参照） |
 | `launched_at`        | `TEXT`    | 起動日時（`datetime('now')`）                    |
 
-- `ghosts` とは `ghost_identity_key` で LEFT JOIN する（`ghosts.id` は参照しない）
-- `ghosts` が `DELETE FROM` で再投入されても `ghost_identity_key` は不変のため、履歴は自動的に再結合する
+- `ghosts.id` ではなく `ghost_identity_key` で `ghosts` 側の集計列と対応付ける（DB をまたぐため SQL の JOIN 自体は組めない。`record_launch` コマンドが両 DB を個別に UPDATE して同期する）
+- `ghosts` が `DELETE FROM` で再投入されても `ghost_identity_key` は不変のため、スキャン時バックフィルで自動的に再結合する
 - インデックス: `idx_ghost_launches_identity(ghost_identity_key)`・`idx_ghost_launches_at(launched_at DESC)`
 
 ### 4.5 永続テーブルのキー設計ルール
 
-`ghosts` はファイルシステム索引の**揮発キャッシュ**で、スキーマ変更時に `DELETE FROM ghosts` で全件削除・再投入される（§4.3）。一方 `ghost_launches` や将来の `favorites` 等は**永続テーブル**であり、ユーザーの蓄積データを保持する。両者をまたぐ参照は以下のルールに従う。
+`ghosts` はファイルシステム索引の**揮発キャッシュ**で、スキーマ変更時に `DELETE FROM ghosts` で全件削除・再投入される（§4.3）。一方 `ghost_launches` や将来の `favorites` 等は**永続テーブル**であり、ユーザーの蓄積データを保持する。`ghost_launches` は `ghosts.db` とは別ファイルの `user-data.db`（Rust 専有）に置かれ、`ghosts` 側は `last_launched`/`launch_count` という導出集計列（§4.3）だけを持つ。両者をまたぐ参照は以下のルールに従う。
 
 - **`ghosts.id`（AUTOINCREMENT）を永続テーブルの外部参照に使わない**。`DELETE`/再 `INSERT` で値が変わり、参照が孤立する。10 万件規模では再投入のたびに大量の蓄積データが一瞬で無効化されうる
 - **外部参照には `ghost_identity_key` を使う**。`NFKC(source) + \x1f + NFKC(directory_name)`（`source` は `"ssp"` または追加フォルダのフルパス）で構成され、`ssp_path`（`request_key`）を含まない。このため SSP パス変更やキャッシュ再投入後も参照が自動的に再結合する
@@ -269,6 +278,15 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 ### 6.5 `read_user_locale`
 
 実行ファイル横の `locales/{lang}.json` を読み込む（docs/locale-customization.md 参照）。
+
+### 6.6 `record_launch`
+
+| 項目   | 内容                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------- |
+| 引数   | `ghost_identity_key: String`                                                              |
+| 戻り値 | `()`                                                                                      |
+| 処理   | 起動履歴を記録する。`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する |
+| エラー | いずれかの DB への書込失敗時にエラーを返す（フロントエンドはログのみで UI をブロックしない） |
 
 ---
 
@@ -387,7 +405,10 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 ### 8.6 表示ソート
 
 一覧の表示順は SQLite の `ORDER BY` が唯一の権威。名前順（NFKC 小文字）・最近起動順・
-起動回数順（いずれも `ghost_launches` と LEFT JOIN）・ランダム順を提供する。
+起動回数順（いずれも `ghosts` の非正規化集計列 `last_launched`/`launch_count` を単一 DB で
+`ORDER BY` する。cross-DB JOIN は行わない）・ランダム順を提供する。集計列は `record_launch`
+コマンドの即時更新と、スキャンでのキャッシュ再構築後のバックフィルで `user-data.db` の
+`ghost_launches`（権威）と整合を保つ（§4.4・§6.6）。
 ランダム順はセッション毎のシードで `ORDER BY (id * seed) % 素数` を固定し、仮想スクロールの
 ページングとバッファマージに対して順序整合を保つ。「ランダム」再選択でシードを引き直す
 （シード変更は sortEpoch として検索フックのリセット判定に配線され、全置換再取得を強制する）。
@@ -619,6 +640,6 @@ stateDiagram-v2
 | スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |
 | 設定保存失敗                         | コンソールエラー + UI ロールバック                       |
 | キャッシュ書き込み失敗               | コンソールエラーのみ（UI 影響なし）                      |
-| マイグレーション競合（起動時）       | DB 読み込みエラーを検出し `reset_ghost_db` で ghosts.db を自動削除 → 再接続。ゴースト一覧は再スキャンで復元されるが、起動履歴（`ghost_launches`）は失われる |
+| マイグレーション競合（起動時）       | DB 読み込みエラーを検出し `reset_ghost_db` で ghosts.db を自動削除 → 再接続。リセット対象は揮発キャッシュの ghosts.db のみで、永続データ（`user-data.db` の `ghost_launches`）は対象外のため失われない。ゴースト一覧・集計列は再スキャンで復元される（バックフィルで `last_launched`/`launch_count` を再導出） |
 
 ---
