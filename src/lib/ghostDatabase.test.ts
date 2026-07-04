@@ -425,6 +425,16 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
   });
 });
 
+describe("recordLaunch", () => {
+  it("record_launch IPC を camelCase 引数で呼ぶ", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { recordLaunch } = await import("./ghostDatabase");
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await recordLaunch("sspmy_ghost");
+    expect(invoke).toHaveBeenCalledWith("record_launch", { ghostIdentityKey: "sspmy_ghost" });
+  });
+});
+
 describe("normalizeForKey パリティ（共有 fixture）", () => {
   it.each(cases)("normalizeForKey($input) === $expected", async ({ input, expected }) => {
     const { normalizeForKey } = await import("./ghostDatabase");

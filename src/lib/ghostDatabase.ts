@@ -291,11 +291,7 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
 }
 
 export async function recordLaunch(ghostIdentityKey: string): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?, datetime('now'))",
-    [ghostIdentityKey]
-  );
+  await invoke("record_launch", { ghostIdentityKey });
 }
 
 export async function getRandomGhost(requestKey: string): Promise<GhostView | null> {
