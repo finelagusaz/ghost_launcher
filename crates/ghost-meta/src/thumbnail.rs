@@ -89,28 +89,28 @@ fn resolve_surface0(
     apng_files.sort_by_key(|f| f.to_ascii_lowercase());
     png_files.sort_by_key(|f| f.to_ascii_lowercase());
 
-    let alpha = match shell_descript {
+    // APNG が PNG より優先。選ばれたファイルを 1 つに決める
+    let filename = apng_files.first().or_else(|| png_files.first())?;
+    let path = shell_master.join(filename);
+
+    let descript_alpha = match shell_descript {
         Some(fields) => seriko_alpha_from_fields(fields),
         None => read_seriko_use_self_alpha(ghost_root),
     };
+    // 実画像が本物のアルファチャンネルを持つ場合は宣言に関わらず SelfAlpha を優先する。
+    // （seriko.use_self_alpha 未宣言の RGBA サーフェスがキーカラー抜きへ流れて
+    // 黒消えする不具合の根本対策。持たない場合のみ descript 由来の判定を使う）
+    let alpha = if png_has_alpha_channel(&path) {
+        AlphaMode::SelfAlpha
+    } else {
+        descript_alpha
+    };
 
-    // APNG が PNG より優先
-    if let Some(filename) = apng_files.first() {
-        return Some(ThumbnailInfo {
-            path: shell_master.join(filename),
-            alpha,
-            kind: ThumbnailKind::Surface,
-        });
-    }
-    if let Some(filename) = png_files.first() {
-        return Some(ThumbnailInfo {
-            path: shell_master.join(filename),
-            alpha,
-            kind: ThumbnailKind::Surface,
-        });
-    }
-
-    None
+    Some(ThumbnailInfo {
+        path,
+        alpha,
+        kind: ThumbnailKind::Surface,
+    })
 }
 
 /// HashMap から seriko.use_self_alpha を判定する。
@@ -137,34 +137,42 @@ fn read_seriko_use_self_alpha(ghost_root: &Path) -> AlphaMode {
     AlphaMode::KeyColor
 }
 
-/// thumbnail.png のアルファチャンネルを検査して AlphaMode を返す。
-/// feature: "thumbnail" が有効な場合、PNG の IHDR ヘッダーのみ読み込んで color type を検査する。
-/// feature が無効な場合は常に KeyColor を返す。
+/// PNG/APNG が本物のアルファチャンネルを持つか検査する。
+/// feature: "thumbnail" が有効な場合、IHDR ヘッダーのみ読み込んで color type を検査する
+/// （全ピクセル展開はしない）。feature が無効な場合は常に false を返す。
 #[cfg(feature = "thumbnail")]
-fn detect_thumbnail_alpha(path: &Path) -> AlphaMode {
+fn png_has_alpha_channel(path: &Path) -> bool {
     use image::codecs::png::PngDecoder;
     use image::ColorType;
     use image::ImageDecoder;
 
     let Ok(file) = fs::File::open(path) else {
-        return AlphaMode::KeyColor;
+        return false;
     };
     // PngDecoder は BufRead + Seek を要求するため BufReader で包む
     let Ok(decoder) = PngDecoder::new(std::io::BufReader::new(file)) else {
-        return AlphaMode::KeyColor;
+        return false;
     };
-    // color_type() は ImageDecoder トレイトのメソッド。IHDR チャンクのみ参照し全ピクセル展開は行わない
-    match decoder.color_type() {
-        ColorType::Rgba8 | ColorType::La8 | ColorType::Rgba16 | ColorType::La16 => {
-            AlphaMode::SelfAlpha
-        }
-        _ => AlphaMode::KeyColor,
-    }
+    // color_type() は ImageDecoder トレイトのメソッド。IHDR チャンクのみ参照する
+    matches!(
+        decoder.color_type(),
+        ColorType::Rgba8 | ColorType::La8 | ColorType::Rgba16 | ColorType::La16
+    )
 }
 
 #[cfg(not(feature = "thumbnail"))]
-fn detect_thumbnail_alpha(_path: &Path) -> AlphaMode {
-    AlphaMode::KeyColor
+fn png_has_alpha_channel(_path: &Path) -> bool {
+    false
+}
+
+/// thumbnail.png のアルファチャンネルの有無を AlphaMode へ写す。
+/// アルファ持ちなら SelfAlpha、なければ KeyColor。
+fn detect_thumbnail_alpha(path: &Path) -> AlphaMode {
+    if png_has_alpha_channel(path) {
+        AlphaMode::SelfAlpha
+    } else {
+        AlphaMode::KeyColor
+    }
 }
 
 #[cfg(test)]
@@ -366,6 +374,51 @@ mod tests {
 
         let alpha = detect_thumbnail_alpha(&path);
         assert_eq!(alpha, AlphaMode::KeyColor);
+    }
+
+    // --- surface0 実画像アルファ検査（宣言より実体を優先） ---
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbaなら宣言なしでもself_alphaになる() {
+        use image::{ImageBuffer, Rgba};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgba_self_alpha");
+        let shell_master = create_shell_master(tmp.path());
+        // descript も seriko.use_self_alpha 宣言もない。実画像のアルファのみで判定させる
+        let img: image::RgbaImage = ImageBuffer::from_pixel(2, 2, Rgba([0u8, 0, 0, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::SelfAlpha);
+    }
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbで宣言なしならkey_colorのまま() {
+        use image::{ImageBuffer, Rgb};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgb_key_color");
+        let shell_master = create_shell_master(tmp.path());
+        // アルファチャンネルを持たない画像は従来どおりキーカラー抜き対象
+        let img: image::RgbImage = ImageBuffer::from_pixel(2, 2, Rgb([0u8, 255, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::KeyColor);
+    }
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbでも宣言があればself_alphaになる() {
+        use image::{ImageBuffer, Rgb};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgb_declared_self_alpha");
+        let shell_master = create_shell_master(tmp.path());
+        // アルファ非保持でも descript 宣言があれば SelfAlpha を維持（フォールバック）
+        write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,1\n");
+        let img: image::RgbImage = ImageBuffer::from_pixel(2, 2, Rgb([0u8, 255, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::SelfAlpha);
     }
 
     #[cfg(not(feature = "thumbnail"))]
