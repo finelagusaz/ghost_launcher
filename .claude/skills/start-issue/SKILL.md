@@ -52,4 +52,4 @@ git switch -c <prefix>/<N>-<english-description>
 
 ## ステップ 6: 実装へ
 
-`/implement` へ接続する（調査結果を引き継ぎ、ステップ 3 の調査から再開してよい）。
+`/implement` へ接続する（調査結果を引き継ぎ、`/implement` のステップ 3「調査」から再開してよい）。
