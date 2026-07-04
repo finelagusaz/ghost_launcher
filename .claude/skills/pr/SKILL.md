@@ -37,13 +37,16 @@ git log --oneline main..HEAD  # PR に含まれるコミット一覧
 - **影響範囲**: どのモジュール・レイヤーに変更が及んでいるか
 - **要点**: ユーザーが PR レビュアーに伝えたい核心は何か
 
-### ステップ 3: リモートへの push
+### ステップ 3: リモートへの push（gh-HTTPS）
 
-ブランチがリモートに push 済みか確認し、必要なら push する:
+> この環境は SSH push が `~/.ssh/config` の ACL で失敗するため、`/post-merge-sync` と同方式の gh-HTTPS で迂回する。SSH remote にも永続 git config にも触れない。
 
 ```bash
-git push -u origin HEAD
+git -c credential.helper= -c credential.helper='!gh auth git-credential' \
+  push https://github.com/finelagusaz/ghost_launcher.git HEAD
 ```
+
+URL 指定の push は upstream を設定しないため、`gh pr create` には `--head <ブランチ名>` を明示する。
 
 ### ステップ 4: PR の作成
 
@@ -57,7 +60,7 @@ git push -u origin HEAD
 **本文のテンプレート**:
 
 ```
-gh pr create --base main --title "タイトル" --body "$(cat <<'EOF'
+gh pr create --base main --head <ブランチ名> --title "タイトル" --body "$(cat <<'EOF'
 ## Summary
 - 変更点 1
 - 変更点 2
@@ -80,7 +83,8 @@ EOF
 - `npm test`
 - `npm run check:ui-guidelines`
 - `npm run test:ui-guidelines-check`
-- `cargo test --manifest-path src-tauri/Cargo.toml`（Rust 変更がある場合）
+- `cargo test --workspace`（Rust 変更がある場合）
+- `cargo test -p ghost-meta --features thumbnail,serde`（ghost-meta 変更がある場合）
 
 コード変更を伴わない PR（ドキュメントのみ等）では、該当しないチェック項目は省略してよい。
 
