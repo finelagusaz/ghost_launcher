@@ -85,6 +85,12 @@ pub fn scan_and_store(
 
     let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &current_mtimes)?;
 
+    // 起動履歴の集計列（last_launched / launch_count）を user-data.db から再導出する。
+    // ベストエフォート: user-data.db を開けない場合も本来のスキャン結果は返す。
+    if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(&app) {
+        let _ = crate::commands::launch_history::backfill_aggregates(&conn, &user_conn);
+    }
+
     Ok(ScanStoreResult {
         cache_hit: false,
         total,
