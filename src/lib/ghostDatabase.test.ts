@@ -299,6 +299,28 @@ describe("ghostDatabase - random ソートの安定シード", () => {
   });
 });
 
+describe("buildOrderBy", () => {
+  it("recent は JOIN なしで last_launched 列を並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    const orderBy = buildOrderBy("recent");
+    expect(orderBy).toContain("g.last_launched DESC");
+    expect(orderBy).not.toContain("JOIN");
+    expect(orderBy).not.toContain("ghost_launches");
+  });
+
+  it("frequency は JOIN なしで launch_count 列を並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    const orderBy = buildOrderBy("frequency");
+    expect(orderBy).toContain("g.launch_count DESC");
+    expect(orderBy).not.toContain("JOIN");
+  });
+
+  it("name は name_lower を昇順で並べる", async () => {
+    const { buildOrderBy } = await import("./ghostDatabase");
+    expect(buildOrderBy("name")).toContain("g.name_lower ASC");
+  });
+});
+
 describe("ghostDatabase - countGhostsByQuery", () => {
   it("空クエリ時は LIKE なしで件数取得する", async () => {
     mockSelect.mockResolvedValue([{ count: 42 }]);

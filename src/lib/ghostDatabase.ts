@@ -206,37 +206,28 @@ export function reseedRandomSort(): void {
   randomSortSeed = newRandomSortSeed();
 }
 
-function buildOrderBy(sortOrder: SortOrder): { orderBy: string; join: string } {
+// SELECT の ORDER BY 式を返す。recent/frequency は ghosts の非正規化集計列
+// （last_launched / launch_count）で並べる。起動履歴は user-data.db（Rust 専有）に
+// 分離され、集計列は record_launch とスキャン時バックフィルで維持される。
+export function buildOrderBy(sortOrder: SortOrder): string {
   switch (sortOrder) {
     case "random":
-      return {
-        join: "",
-        orderBy: `(g.id * ${randomSortSeed}) % ${RANDOM_SORT_MODULUS}, g.id`,
-      };
+      return `(g.id * ${randomSortSeed}) % ${RANDOM_SORT_MODULUS}, g.id`;
     case "recent":
-      return {
-        join: "LEFT JOIN (SELECT ghost_identity_key, MAX(launched_at) AS last_launched FROM ghost_launches GROUP BY ghost_identity_key) gl ON g.ghost_identity_key = gl.ghost_identity_key",
-        orderBy: "gl.last_launched DESC NULLS LAST, g.name_lower ASC",
-      };
+      return "g.last_launched DESC NULLS LAST, g.name_lower ASC";
     case "frequency":
-      return {
-        join: "LEFT JOIN (SELECT ghost_identity_key, COUNT(*) AS launch_count FROM ghost_launches GROUP BY ghost_identity_key) gl ON g.ghost_identity_key = gl.ghost_identity_key",
-        orderBy: "gl.launch_count DESC NULLS LAST, g.name_lower ASC",
-      };
+      return "g.launch_count DESC, g.name_lower ASC";
     default:
-      return { join: "", orderBy: "g.name_lower ASC" };
+      return "g.name_lower ASC";
   }
 }
 
 export async function searchGhostsInitialPage(requestKey: string, limit: number, sortOrder: SortOrder = "name"): Promise<GhostView[]> {
   return measureSearch("searchGhostsInitialPage", async () => {
     const db = await getDb();
-    const { join, orderBy } = buildOrderBy(sortOrder);
-    const from = join
-      ? `ghosts g ${join}`
-      : "ghosts g";
+    const orderBy = buildOrderBy(sortOrder);
     const rows = await db.select<GhostView[]>(
-      `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ${from} WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ?`,
+      `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ?`,
       [requestKey, limit]
     );
 
@@ -272,14 +263,13 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
 
     const normalizedQuery = normalizeForKey(query);
     const likePattern = `%${normalizedQuery}%`;
-    const { join, orderBy } = buildOrderBy(sortOrder);
-    const from = join ? `ghosts g ${join}` : "ghosts g";
+    const orderBy = buildOrderBy(sortOrder);
     const searchWhere = GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
 
     const [total, rows] = await Promise.all([
       countGhostsByQuery(requestKey, query),
       db.select<GhostView[]>(
-        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ${from} WHERE g.request_key = ? AND (${searchWhere}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? AND (${searchWhere}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
         [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
       ),
     ]);
