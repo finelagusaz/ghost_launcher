@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test";
-import { By, until, Key, type WebDriver } from "selenium-webdriver";
+import { By, until, Key, error as seleniumError, type WebDriver } from "selenium-webdriver";
 import { createHarness, disposeHarness, type Harness } from "./helpers/harness";
 import { waitForAppReady, waitForGhosts, openSettings, closeSettings } from "./helpers/ui";
 
@@ -29,7 +29,21 @@ async function findEmptyStateText(driver: WebDriver): Promise<string | null> {
 /** 現在 DOM に描画されているゴースト名の一覧を取得する（仮想化の窓内のカードのみ） */
 async function visibleGhostNames(driver: WebDriver): Promise<string[]> {
   const els = await driver.findElements(By.css("[data-testid='ghost-name']"));
-  return Promise.all(els.map((el) => el.getText()));
+  return Promise.all(
+    els.map(async (el) => {
+      try {
+        return await el.getText();
+      } catch (err) {
+        // 仮想リストの再描画（SkeletonCard → GhostCard 差し替え）で要素が
+        // 差し替わると getText が stale になる。呼び出し側の wait が次周期で
+        // 再取得するため、この要素は空文字として扱う（他の例外は握り潰さない）。
+        if (err instanceof seleniumError.StaleElementReferenceError) {
+          return "";
+        }
+        throw err;
+      }
+    }),
+  );
 }
 
 // --- テストケース ---
