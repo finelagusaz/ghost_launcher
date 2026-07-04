@@ -53,6 +53,8 @@ locales/
 | `app.settings.close` | 設定を閉じるボタン | — |
 | `header.refresh` | 再読込ボタン | — |
 | `header.settings` | 設定ボタン | — |
+| `header.randomLaunch` | ランダム起動ボタン | — |
+| `header.randomLaunch.empty` | 起動可能なゴーストが無いときのメッセージ | — |
 | `settings.language.label` | 言語選択ラベル | — |
 | `settings.language.ja` | 日本語の表示名 | — |
 | `settings.language.en` | English の表示名 | — |
@@ -85,6 +87,11 @@ locales/
 | `card.launchError` | 起動失敗時のエラーメッセージ | `{{detail}}` |
 | `search.label` | 検索ボックスのラベル | — |
 | `search.placeholder` | 検索ボックスのプレースホルダ | — |
+| `sort.label` | 並び替えラベル | — |
+| `sort.name` | 名前順ソートの選択肢 | — |
+| `sort.recent` | 最近起動した順ソートの選択肢 | — |
+| `sort.frequency` | 起動回数順ソートの選択肢 | — |
+| `sort.random` | ランダムソートの選択肢 | — |
 
 </details>
 
@@ -150,6 +157,8 @@ locales/
 | `app.settings.close` | Close settings button | — |
 | `header.refresh` | Refresh button | — |
 | `header.settings` | Settings button | — |
+| `header.randomLaunch` | Random launch button | — |
+| `header.randomLaunch.empty` | Message when no ghost is available to launch | — |
 | `settings.language.label` | Language selector label | — |
 | `settings.language.ja` | Display name for Japanese | — |
 | `settings.language.en` | Display name for English | — |
@@ -182,6 +191,11 @@ locales/
 | `card.launchError` | Error message on launch failure | `{{detail}}` |
 | `search.label` | Search box label | — |
 | `search.placeholder` | Search box placeholder | — |
+| `sort.label` | Sort selector label | — |
+| `sort.name` | Sort option: by name | — |
+| `sort.recent` | Sort option: recently launched | — |
+| `sort.frequency` | Sort option: most launched | — |
+| `sort.random` | Sort option: random | — |
 
 </details>
 
