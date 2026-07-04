@@ -52,8 +52,14 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
 
 ## ステップ 7: 締め
 
-- SPEC.md に影響する振る舞い変更は、同一コミットで SPEC.md も更新する
-- `src/locales/*.json` のキーを増減した場合は、同一コミットで `docs/locale-customization.md` のキー一覧を更新する（ユーザー向けドキュメントの drift 防止）
+- コード変更が以下に影響する場合、同一コミットで対応ドキュメントも更新する（ドキュメント drift 防止）:
+
+  | コード変更 | 同期するドキュメント |
+  |---|---|
+  | 振る舞い・DB スキーマ・コマンド仕様 | SPEC.md |
+  | `src-tauri/src/commands/` 等へのモジュール（ファイル）新設・移動・削除 | SPEC.md §3.2 モジュール表・ルート CLAUDE.md ツリー |
+  | `src/locales/*.json` のキー増減 | `docs/locale-customization.md` のキー一覧 |
+
 - `/commit` へ接続する（チェックリストの実行とコミットは `/commit` の責務）
 
 ## 注意事項
