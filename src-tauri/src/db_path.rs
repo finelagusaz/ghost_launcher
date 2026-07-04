@@ -26,3 +26,11 @@ pub(crate) fn ghost_db_path<R: tauri::Runtime>(
 ) -> Result<std::path::PathBuf, String> {
     Ok(ghost_db_dir(manager)?.join(GHOST_DB_FILES[0]))
 }
+
+/// user-data.db（永続ユーザーデータ）本体のフルパス。ghosts.db と同じ app_config_dir 基準。
+/// user-data.db は永続ストアであり、reset_ghost_db / sanitize_ghost_db の削除対象に含めない。
+pub(crate) fn user_data_db_path<R: tauri::Runtime>(
+    manager: &impl Manager<R>,
+) -> Result<std::path::PathBuf, String> {
+    Ok(ghost_db_dir(manager)?.join("user-data.db"))
+}
