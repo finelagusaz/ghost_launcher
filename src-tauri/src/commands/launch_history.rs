@@ -43,6 +43,33 @@ pub(crate) fn record_launch_inner(
     Ok(())
 }
 
+/// user-data.db の起動履歴集計（identity 毎の MAX(launched_at) と COUNT）を
+/// ghosts.db の集計列へ書き戻す。キャッシュ再構築（cache miss）の後に呼ぶ。
+/// COUNT は単調増加のため、起動済みキーだけを上書きすれば未起動行は 0/NULL のまま残る。
+pub(crate) fn backfill_aggregates(
+    ghosts_conn: &Connection,
+    user_conn: &Connection,
+) -> Result<(), String> {
+    let aggregates: Vec<(String, String, i64)> = {
+        let mut stmt = user_conn
+            .prepare("SELECT ghost_identity_key, MAX(launched_at), COUNT(*) FROM ghost_launches GROUP BY ghost_identity_key")
+            .map_err(|e| format!("集計 SELECT 準備エラー: {e}"))?;
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .map_err(|e| format!("集計 SELECT エラー: {e}"))?
+            .filter_map(Result::ok)
+            .collect()
+    };
+    for (key, last, count) in aggregates {
+        ghosts_conn
+            .execute(
+                "UPDATE ghosts SET last_launched = ?2, launch_count = ?3 WHERE ghost_identity_key = ?1",
+                rusqlite::params![key, last, count],
+            )
+            .map_err(|e| format!("集計列バックフィル UPDATE エラー: {e}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,6 +108,40 @@ mod tests {
             .unwrap();
         assert_eq!(count, 2);
         assert!(last.is_some(), "last_launched が設定されること");
+    }
+
+    #[test]
+    fn backfill_aggregatesはuserdataの集計をghostsへ再導出する() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = ghosts_conn_with_row("sspg");
+        // 未起動の別ゴースト B も用意（0/NULL のままであること）
+        ghosts_conn
+            .execute(
+                "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', 'sspb', '', 'B', '', '', '', '', 'b', '/b', 'ssp', 'b', '', '', '', '', 'b', '', 0, '', '')",
+                [],
+            )
+            .unwrap();
+        // user-data に A の起動 3 回（時刻昇順）
+        for at in ["2026-01-01 00:00:00", "2026-01-02 00:00:00", "2026-01-03 00:00:00"] {
+            user_conn
+                .execute("INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES ('sspg', ?1)", rusqlite::params![at])
+                .unwrap();
+        }
+
+        backfill_aggregates(&ghosts_conn, &user_conn).unwrap();
+
+        let (count, last): (i64, Option<String>) = ghosts_conn
+            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(count, 3);
+        assert_eq!(last.as_deref(), Some("2026-01-03 00:00:00"));
+
+        let (bcount, blast): (i64, Option<String>) = ghosts_conn
+            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspb'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(bcount, 0);
+        assert_eq!(blast, None);
     }
 
     #[test]
