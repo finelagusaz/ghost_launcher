@@ -28,7 +28,7 @@ npx playwright test -c playwright.tauri.config.ts
 ```
 
 - **`GHOST_LAUNCHER_E2E_APP` は必ず指定**する。cargo workspace のため `tauri build` の出力は*ワークスペース直下* `target/release/` に集約されるが、harness の `getAppBinaryPath()` 既定は `src-tauri/target/release/`（化石）を指す。override しないと古いバイナリを検証してしまう。
-- **`EDGEDRIVER_VERSION`** は WebView2 Runtime の版（2026-06 時点 `149.0.4022.80`）に合わせる。レジストリの `pv` は `e2e/CLAUDE.md` 参照。
+- **`EDGEDRIVER_VERSION`** は WebView2 Runtime の版に合わせる。版は環境・時期で変わるため直値を覚えず、**都度レジストリの `pv` を実測**して指定する（取得元のレジストリキーは `e2e/CLAUDE.md` 参照）。
 - 特定テストのみ: `-g "<テスト名>"` を付ける。
 
 ## ステップ 3: 既知の skip 要因を踏まえて結果を解釈
