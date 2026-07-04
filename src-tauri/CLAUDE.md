@@ -14,7 +14,7 @@
 
 **マイグレーション SQL の不変性（絶対厳守）**: sqlx は適用済みマイグレーションの SQL 文字列の SHA-384 チェックサムを `_sqlx_migrations` テーブルに記録し、起動時に再検証する。空白・インデントを含む**あらゆる変更**がチェックサム不一致を引き起こし「migration N was previously applied but has been modified」でクラッシュする。このため: (1) 一度でもリリース・コミットした migration の SQL は**絶対に編集しない**。(2) 複数行 SQL は Rust のインデントが文字列に混入しないよう `"ALTER TABLE ...\nCREATE INDEX ..."` のように **`\n` を明示**して書く（raw 改行 + インデントを使うとリファクタリング時にインデントが変わり即クラッシュする）。
 
-**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db の再作成でゴーストキャッシュは再スキャンで復旧するが、同居する永続テーブル `ghost_launches`（起動履歴）は失われる（改善検討は issue #93）。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
+**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db は純粋キャッシュ（再スキャンで復旧）であり、永続的な起動履歴は `user-data.db`（Rust 専有・rusqlite、`commands/launch_history.rs`）へ分離済みのため、リセットで失われない。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
 **DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
 
@@ -22,7 +22,7 @@
 
 **store_ghosts の差分 UPSERT**: `store_ghosts` は DELETE-all + INSERT-all ではなく、既存行の `(ghost_identity_key, row_fingerprint)` をカバリングインデックスから読み、スキャン結果と比較して INSERT/UPDATE/DELETE を最小限に実行する。`ghost_identity_key` は NFKC(source) + `\x1f` + NFKC(directory_name) で構成される論理主キー、`row_fingerprint` は 9 メタデータフィールドの SHA-256。変更なしの行は完全にスキップされる。
 
-**永続テーブルのマイグレーション**: `ghost_launches` や将来の `favorites` 等の永続テーブル（ユーザー蓄積データ）は、揮発キャッシュの `ghosts` と異なり**マイグレーションで `DELETE FROM` してはならない**。破壊的スキーマ変更はデータ移行 SQL を必須とし、段階移行（新列追加 → バックフィル → 参照切替）で行う。ゴーストへの外部参照は `ghosts.id`（再投入で値が変わる）ではなく `ghost_identity_key` を使う。データモデルの根拠とキー構成は `SPEC.md` §4.5 を参照。
+**永続テーブルのマイグレーション**: `ghost_launches` や将来の `favorites` 等の永続テーブル（ユーザー蓄積データ）は、揮発キャッシュの `ghosts` と異なり**マイグレーションで `DELETE FROM` してはならない**。破壊的スキーマ変更はデータ移行 SQL を必須とし、段階移行（新列追加 → バックフィル → 参照切替）で行う。ゴーストへの外部参照は `ghosts.id`（再投入で値が変わる）ではなく `ghost_identity_key` を使う。起動履歴は現在 `user-data.db` へ分離済み。将来の `favorites` 等の永続テーブルも user-data.db 側へ置き、揮発キャッシュ ghosts.db との運命共有を避ける。データモデルの根拠とキー構成は `SPEC.md` §4.5 を参照。
 
 ## IPC 型の管理
 

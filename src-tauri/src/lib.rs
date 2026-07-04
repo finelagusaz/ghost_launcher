@@ -272,7 +272,8 @@ mod tests {
 
 /// マイグレーション適用前に ghosts.db の整合性を検証する。
 /// 未適用マイグレーションが ADD COLUMN しようとするカラムが既に存在する場合、
-/// DB ファイルを削除して再作成を促す。ghosts.db はキャッシュなので安全。
+/// DB ファイルを削除して再作成を促す。ghosts.db は揮発キャッシュ（再スキャンで復旧）であり、
+/// 永続的な起動履歴は user-data.db へ分離済みのため、削除しても失われない。
 fn sanitize_ghost_db(app: &tauri::App) {
     let Ok(db_dir) = db_path::ghost_db_dir(app) else {
         return;
