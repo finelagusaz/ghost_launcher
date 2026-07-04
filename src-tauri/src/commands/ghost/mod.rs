@@ -16,6 +16,14 @@ fn ensure_request_key(request_key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 起動履歴の集計列を user-data.db から ghosts へ再導出する（ベストエフォート）。
+/// user-data.db を開けない場合は何もしない（スキャン結果を阻害しない）。
+fn backfill_launch_aggregates(app: &tauri::AppHandle, ghosts_conn: &rusqlite::Connection) {
+    if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(app) {
+        let _ = crate::commands::launch_history::backfill_aggregates(ghosts_conn, &user_conn);
+    }
+}
+
 /// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
 /// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
 ///
@@ -45,6 +53,7 @@ pub fn scan_and_store(
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             let _ = store::configure_connection(&conn);
             if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
+                backfill_launch_aggregates(&app, &conn);
                 return Ok(ScanStoreResult {
                     cache_hit: true,
                     total: 0,
@@ -69,6 +78,7 @@ pub fn scan_and_store(
                 "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
                 rusqlite::params![current_mtimes, request_key],
             );
+            backfill_launch_aggregates(&app, &conn);
         }
         return Ok(ScanStoreResult {
             cache_hit: true,
@@ -85,11 +95,7 @@ pub fn scan_and_store(
 
     let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &current_mtimes)?;
 
-    // 起動履歴の集計列（last_launched / launch_count）を user-data.db から再導出する。
-    // ベストエフォート: user-data.db を開けない場合も本来のスキャン結果は返す。
-    if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(&app) {
-        let _ = crate::commands::launch_history::backfill_aggregates(&conn, &user_conn);
-    }
+    backfill_launch_aggregates(&app, &conn);
 
     Ok(ScanStoreResult {
         cache_hit: false,
