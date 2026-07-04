@@ -64,6 +64,7 @@ ghost_launcher/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
 │       │   ├── ssp.rs          # ゴースト起動・SSP パス検証コマンド
+│       │   ├── launch_history.rs # 起動履歴記録（record_launch）・user-data.db 管理
 │       │   ├── db.rs           # DB リセット（マイグレーション失敗時の自動回復）
 │       │   └── locale.rs       # ユーザー言語ファイル読込
 │       ├── db_path.rs          # ghosts.db パス解決の単一権威
