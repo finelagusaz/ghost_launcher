@@ -84,6 +84,18 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "CREATE TABLE IF NOT EXISTS ghost_launches (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  ghost_identity_key TEXT NOT NULL,\n  launched_at TEXT NOT NULL\n);\nCREATE INDEX IF NOT EXISTS idx_ghost_launches_identity ON ghost_launches(ghost_identity_key);\nCREATE INDEX IF NOT EXISTS idx_ghost_launches_at ON ghost_launches(launched_at DESC);",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 12,
+            description: "add_launch_aggregates_to_ghosts",
+            sql: "ALTER TABLE ghosts ADD COLUMN last_launched TEXT;\nALTER TABLE ghosts ADD COLUMN launch_count INTEGER NOT NULL DEFAULT 0;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 13,
+            description: "drop_legacy_ghost_launches_from_cache_db",
+            sql: "DROP TABLE IF EXISTS ghost_launches;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 
@@ -103,6 +115,31 @@ mod tests {
             conn.execute_batch(m.sql)
                 .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
         }
+    }
+
+    #[test]
+    fn migration12と13で集計列追加と旧履歴テーブル除去が行われる() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut applied = migrations();
+        applied.sort_by_key(|m| m.version);
+        for m in applied {
+            conn.execute_batch(m.sql).unwrap();
+        }
+        // ghosts に集計列が存在する
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(ghosts)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert!(cols.contains(&"last_launched".to_string()));
+        assert!(cols.contains(&"launch_count".to_string()));
+        // 旧 ghost_launches テーブルは ghosts.db から除去されている
+        let has_launches: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ghost_launches'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(has_launches, 0, "ghost_launches は user-data.db へ分離され ghosts.db からは除去される");
     }
 
     #[test]
