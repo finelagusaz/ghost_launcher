@@ -5,7 +5,7 @@ description: コミット前チェックリストを実行し、全パスした�
 
 # Commit ワークフロー
 
-コミット前チェックリスト（CLAUDE.md 準拠）を実行し、全パス後にコミットを作成する。
+コミット前チェックリスト（本スキルが単一権威）を実行し、全パス後にコミットを作成する。
 
 ## ステップ 1: 変更内容の把握
 
@@ -30,12 +30,18 @@ npm test
 npm run check:ui-guidelines
 npm run test:ui-guidelines-check
 
-# グループ B（並列実行）
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path crates/ghost-meta/Cargo.toml
+# グループ B（順次実行。CI の ci-build.yml と同一コマンド）
+cargo test --workspace
+cargo test -p ghost-meta --features thumbnail,serde
 ```
 
-グループ A とグループ B は互いに独立しているため並列実行してよい。
+グループ A とグループ B は互いに独立しているため並列実行してよい（グループ B 内は target ディレクトリのロック競合を避けるため順次）。
+
+### 追加の確認事項
+
+- **新規テストファイルを追加した場合**: `ci-build.yml` で実行されるか・`tsconfig.json` の `exclude` に追加が必要か・`vitest.config.ts` の `include` が検出するかを確認する
+- **UI 操作・言語表示・フォーム入力に関わる変更の場合**: E2E テスト（`/e2e`）の手動実行を済ませたか確認する（E2E は CI に含まれない）
+- **IPC struct を変更した場合**: `cargo test --workspace` 後に `src/types/generated/` の差分をコミットに含める
 
 ### チェック失敗時の対応
 
@@ -58,13 +64,13 @@ cargo test --manifest-path crates/ghost-meta/Cargo.toml
 - **prefix**: `feat:` / `fix:` / `refactor:` / `perf:` / `docs:` / `test:` / `chore:`
 - **言語**: 日本語（このプロジェクトの慣習に従う）
 - **構成**: 1 行目に要約、必要に応じて空行 + 詳細
-- **Co-Authored-By**: 末尾に `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` を付与
+- **Co-Authored-By**: 末尾にハーネス既定の Co-Authored-By 行を付与する（モデル名をこのスキルにハードコードしない。ハーネスの指示に従う）
 
 ```bash
 git commit -m "$(cat <<'EOF'
 prefix: コミットメッセージ
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: <ハーネス既定の表記>
 EOF
 )"
 ```
