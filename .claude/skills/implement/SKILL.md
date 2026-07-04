@@ -53,6 +53,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
 ## ステップ 7: 締め
 
 - SPEC.md に影響する振る舞い変更は、同一コミットで SPEC.md も更新する
+- `src/locales/*.json` のキーを増減した場合は、同一コミットで `docs/locale-customization.md` のキー一覧を更新する（ユーザー向けドキュメントの drift 防止）
 - `/commit` へ接続する（チェックリストの実行とコミットは `/commit` の責務）
 
 ## 注意事項
