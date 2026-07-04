@@ -336,6 +336,25 @@ fn has_migration_conflict(conn: &rusqlite::Connection) -> bool {
     false
 }
 
+/// user-data.db を初期化し、旧 ghosts.db.ghost_launches の履歴を一度だけ移送する。
+/// Rust setup（JS の Database.load によるマイグレーションより先に走る）で呼ぶことで、
+/// migration 13 の旧テーブル DROP より前に移送を完了させる。
+fn init_user_data(app: &tauri::App) {
+    let Ok(user_conn) = commands::launch_history::open_user_data_db(app) else {
+        eprintln!("[user-data] user-data.db を初期化できませんでした");
+        return;
+    };
+    let Ok(ghosts_path) = db_path::ghost_db_path(app) else {
+        return;
+    };
+    // ghosts.db が存在するときだけ legacy 移送を試みる（空ファイルの事前生成を避ける）
+    if ghosts_path.exists() {
+        if let Ok(ghosts_conn) = rusqlite::Connection::open(&ghosts_path) {
+            let _ = commands::launch_history::migrate_legacy_launch_history(&ghosts_conn, &user_conn);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -349,12 +368,13 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             sanitize_ghost_db(app);
+            init_user_data(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::db::reset_ghost_db,
             commands::ghost::scan_and_store,
-
+            commands::launch_history::record_launch,
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,
             commands::locale::read_user_locale,

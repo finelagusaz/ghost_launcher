@@ -113,6 +113,17 @@ pub(crate) fn migrate_legacy_launch_history(
     Ok(())
 }
 
+/// 起動履歴を記録する Tauri コマンド。user-data.db へ INSERT し ghosts.db の集計列を bump する。
+#[tauri::command]
+pub fn record_launch(app: tauri::AppHandle, ghost_identity_key: String) -> Result<(), String> {
+    let user_conn = open_user_data_db(&app)?;
+    let ghosts_path = crate::db_path::ghost_db_path(&app)?;
+    let ghosts_conn =
+        Connection::open(&ghosts_path).map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
+    crate::commands::ghost::store::configure_connection(&ghosts_conn)?;
+    record_launch_inner(&user_conn, &ghosts_conn, &ghost_identity_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
