@@ -70,6 +70,49 @@ pub(crate) fn backfill_aggregates(
     Ok(())
 }
 
+/// 旧 ghosts.db.ghost_launches の履歴を user-data.db へ一度だけ複写する。
+/// 冪等ガード = user-data.db が空のときだけ複写する（二重複写を防ぐ）。
+/// このため migration 13 による旧テーブル DROP の順序に依存せず安全。
+pub(crate) fn migrate_legacy_launch_history(
+    ghosts_conn: &Connection,
+    user_conn: &Connection,
+) -> Result<(), String> {
+    let already: i64 = user_conn
+        .query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0))
+        .unwrap_or(0);
+    if already > 0 {
+        return Ok(());
+    }
+    let has_legacy: i64 = ghosts_conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ghost_launches'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if has_legacy == 0 {
+        return Ok(());
+    }
+    let legacy: Vec<(String, String)> = {
+        let mut stmt = ghosts_conn
+            .prepare("SELECT ghost_identity_key, launched_at FROM ghost_launches")
+            .map_err(|e| format!("legacy SELECT 準備エラー: {e}"))?;
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| format!("legacy SELECT エラー: {e}"))?
+            .filter_map(Result::ok)
+            .collect()
+    };
+    for (key, at) in legacy {
+        user_conn
+            .execute(
+                "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, ?2)",
+                rusqlite::params![key, at],
+            )
+            .map_err(|e| format!("legacy 移送 INSERT エラー: {e}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +185,43 @@ mod tests {
             .unwrap();
         assert_eq!(bcount, 0);
         assert_eq!(blast, None);
+    }
+
+    fn ghosts_conn_with_legacy_launches(rows: &[(&str, &str)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        // migration 11 相当の legacy テーブルのみ用意（本テストは移送だけを対象）
+        conn.execute_batch(
+            "CREATE TABLE ghost_launches (id INTEGER PRIMARY KEY AUTOINCREMENT, ghost_identity_key TEXT NOT NULL, launched_at TEXT NOT NULL);",
+        )
+        .unwrap();
+        for (key, at) in rows {
+            conn.execute("INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, ?2)", rusqlite::params![key, at]).unwrap();
+        }
+        conn
+    }
+
+    #[test]
+    fn migrate_legacyは旧履歴を複写し二度目は複写しない() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = ghosts_conn_with_legacy_launches(&[("sspg", "2026-01-01 00:00:00"), ("sspg", "2026-01-02 00:00:00")]);
+
+        migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
+        // 冪等: 二度目は user-data が非空なので何もしない
+        migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
+
+        let total: i64 = user_conn.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 2, "重複複写されないこと");
+    }
+
+    #[test]
+    fn migrate_legacyはlegacyテーブル不在でno_op() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = Connection::open_in_memory().unwrap(); // ghost_launches なし
+        migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
+        let total: i64 = user_conn.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 0);
     }
 
     #[test]
