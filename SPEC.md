@@ -74,6 +74,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
 | `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
+| `commands/launch_history.rs` | 起動履歴の記録（record_launch）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 
