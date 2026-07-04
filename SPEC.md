@@ -112,7 +112,7 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 | `path`                       | `String`  | ゴーストのフルパス                                                              |
 | `source`                     | `String`  | `"ssp"`（SSP 内ゴースト）またはフォルダのフルパス（追加フォルダ）               |
 | `thumbnail_path`             | `String`  | サムネイル画像のフルパス。存在しない場合は空文字列                              |
-| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過 |
+| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過。判定は実画像の color type を優先し、アルファチャンネルを持つ（RGBA / グレースケール+アルファ）場合は descript の `seriko.use_self_alpha` 宣言に関わらず `true`。持たない場合のみ宣言に従う。加えてフロントは `false` でも左上ピクセルが不透明でなければキー色抜きを行わず native alpha を尊重する（黒消え防止の多層防御） |
 | `thumbnail_kind`             | `String`  | `"surface"` / `"thumbnail"` / `""`（サムネイルなし）                            |
 | `diff_fingerprint`           | `String`  | 差分更新判定用の軽量フィンガープリント（メタデータ全フィールドの SHA-256）       |
 
