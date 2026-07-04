@@ -93,17 +93,16 @@ fn resolve_surface0(
     let filename = apng_files.first().or_else(|| png_files.first())?;
     let path = shell_master.join(filename);
 
-    let descript_alpha = match shell_descript {
-        Some(fields) => seriko_alpha_from_fields(fields),
-        None => read_seriko_use_self_alpha(ghost_root),
-    };
     // 実画像が本物のアルファチャンネルを持つ場合は宣言に関わらず SelfAlpha を優先する。
     // （seriko.use_self_alpha 未宣言の RGBA サーフェスがキーカラー抜きへ流れて
-    // 黒消えする不具合の根本対策。持たない場合のみ descript 由来の判定を使う）
+    // 黒消えする不具合の根本対策。アルファを持たないときだけ descript 宣言に従う）
     let alpha = if png_has_alpha_channel(&path) {
         AlphaMode::SelfAlpha
     } else {
-        descript_alpha
+        match shell_descript {
+            Some(fields) => seriko_alpha_from_fields(fields),
+            None => read_seriko_use_self_alpha(ghost_root),
+        }
     };
 
     Some(ThumbnailInfo {
