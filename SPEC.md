@@ -112,7 +112,7 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 | `path`                       | `String`  | ゴーストのフルパス                                                              |
 | `source`                     | `String`  | `"ssp"`（SSP 内ゴースト）またはフォルダのフルパス（追加フォルダ）               |
 | `thumbnail_path`             | `String`  | サムネイル画像のフルパス。存在しない場合は空文字列                              |
-| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過 |
+| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過。ただし `false` でも実画像が本物のアルファを持つ場合（左上ピクセルが不透明でない）はキー色抜きを行わず native alpha を尊重する（黒消え防止） |
 | `thumbnail_kind`             | `String`  | `"surface"` / `"thumbnail"` / `""`（サムネイルなし）                            |
 | `diff_fingerprint`           | `String`  | 差分更新判定用の軽量フィンガープリント（メタデータ全フィールドの SHA-256）       |
 
