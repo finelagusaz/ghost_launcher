@@ -21,9 +21,67 @@ pub(crate) fn open_user_data_db<R: tauri::Runtime>(
     Ok(conn)
 }
 
+/// 起動履歴を記録する。user-data.db へ INSERT（権威）し、ghosts.db の集計列を bump（導出）する。
+/// user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回バックフィルで整合する。
+pub(crate) fn record_launch_inner(
+    user_conn: &Connection,
+    ghosts_conn: &Connection,
+    ghost_identity_key: &str,
+) -> Result<(), String> {
+    user_conn
+        .execute(
+            "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, datetime('now'))",
+            rusqlite::params![ghost_identity_key],
+        )
+        .map_err(|e| format!("起動履歴 INSERT エラー: {e}"))?;
+    ghosts_conn
+        .execute(
+            "UPDATE ghosts SET launch_count = launch_count + 1, last_launched = datetime('now') WHERE ghost_identity_key = ?1",
+            rusqlite::params![ghost_identity_key],
+        )
+        .map_err(|e| format!("集計列 UPDATE エラー: {e}"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ghosts_conn_with_row(identity_key: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut migs = crate::migrations();
+        migs.sort_by_key(|m| m.version);
+        for m in migs {
+            conn.execute_batch(m.sql).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
+            rusqlite::params![identity_key],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn record_launch_innerはuserdataへinsertしghostsの集計列をbumpする() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = ghosts_conn_with_row("sspg");
+
+        record_launch_inner(&user_conn, &ghosts_conn, "sspg").unwrap();
+        record_launch_inner(&user_conn, &ghosts_conn, "sspg").unwrap();
+
+        let launches: i64 = user_conn
+            .query_row("SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key = 'sspg'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(launches, 2);
+
+        let (count, last): (i64, Option<String>) = ghosts_conn
+            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(count, 2);
+        assert!(last.is_some(), "last_launched が設定されること");
+    }
 
     #[test]
     fn ensure_schemaはghost_launchesテーブルを冪等に作る() {
