@@ -48,6 +48,9 @@ npm run e2e:setup
 
 # E2E テストの実行（事前に npm run tauri build が必要）
 npm run e2e
+
+# target フォルダ肥大化時のクリーン（30日以上未使用のビルド成果物を削除。要 cargo install cargo-sweep）
+cargo sweep -t 30 .
 ```
 
 ## ディレクトリ構成
