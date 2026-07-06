@@ -31,6 +31,12 @@ npm run dev
 # フロントエンドをビルド
 npm run build
 
+# フロントエンドのユニットテスト（vitest。単一ファイルは npx vitest run <path>）
+npm test
+
+# UI ガイドライン静的チェック
+npm run check:ui-guidelines
+
 # Rust バックエンドのコンパイル確認
 cd src-tauri && cargo check
 
@@ -43,7 +49,7 @@ cargo test --manifest-path crates/ghost-meta/Cargo.toml
 # アプリ全体をビルド
 npm run tauri build
 
-# E2E テストのセットアップ（初回のみ・tauri-driver と EdgeDriver を用意）
+# E2E テストのセットアップ（初回のみ・tauri-driver 導入 + no-bundle ビルド）
 npm run e2e:setup
 
 # E2E テストの実行（事前に npm run tauri build が必要）
@@ -61,6 +67,9 @@ ghost_launcher/
 │   ├── lib/                    # Tauri 呼び出し・ビジネスロジック
 │   ├── hooks/                  # React カスタムフック
 │   ├── components/             # React コンポーネント
+│   ├── types/                  # TS 型定義（generated/ は ts-rs 自動生成・手編集禁止）
+│   ├── locales/                # UI 翻訳リソース（ja/en/zh-CN/zh-TW/ko/ru）
+│   ├── test/                   # vitest セットアップ・Tauri API モック・fixtures
 │   └── App.tsx                 # ルートコンポーネント
 ├── src-tauri/                  # Rust バックエンド → src-tauri/CLAUDE.md
 │   └── src/
@@ -80,6 +89,7 @@ ghost_launcher/
 │   │   └── ui.ts               # 共通 UI ヘルパー（waitForAppReady など）
 │   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
 │   └── i18n.e2e.ts             # 言語切り替え・NFKC 正規化の E2E テスト
+├── scripts/                    # UI ガイドライン検査（check-ui-guidelines.mjs）・Claude Code フック（hooks/*.sh）
 ├── docs/
 │   ├── ui-guidelines.md        # UI デザインガイドライン
 │   └── locale-customization.md # ユーザー言語カスタマイズ仕様
@@ -103,7 +113,7 @@ ghost_launcher/
 
 - `lib/` — Tauri コマンド呼び出しラッパー・キャッシュ寿命管理・起動ロジック・設定ストア
 - `hooks/` — 設定・ゴーストスキャン・検索・仮想スクロール・テーマ検出などの React カスタムフック
-- `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox
+- `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox / SkeletonCard
 
 ### 横断パターン
 
@@ -199,4 +209,4 @@ GitHub Flow に準拠する。
 - `RETROSPECTIVE.md` — 過去の振り返り（デバッグ教訓・アーキテクチャ上の学び）
   - **更新タイミング**: サイクル終了後（実装・レビュー・追加修正まで完了したとき）
   - **更新方法**: 上書き（追記しない）。前回サイクルの内容を新サイクルの振り返りで置き換える
-  - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `ui/CLAUDE.md` / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる
+  - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `src/CLAUDE.md` 等のフォルダ規約 / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる
