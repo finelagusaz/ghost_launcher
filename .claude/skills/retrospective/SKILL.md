@@ -1,6 +1,6 @@
 ---
 name: retrospective
-description: サイクル終了後の振り返りを定型化する。ユーザーが「振り返りして」「レトロスペクティブ」「/retrospective」と言ったときに使う。教訓を先にドキュメントへ抽出してから RETROSPECTIVE.md を上書きする（抽出前の上書き禁止）。
+description: サイクル終了後の振り返りを定型化する。ユーザーが「振り返りして」「レトロスペクティブ」「/retrospective」と言ったときに使う。
 disable-model-invocation: true
 ---
 

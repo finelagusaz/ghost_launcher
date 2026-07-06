@@ -1,6 +1,6 @@
 ---
 name: ipc-check
-description: Tauri IPC 境界（Rust↔TS）の契約を検証する。src-tauri/src/commands/ 配下・invoke ラッパー（src/lib/）・src/types/generated/ に触れる変更をしたとき、または「/ipc-check」と言われたときに使う。生成型の同期・命名変換の非対称・セマンティクス変更・テストモック契約を監査する。
+description: Tauri IPC 境界（Rust↔TS）の契約を検証する。src-tauri/src/commands/ 配下・invoke ラッパー（src/lib/）・src/types/generated/ に触れる変更をしたとき、または「/ipc-check」と言われたときに使う。
 ---
 
 # IPC 境界の契約検証
