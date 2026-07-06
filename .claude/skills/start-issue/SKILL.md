@@ -1,6 +1,6 @@
 ---
 name: start-issue
-description: GitHub issue への着手を定型化するプリステップ。ユーザーが「issue #N に着手」「issue #N やって」「/start-issue N」と言ったときに使う。issue 確認→clean 確認→main 最新化→ブランチ作成→調査・方針提示まで行う。
+description: GitHub issue への着手を定型化するプリステップ。ユーザーが「issue #N に着手」「issue #N やって」「/start-issue N」と言ったときに使う。
 ---
 
 # issue 着手ワークフロー

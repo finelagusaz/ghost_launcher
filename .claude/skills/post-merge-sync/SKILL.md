@@ -1,6 +1,6 @@
 ---
 name: post-merge-sync
-description: PR マージ後に main をローカル同期し、作業ブランチを後始末する。ユーザーが「マージ後の同期」「post-merge-sync」「ブランチ片付けて」と言ったときに使う。この環境は SSH push/fetch が壊れているため gh-HTTPS 経由で行う。
+description: PR マージ後に main をローカル同期し、作業ブランチを後始末する。ユーザーが「マージ後の同期」「post-merge-sync」「ブランチ片付けて」と言ったとき、または PR のマージ後に使う。
 disable-model-invocation: true
 ---
 

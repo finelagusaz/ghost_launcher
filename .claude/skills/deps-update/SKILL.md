@@ -1,6 +1,6 @@
 ---
 name: deps-update
-description: cargo/npm の依存を一括更新し検証する。ユーザーが「依存更新して」「deps 更新」「/deps-update」と言ったときに使う。メジャー更新の個別判断と tauri 系の版揃え・links 制約を踏まえる。
+description: cargo/npm の依存を一括更新し検証する。ユーザーが「依存更新して」「deps 更新」「/deps-update」と言ったときに使う。
 disable-model-invocation: true
 ---
 

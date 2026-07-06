@@ -1,6 +1,6 @@
 ---
 name: commit
-description: コミット前チェックリストを実行し、全パスしたらコミットする。ユーザーが「コミットして」「/commit」と言ったときに使う。チェック失敗時は修正を提案する。
+description: ユーザーが「コミットして」「/commit」と言ったとき、または作業フロー（/implement 等）の締めでコミットが必要になったときに使う。
 ---
 
 # Commit ワークフロー
@@ -43,7 +43,7 @@ cargo test -p ghost-meta --features thumbnail,serde
 
 - **新規テストファイルを追加した場合**: `ci-build.yml` で実行されるか・`tsconfig.json` の `exclude` に追加が必要か・`vitest.config.ts` の `include` が検出するかを確認する
 - **UI 操作・言語表示・フォーム入力に関わる変更の場合**: E2E テスト（`/e2e`）の手動実行を済ませたか確認する（E2E は CI に含まれない）
-- **IPC struct を変更した場合**: `cargo test --workspace` 後に `src/types/generated/` の差分をコミットに含める
+- **生成型の照合（CI の「Verify generated types are committed」と同一ゲート）**: `cargo test --workspace` 後に `git status --porcelain src/types/generated/` を確認し、差分・未追跡ファイルが出たらコミットに含める
 
 ### チェック失敗時の対応
 

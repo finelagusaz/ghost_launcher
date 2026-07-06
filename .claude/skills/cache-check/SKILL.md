@@ -1,6 +1,6 @@
 ---
 name: cache-check
-description: キャッシュ・状態遷移の整合性を検証する。キャッシュ（localStorage/ghosts.db）・fingerprint・request_key・DB スキーマ・状態管理に触れる変更をしたとき、または「/cache-check」と言われたときに使う。2 層キャッシュの独立リセット耐性と揮発/永続分離を検査する。
+description: キャッシュ・状態遷移の整合性を検証する。キャッシュ（localStorage/ghosts.db）・fingerprint・request_key・DB スキーマ・状態管理に触れる変更をしたとき、または「/cache-check」と言われたときに使う。
 ---
 
 # キャッシュ・状態整合検証
