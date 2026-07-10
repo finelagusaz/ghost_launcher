@@ -1,6 +1,6 @@
 ---
 name: pr
-description: PR の作成を一気通貫で実行するスキル。ユーザーが「PR 作って」「PR お願い」「/pr」と言ったとき、または作業完了後に PR 作成を依頼されたときに使う。ブランチの変更内容を分析し、conventional commits 形式のタイトルと構造化された本文を生成して GitHub PR を作成する。コミット済みの作業ブランチ（main 以外）で使うことを想定している。
+description: ユーザーが「PR 作って」「PR お願い」「/pr」と言ったとき、または作業完了後に PR 作成を依頼されたときに使う。コミット済みの作業ブランチ（main 以外）で使うことを想定している。
 ---
 
 # PR ワークフロー
@@ -37,13 +37,16 @@ git log --oneline main..HEAD  # PR に含まれるコミット一覧
 - **影響範囲**: どのモジュール・レイヤーに変更が及んでいるか
 - **要点**: ユーザーが PR レビュアーに伝えたい核心は何か
 
-### ステップ 3: リモートへの push
+### ステップ 3: リモートへの push（gh-HTTPS）
 
-ブランチがリモートに push 済みか確認し、必要なら push する:
+> この環境は SSH push が `~/.ssh/config` の ACL で失敗するため、`/post-merge-sync` と同方式の gh-HTTPS で迂回する。SSH remote にも永続 git config にも触れない。
 
 ```bash
-git push -u origin HEAD
+git -c credential.helper= -c credential.helper='!gh auth git-credential' \
+  push https://github.com/finelagusaz/ghost_launcher.git HEAD
 ```
+
+URL 指定の push は upstream を設定しないため、`gh pr create` には `--head <ブランチ名>` を明示する。
 
 ### ステップ 4: PR の作成
 
@@ -57,7 +60,7 @@ git push -u origin HEAD
 **本文のテンプレート**:
 
 ```
-gh pr create --base main --title "タイトル" --body "$(cat <<'EOF'
+gh pr create --base main --head <ブランチ名> --title "タイトル" --body "$(cat <<'EOF'
 ## Summary
 - 変更点 1
 - 変更点 2
@@ -80,13 +83,18 @@ EOF
 - `npm test`
 - `npm run check:ui-guidelines`
 - `npm run test:ui-guidelines-check`
-- `cargo test --manifest-path src-tauri/Cargo.toml`（Rust 変更がある場合）
+- `cargo test --workspace`（Rust 変更がある場合）
+- `cargo test -p ghost-meta --features thumbnail,serde`（ghost-meta 変更がある場合）
 
 コード変更を伴わない PR（ドキュメントのみ等）では、該当しないチェック項目は省略してよい。
 
 ### ステップ 5: 結果の報告
 
 PR の URL をユーザーに伝える。シンプルに URL だけでよい。
+
+### ステップ 6: マージの見届け（マージまで指示がある場合のみ）
+
+ユーザーからマージまで求められている場合: `gh pr checks <N> --watch` で CI の完了を待ち、pass を確認してから `gh pr merge <N> --squash` でマージする。その後の main 同期・ブランチ後始末は `/post-merge-sync` の手順に従う（同スキルはユーザー専用のため、モデルが行う場合は `.claude/skills/post-merge-sync/SKILL.md` を読んで手順を踏襲する）。
 
 ## 注意事項
 

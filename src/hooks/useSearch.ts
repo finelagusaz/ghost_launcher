@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { GhostView } from "../types";
+import type { GhostView, SortOrder } from "../types";
 import { countGhostsByQuery, searchGhosts, searchGhostsInitialPage } from "../lib/ghostDatabase";
 
 // バッファの最大サイズ。これを超えるマージは全置換にフォールバックする
@@ -10,7 +10,12 @@ export function useSearch(
   query: string,
   limit: number,
   offset: number,
-  refreshTrigger: number
+  refreshTrigger: number,
+  sortOrder: SortOrder = "name",
+  // ランダム再選択によるシード変更を可視化する epoch。resetKey/deps に含めることで、
+  // モジュールスコープの reseedRandomSort() だけでは検知できない「同値再選択」でも
+  // 全置換フェッチを強制し、旧シードのバッファが新シードのページと縫合されるのを防ぐ
+  sortEpoch: number = 0,
 ): { ghosts: GhostView[]; total: number; loadedStart: number; loading: boolean; dbError: string | null } {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
   const [total, setTotal] = useState(0);
@@ -25,7 +30,7 @@ export function useSearch(
 
   useEffect(() => {
     let isActive = true;
-    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}`;
+    const resetKey = `${requestKey}\0${query}\0${refreshTrigger}\0${sortOrder}\0${sortEpoch}`;
     const isReset = resetKey !== resetKeyRef.current;
 
     async function fetchGhosts() {
@@ -46,7 +51,7 @@ export function useSearch(
         const isInitialLoad = query === "" && offset === 0;
 
         if (isInitialLoad) {
-          const initialGhosts = await searchGhostsInitialPage(requestKey, limit);
+          const initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
           if (!isActive) return;
 
           resetKeyRef.current = resetKey;
@@ -68,7 +73,7 @@ export function useSearch(
           return;
         }
 
-        const result = await searchGhosts(requestKey, query, limit, offset);
+        const result = await searchGhosts(requestKey, query, limit, offset, sortOrder);
         if (!isActive) return;
 
         resetKeyRef.current = resetKey;
@@ -124,7 +129,7 @@ export function useSearch(
     return () => {
       isActive = false;
     };
-  }, [requestKey, query, limit, offset, refreshTrigger]);
+  }, [requestKey, query, limit, offset, refreshTrigger, sortOrder, sortEpoch]);
 
   return { ghosts, total, loadedStart, loading, dbError };
 }

@@ -1,10 +1,10 @@
-import { memo } from "react";
+import { memo, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Text, makeStyles, tokens } from "@fluentui/react-components";
-import { SettingsRegular } from "@fluentui/react-icons";
+import { Button, Dropdown, Option, Text, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
+import { ArrowShuffleRegular, SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
 import { SearchBox } from "./SearchBox";
-import type { GhostView } from "../types";
+import type { GhostView, SortOrder } from "../types";
 
 interface Props {
   ghosts: GhostView[];
@@ -12,19 +12,34 @@ interface Props {
   loadedStart: number;
   sspPath: string | null;
   searchQuery: string;
+  sortOrder: SortOrder;
   loading: boolean;
   searchLoading: boolean;
   error: string | null;
   onSearchChange: (value: string) => void;
+  onSortChange: (value: SortOrder) => void;
+  onRandomLaunch: () => Promise<void>;
   onOpenSettings: () => void;
   onLoadMore: (targetOffset: number) => void;
 }
 
+const SORT_OPTIONS: SortOrder[] = ["name", "recent", "frequency", "random"];
+
 const useStyles = makeStyles({
   toolbar: {
-    display: "block",
-    width: "min(480px, 100%)",
-    minWidth: 0,
+    display: "flex",
+    alignItems: "end",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  searchWrapper: {
+    flex: "1 1 auto",
+    minWidth: "200px",
+    maxWidth: "480px",
+  },
+  sortWrapper: {
+    flex: "0 0 auto",
+    minWidth: "140px",
   },
   content: {
     flex: 1,
@@ -52,15 +67,28 @@ export const GhostContent = memo(function GhostContent({
   loadedStart,
   sspPath,
   searchQuery,
+  sortOrder,
   loading,
   searchLoading,
   error,
   onSearchChange,
+  onSortChange,
+  onRandomLaunch,
   onOpenSettings,
   onLoadMore,
 }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
+  const [randomLaunching, setRandomLaunching] = useState(false);
+
+  const handleRandomLaunch = useCallback(async () => {
+    setRandomLaunching(true);
+    try {
+      await onRandomLaunch();
+    } finally {
+      setRandomLaunching(false);
+    }
+  }, [onRandomLaunch]);
 
   if (!sspPath) {
     return (
@@ -76,7 +104,32 @@ export const GhostContent = memo(function GhostContent({
   return (
     <>
       <div className={styles.toolbar}>
-        <SearchBox value={searchQuery} onChange={onSearchChange} />
+        <div className={styles.searchWrapper}>
+          <SearchBox value={searchQuery} onChange={onSearchChange} />
+        </div>
+        <div className={styles.sortWrapper}>
+          <Dropdown
+            aria-label={t("sort.label")}
+            value={t(`sort.${sortOrder}`)}
+            selectedOptions={[sortOrder]}
+            onOptionSelect={(_, data) => {
+              if (data.optionValue) onSortChange(data.optionValue as SortOrder);
+            }}
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <Option key={opt} value={opt}>{t(`sort.${opt}`)}</Option>
+            ))}
+          </Dropdown>
+        </div>
+        <Tooltip content={t("header.randomLaunch")} relationship="label">
+          <Button
+            icon={<ArrowShuffleRegular />}
+            appearance="subtle"
+            onClick={handleRandomLaunch}
+            disabled={loading || randomLaunching}
+            data-testid="random-launch-button"
+          />
+        </Tooltip>
       </div>
       <div className={styles.content}>
         <GhostList

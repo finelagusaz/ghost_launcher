@@ -35,5 +35,12 @@
   "card.launching": "起動中...",
   "card.launchError": "起動に失敗しました。SSPフォルダ設定とゴースト情報を確認して、再度お試しください。{{detail}}",
   "search.label": "ゴースト検索",
-  "search.placeholder": "ゴースト名・作者名で検索"
+  "search.placeholder": "ゴースト名・作者名で検索",
+  "sort.label": "並び替え",
+  "sort.name": "名前順",
+  "sort.recent": "最近起動した順",
+  "sort.frequency": "起動回数順",
+  "sort.random": "ランダム",
+  "header.randomLaunch": "ランダム起動",
+  "header.randomLaunch.empty": "起動できるゴーストがありません"
 }

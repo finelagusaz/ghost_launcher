@@ -6,9 +6,11 @@ import App from "./App";
 import "./index.css";
 import { useSystemTheme } from "./hooks/useSystemTheme";
 import { warmUpSettingsStore } from "./lib/settingsStore";
+import { warmUpDb } from "./lib/ghostDatabase";
 
-// LazyStore の初期化を React レンダリング前にキックオフする
+// LazyStore と DB の初期化を React レンダリング前に並行キックオフする
 warmUpSettingsStore();
+warmUpDb();
 
 // localStorage に残った旧 fingerprint キーの掃除（v0.x → v1.0 移行）
 if (!localStorage.getItem("__migrated_fp_v1")) {

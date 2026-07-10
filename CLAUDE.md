@@ -31,20 +31,32 @@ npm run dev
 # フロントエンドをビルド
 npm run build
 
+# フロントエンドのユニットテスト（vitest。単一ファイルは npx vitest run <path>）
+npm test
+
+# UI ガイドライン静的チェック
+npm run check:ui-guidelines
+
 # Rust バックエンドのコンパイル確認
 cd src-tauri && cargo check
 
 # Rust テストの実行
 cargo test --manifest-path src-tauri/Cargo.toml
 
+# ghost-meta クレートのテスト実行
+cargo test --manifest-path crates/ghost-meta/Cargo.toml
+
 # アプリ全体をビルド
 npm run tauri build
 
-# E2E テストのセットアップ（初回のみ・tauri-driver と EdgeDriver を用意）
+# E2E テストのセットアップ（初回のみ・tauri-driver 導入 + no-bundle ビルド）
 npm run e2e:setup
 
 # E2E テストの実行（事前に npm run tauri build が必要）
 npm run e2e
+
+# target フォルダ肥大化時のクリーン（30日以上未使用のビルド成果物を削除。要 cargo install cargo-sweep）
+cargo sweep -t 30 .
 ```
 
 ## ディレクトリ構成
@@ -55,24 +67,34 @@ ghost_launcher/
 │   ├── lib/                    # Tauri 呼び出し・ビジネスロジック
 │   ├── hooks/                  # React カスタムフック
 │   ├── components/             # React コンポーネント
+│   ├── types/                  # TS 型定義（generated/ は ts-rs 自動生成・手編集禁止）
+│   ├── locales/                # UI 翻訳リソース（ja/en/zh-CN/zh-TW/ko/ru）
+│   ├── test/                   # vitest セットアップ・Tauri API モック・fixtures
 │   └── App.tsx                 # ルートコンポーネント
 ├── src-tauri/                  # Rust バックエンド → src-tauri/CLAUDE.md
 │   └── src/
 │       ├── commands/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
-│       │   └── ssp.rs          # ゴースト起動コマンド
+│       │   ├── ssp.rs          # ゴースト起動・SSP パス検証コマンド
+│       │   ├── launch_history.rs # 起動履歴記録（record_launch）・user-data.db 管理
+│       │   ├── db.rs           # DB リセット（マイグレーション失敗時の自動回復）
+│       │   └── locale.rs       # ユーザー言語ファイル読込
+│       ├── db_path.rs          # ghosts.db パス解決の単一権威
 │       └── lib.rs              # Tauri アプリビルダー
 ├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
 │   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
 ├── e2e/                        # E2E テスト → e2e/CLAUDE.md
 │   ├── helpers/
-│   │   └── harness.ts          # tauri-driver 起動・WebDriver セッション管理
+│   │   ├── harness.ts          # tauri-driver 起動・WebDriver セッション管理
+│   │   └── ui.ts               # 共通 UI ヘルパー（waitForAppReady など）
 │   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
 │   └── i18n.e2e.ts             # 言語切り替え・NFKC 正規化の E2E テスト
+├── scripts/                    # UI ガイドライン検査（check-ui-guidelines.mjs）・Claude Code フック（hooks/*.sh）
 ├── docs/
-│   └── ui-guidelines.md        # UI デザインガイドライン
-├── workspace/
-│   └── retrospective.md        # 過去の振り返り
+│   ├── ui-guidelines.md        # UI デザインガイドライン
+│   └── locale-customization.md # ユーザー言語カスタマイズ仕様
+├── Cargo.toml                  # workspace ルート（src-tauri + crates/ghost-meta）
+├── RETROSPECTIVE.md            # 過去の振り返り（サイクル毎に上書き）
 └── SPEC.md                     # 機能仕様書
 ```
 
@@ -83,21 +105,23 @@ ghost_launcher/
 ### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
 
 - `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
-- `commands/ghost/` — ゴースト一覧取得コマンド群。`scan.rs`（`ghost-meta` 呼び出し + 型変換）、`fingerprint.rs`（差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
-- `commands/ssp.rs` — `launch_ghost` コマンド。`ssp.exe /g {ghost}` を起動
+- `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 差分 UPSERT）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
+- `commands/ssp.rs` — `launch_ghost`（`ssp.exe /g {ghost}` 起動）・`validate_ssp_path` コマンド
 - `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
 
 ### フロントエンド（`src/`）
 
-- `lib/` — Tauri コマンド呼び出しラッパー・スキャンオーケストレーション・キャッシュリポジトリ・起動ロジック・設定ストア
+- `lib/` — Tauri コマンド呼び出しラッパー・キャッシュ寿命管理・起動ロジック・設定ストア
 - `hooks/` — 設定・ゴーストスキャン・検索・仮想スクロール・テーマ検出などの React カスタムフック
-- `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox
+- `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox / SkeletonCard
 
 ### 横断パターン
 
 **Tauri コマンド呼び出し**: フロントエンドは `invoke()` で camelCase の引数名を使い、Rust 側では自動的に snake_case に変換されます（例: `sspPath` → `ssp_path`, `additionalFolders` → `additional_folders`）。
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
+
+**Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。
 
 ## 開発方針
 
@@ -110,18 +134,24 @@ ghost_launcher/
 
 ## 作業フロー
 
-1. **作業内容を明確にする** — 要件や目的を確認し、不明点があればユーザーに質問する
-2. **調査する** — 関連する既存コード・パターン・依存関係を調べ、影響範囲を把握する
-   - 関連する関数の使用箇所を検索し、影響範囲を確認する
-   - 対称的なコードパス（追加/削除、成功/失敗）がある場合は両方を確認する
-   - 変更しないと判断したファイルについても、その根拠を確認する
-   - `.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
-3. **テストを実装する** — コード変更（機能追加・バグ修正）では、期待する振る舞いをテストコードとして先に書く（Red: テストが失敗することを確認する）。ドキュメント更新や CI 設定変更などテスト追加が不適切な作業は、理由をコミットメッセージまたは PR 説明に明記する
-   - テストの種類と置き場: フック → `renderHook`（`src/hooks/*.test.ts`）、ライブラリ → 純粋関数（`src/lib/*.test.ts`）、コンポーネント → `render` + jsdom（`src/components/*.test.tsx`）
-4. **テストがパスするように実装する** — テストを満たす最小限のコードを書く（Green: テストが通ることを確認する）
-5. **検証する** — コミット前チェックリスト（後述）の全項目が通ることを確認する
-6. **コミットする** — 検証が完了し、実装完了 = コミット済みの状態にする。`git status` が clean になるまでセッションを終了しない
-7. **PR を作成する** — CI が通ることを確認し、GitHub Flow に従い PR を作成する
+コード変更（機能追加・バグ修正・リファクタリング）は `/implement` スキルのフローに従う。issue 起点の作業は `/start-issue` から始める。実装完了 = コミット済みの状態にし、`git status` が clean になるまでセッションを終了しない。
+
+## 利用できるスキル
+
+| スキル | 実行時期 | 用途 |
+|---|---|---|
+| `/start-issue` | issue 着手時 | ブランチ作成〜調査・計画のプリステップ |
+| `/implement` | 実装開始時 | 調査→テスト先行→実装→検証→コミットの全サイクル |
+| `/ipc-check` | IPC 境界変更時 | Rust↔TS 契約・モック契約の監査 |
+| `/symmetry-check` | コード変更時 | 対称パス適用漏れ・コピー統合検討 |
+| `/cache-check` | キャッシュ・状態変更時 | 2 層キャッシュ・fingerprint 整合検証 |
+| `/health-check` | 定期・サイクル完了後 | SPEC/docs と実装の乖離検査（報告のみ） |
+| `/retrospective` | サイクル終了後 | 教訓抽出→RETROSPECTIVE.md 上書き |
+| `/deps-update` | 依存更新時 | cargo/npm 一括更新と検証 |
+| `/commit` | コミット時 | コミット前チェックリスト実行→コミット |
+| `/pr` | PR 作成時 | 変更分析→gh-HTTPS push→PR 作成 |
+| `/e2e` | E2E 実行時 | 環境固有の E2E 実行手順 |
+| `/post-merge-sync` | PR マージ後 | main 同期・ブランチ後始末 |
 
 ## デバッグ・バグ修正の原則
 
@@ -132,19 +162,7 @@ ghost_launcher/
 
 ## コミット前チェックリスト
 
-- `git status` が "nothing to commit, working tree clean" になっている
-- `npm run build` が通る
-- `npm test` が通る
-- `npm run check:ui-guidelines` が通る
-- `npm run test:ui-guidelines-check` が通る
-- `cargo test --manifest-path src-tauri/Cargo.toml` が通る
-- 新規テストファイルを追加した場合:
-  - CI ワークフローでそのテストが実行されるか（`ci-build.yml` に test ステップが存在するか）
-  - `tsconfig.json` の `exclude` に追加が必要か
-  - `vitest.config.ts` の `include` が検出するか
-- UI 操作・言語表示・フォーム入力に関わる変更をした場合:
-  - E2E テスト（`npm run e2e`）をローカルで手動実行して動作を確認する
-  - E2E テストは CI に含まれないため、手動確認が唯一の統合テスト手段
+`/commit` スキルが単一権威。コミットは常に `/commit` のチェックリスト全パス後に行う。
 
 ## ブランチ戦略
 
@@ -168,7 +186,7 @@ GitHub Flow に準拠する。
 1. `main` から作業ブランチを作成
 2. 作業単位でこまめにコミット（実装完了 = コミット済みかつ CI が通る状態）
 3. **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
-4. コミット前チェックリストがすべて通ることを確認してから PR を作成
+4. コミット前チェックリスト（`/commit`）がすべて通ることを確認してから PR を作成
 5. PR マージ後にブランチを削除
 6. 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
 
@@ -187,7 +205,8 @@ GitHub Flow に準拠する。
 
 - `SPEC.md` — 機能仕様書。振る舞いを変更する場合は実装と同期させる
 - `docs/ui-guidelines.md` — UI デザインガイドライン
+- `docs/locale-customization.md` — ユーザー言語カスタマイズ仕様
 - `RETROSPECTIVE.md` — 過去の振り返り（デバッグ教訓・アーキテクチャ上の学び）
   - **更新タイミング**: サイクル終了後（実装・レビュー・追加修正まで完了したとき）
   - **更新方法**: 上書き（追記しない）。前回サイクルの内容を新サイクルの振り返りで置き換える
-  - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `ui/CLAUDE.md` / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる
+  - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `src/CLAUDE.md` 等のフォルダ規約 / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる

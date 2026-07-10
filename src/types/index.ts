@@ -1,10 +1,8 @@
-// IPC 型（Rust の struct から ts-rs で自動生成）
-export type { Ghost } from "./generated/Ghost";
-export type { ScanGhostsResponse } from "./generated/ScanGhostsResponse";
-
 // TS 専用型（フロントエンド固有）
 
 export type ThumbnailKind = "surface" | "thumbnail" | "";
+
+export type SortOrder = "name" | "recent" | "frequency" | "random";
 
 /** DB クエリ結果。_lower カラムを含み、diff_fingerprint は SELECT 対象外 */
 export interface GhostView {
@@ -25,4 +23,5 @@ export interface GhostView {
   craftman_lower: string;
   craftmanw_lower: string;
   directory_name_lower: string;
+  ghost_identity_key: string;
 }

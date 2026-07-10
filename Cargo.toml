@@ -5,9 +5,14 @@ resolver = "2"
 [workspace.dependencies]
 encoding_rs = "0.8"
 
+[profile.dev]
+# フル debug info は不要（行番号ベースのブレークポイントで十分）。target/debug の
+# デバッグシンボルサイズを削減し、ディスク肥大化を抑える。
+debug = "line-tables-only"
+
 [profile.release]
 lto = true
 codegen-units = 1
 strip = "symbols"
-opt-level = "s"
+opt-level = 3
 panic = "abort"

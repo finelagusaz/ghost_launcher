@@ -2,30 +2,114 @@
 mod fingerprint;
 mod path_utils;
 mod scan;
+pub(crate) mod store;
 mod types;
 
-pub use types::ScanGhostsResponse;
+pub use types::ScanStoreResult;
 
+/// request_key が空なら Err を返す。JS 単一権威の信頼境界での最小防御。
+/// 空キーで書き込むと全ゴーストが request_key='' パーティションに同居する事故を防ぐ。
+fn ensure_request_key(request_key: &str) -> Result<(), String> {
+    if request_key.is_empty() {
+        return Err("request_key が空です".to_string());
+    }
+    Ok(())
+}
+
+/// 起動履歴の集計列を user-data.db から ghosts へ再導出する（ベストエフォート）。
+/// user-data.db を開けない場合は何もしない（スキャン結果を阻害しない）。
+fn backfill_launch_aggregates(app: &tauri::AppHandle, ghosts_conn: &rusqlite::Connection) {
+    if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(app) {
+        let _ = crate::commands::launch_history::backfill_aggregates(ghosts_conn, &user_conn);
+    }
+}
+
+/// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
+/// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
+///
+/// 2 層フィンガープリント:
+/// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
+/// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
 #[tauri::command]
-pub fn scan_ghosts_with_meta(
+pub fn scan_and_store(
+    app: tauri::AppHandle,
     ssp_path: String,
     additional_folders: Vec<String>,
+    request_key: String,
     cached_fingerprint: Option<String>,
-) -> Result<ScanGhostsResponse, String> {
+) -> Result<ScanStoreResult, String> {
+    ensure_request_key(&request_key)?;
+
+    // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）
+    let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
+
+    // DB パスを 1 回だけ解決（reset_ghost_db・sanitize_ghost_db と同一の単一権威を経由）
+    let db_path = crate::db_path::ghost_db_path(&app)?;
+
+    // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
+    // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
+    // 既存ゴースト内の descript.txt 編集は検出できない（「再読込」で対応）。
+    if cached_fingerprint.is_some() && db_path.exists() {
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            let _ = store::configure_connection(&conn);
+            if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
+                backfill_launch_aggregates(&app, &conn);
+                return Ok(ScanStoreResult {
+                    cache_hit: true,
+                    total: 0,
+                    fingerprint: cached_fingerprint.unwrap_or_default(),
+                    request_key,
+                });
+            }
+        }
+    }
+
+    // Layer 2: フル fingerprint 計算 + ゴーストスキャン
     let (ghosts, fingerprint) =
         scan::scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
     let cache_hit = cached_fingerprint.as_deref() == Some(fingerprint.as_str());
-    Ok(ScanGhostsResponse {
-        ghosts: if cache_hit { vec![] } else { ghosts },
+
+    if cache_hit {
+        // Layer 2 hit: 親 mtime は変わったがゴースト構成は同じ
+        // parent_mtimes を更新して次回 Layer 1 で hit するようにする
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            let _ = store::configure_connection(&conn);
+            let _ = conn.execute(
+                "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
+                rusqlite::params![current_mtimes, request_key],
+            );
+            backfill_launch_aggregates(&app, &conn);
+        }
+        return Ok(ScanStoreResult {
+            cache_hit: true,
+            total: 0,
+            fingerprint,
+            request_key,
+        });
+    }
+
+    // Cache miss: DB に書き込み
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("DB オープンエラー: {e}"))?;
+    store::configure_connection(&conn)?;
+
+    let total = store::store_ghosts(&conn, &request_key, &ghosts, &fingerprint, &current_mtimes)?;
+
+    backfill_launch_aggregates(&app, &conn);
+
+    Ok(ScanStoreResult {
+        cache_hit: false,
+        total,
         fingerprint,
-        cache_hit,
+        request_key,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::fingerprint::build_fingerprint;
-    use super::scan::{scan_ghosts_with_fingerprint_internal, unique_sorted_additional_folders};
+    use super::path_utils::unique_sorted_additional_folders;
+    use super::scan::scan_ghosts_with_fingerprint_internal;
     use crate::testutil::TempDirGuard;
     use std::fs;
     use std::path::PathBuf;
@@ -44,6 +128,12 @@ mod tests {
             .map_err(|error| format!("failed to create ghost dir {}: {}", base.display(), error))?;
         fs::write(base.join("descript.txt"), descript)
             .map_err(|error| format!("failed to write descript: {}", error))
+    }
+
+    #[test]
+    fn ensure_request_key_は空文字を拒否し非空を許可する() {
+        assert!(super::ensure_request_key("").is_err());
+        assert!(super::ensure_request_key("c:/ssp::").is_ok());
     }
 
     #[test]
@@ -96,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_ghosts_internal_collects_sources_and_sorts_by_name() -> Result<(), String> {
+    fn scan_ghosts_internal_collects_sources() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_scan_test");
         let ssp_root = workspace.path().join("ssp");
         let ssp_ghost = ssp_root.join("ghost");
@@ -121,9 +211,9 @@ mod tests {
             scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &additional_paths)?;
 
         assert_eq!(ghosts.len(), 3);
-        assert_eq!(ghosts[0].name, "Alpha");
-        assert_eq!(ghosts[1].name, "bravo");
-        assert_eq!(ghosts[2].name, "zulu");
+        let mut names: Vec<&str> = ghosts.iter().map(|g| g.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Alpha", "bravo", "zulu"]);
 
         let ssp_ghost_item = ghosts
             .iter()

@@ -19,7 +19,10 @@ import { useAppShellState } from "./hooks/useAppShellState";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { buildAdditionalFolders, buildRequestKey } from "./lib/ghostScanUtils";
+import { requestKeyFromSettings } from "./lib/ghostScanUtils";
+import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
+import { launchGhost } from "./lib/sspClient";
+import type { SortOrder } from "./types";
 
 const useStyles = makeStyles({
   app: {
@@ -75,6 +78,11 @@ function App() {
   } = useSettings();
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("name");
+  // ランダム再選択でシードを引き直したことを useSearch に伝える epoch。
+  // reseedRandomSort() 自体はモジュール変数の変更のみで React から不可視のため、
+  // これを resetKey に含めて全置換フェッチを強制する（App.tsx#handleSortChange 参照）
+  const [sortEpoch, setSortEpoch] = useState(0);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const LIMIT = 500;
 
@@ -93,8 +101,10 @@ function App() {
     ghostsLoading,
   });
 
-  const searchRequestKey = (refreshTrigger > 0 && sspPath)
-    ? buildRequestKey(sspPath, buildAdditionalFolders(ghostFolders))
+  // キャッシュ即時表示（stale-while-revalidate）: sspPath 確定時点で DB を引き、
+  // 初回スキャン完了（refreshTrigger の増加）で再クエリして最新へ差し替える
+  const searchRequestKey = sspPath
+    ? requestKeyFromSettings(sspPath, ghostFolders)
     : null;
 
   const { ghosts: searchResultGhosts, total: searchTotal, loadedStart, loading: searchLoading, dbError } = useSearch(
@@ -102,7 +112,9 @@ function App() {
     deferredSearchQuery,
     LIMIT,
     offset,
-    refreshTrigger
+    refreshTrigger,
+    sortOrder,
+    sortEpoch,
   );
 
   const handleLoadMore = useCallback((targetOffset: number) => {
@@ -114,6 +126,38 @@ function App() {
   const handleRefresh = useCallback(() => refresh({ forceFullScan: true }), [refresh]);
   const handleOpenSettings = openSettings;
   const handleCloseSettings = closeSettings;
+
+  const [randomLaunchError, setRandomLaunchError] = useState<string | null>(null);
+  const handleRandomLaunch = useCallback(async () => {
+    if (!searchRequestKey || !sspPath) return;
+    setRandomLaunchError(null);
+    try {
+      const ghost = await getRandomGhost(searchRequestKey);
+      if (!ghost) {
+        setRandomLaunchError(t("header.randomLaunch.empty"));
+        return;
+      }
+      await launchGhost(sspPath, ghost);
+    } catch (e) {
+      setRandomLaunchError(e instanceof Error ? e.message : String(e));
+    }
+  }, [searchRequestKey, sspPath, t]);
+
+  const handleSortChange = useCallback((value: SortOrder) => {
+    // 「ランダム」を選ぶたびに並びを引き直す。同値再選択は sortOrder/offset が
+    // 変わらず effect が再実行されないため、sortEpoch を進めて可視状態として配線する
+    if (value === "random") {
+      reseedRandomSort();
+      setSortEpoch((e) => e + 1);
+    }
+    setSortOrder(value);
+    setOffset(0);
+  }, [setOffset]);
+
+  // キャッシュ表示中（ゴーストあり）はスキャンエラーを抑制し、表示を維持する。
+  // キャッシュが無い場合のみエラーを表示する（SPEC 9 エラーハンドリング）
+  const hasCachedDisplay = searchResultGhosts.length > 0 || searchTotal > 0;
+  const scanError = hasCachedDisplay ? null : error;
 
   if (settingsLoading) {
     return (
@@ -138,10 +182,13 @@ function App() {
           loadedStart={loadedStart}
           sspPath={sspPath}
           searchQuery={searchQuery}
+          sortOrder={sortOrder}
           loading={ghostsLoading}
           searchLoading={searchLoading}
-          error={error ?? dbError}
+          error={scanError ?? dbError ?? randomLaunchError}
           onSearchChange={setSearchQuery}
+          onSortChange={handleSortChange}
+          onRandomLaunch={handleRandomLaunch}
           onOpenSettings={handleOpenSettings}
           onLoadMore={handleLoadMore}
         />

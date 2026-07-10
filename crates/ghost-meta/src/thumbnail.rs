@@ -1,4 +1,5 @@
 use crate::descript::parse_descript;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -37,8 +38,11 @@ pub struct ThumbnailInfo {
 /// 4. `None`
 ///
 /// surface0* の選択: 名前辞書順の最初（OS 依存の列挙順を回避するためソートする）
-pub fn resolve_thumbnail(ghost_root: &Path) -> Option<ThumbnailInfo> {
-    if let Some(info) = resolve_surface0(ghost_root) {
+pub fn resolve_thumbnail(
+    ghost_root: &Path,
+    shell_descript: Option<&HashMap<String, String>>,
+) -> Option<ThumbnailInfo> {
+    if let Some(info) = resolve_surface0(ghost_root, shell_descript) {
         return Some(info);
     }
 
@@ -56,11 +60,11 @@ pub fn resolve_thumbnail(ghost_root: &Path) -> Option<ThumbnailInfo> {
 }
 
 /// shell/master/ 内の surface0* ファイルを探して ThumbnailInfo を返す
-fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
+fn resolve_surface0(
+    ghost_root: &Path,
+    shell_descript: Option<&HashMap<String, String>>,
+) -> Option<ThumbnailInfo> {
     let shell_master = ghost_root.join("shell").join("master");
-    if !shell_master.is_dir() {
-        return None;
-    }
 
     let mut apng_files: Vec<String> = Vec::new();
     let mut png_files: Vec<String> = Vec::new();
@@ -85,25 +89,36 @@ fn resolve_surface0(ghost_root: &Path) -> Option<ThumbnailInfo> {
     apng_files.sort_by_key(|f| f.to_ascii_lowercase());
     png_files.sort_by_key(|f| f.to_ascii_lowercase());
 
-    let alpha = read_seriko_use_self_alpha(ghost_root);
+    // APNG が PNG より優先。選ばれたファイルを 1 つに決める
+    let filename = apng_files.first().or_else(|| png_files.first())?;
+    let path = shell_master.join(filename);
 
-    // APNG が PNG より優先
-    if let Some(filename) = apng_files.first() {
-        return Some(ThumbnailInfo {
-            path: shell_master.join(filename),
-            alpha,
-            kind: ThumbnailKind::Surface,
-        });
-    }
-    if let Some(filename) = png_files.first() {
-        return Some(ThumbnailInfo {
-            path: shell_master.join(filename),
-            alpha,
-            kind: ThumbnailKind::Surface,
-        });
-    }
+    // 実画像が本物のアルファチャンネルを持つ場合は宣言に関わらず SelfAlpha を優先する。
+    // （seriko.use_self_alpha 未宣言の RGBA サーフェスがキーカラー抜きへ流れて
+    // 黒消えする不具合の根本対策。アルファを持たないときだけ descript 宣言に従う）
+    let alpha = if png_has_alpha_channel(&path) {
+        AlphaMode::SelfAlpha
+    } else {
+        match shell_descript {
+            Some(fields) => seriko_alpha_from_fields(fields),
+            None => read_seriko_use_self_alpha(ghost_root),
+        }
+    };
 
-    None
+    Some(ThumbnailInfo {
+        path,
+        alpha,
+        kind: ThumbnailKind::Surface,
+    })
+}
+
+/// HashMap から seriko.use_self_alpha を判定する。
+fn seriko_alpha_from_fields(fields: &HashMap<String, String>) -> AlphaMode {
+    if fields.get("seriko.use_self_alpha").map(|v| v.as_str()) == Some("1") {
+        AlphaMode::SelfAlpha
+    } else {
+        AlphaMode::KeyColor
+    }
 }
 
 /// shell/master/descript.txt から seriko.use_self_alpha を読み取る。
@@ -121,34 +136,42 @@ fn read_seriko_use_self_alpha(ghost_root: &Path) -> AlphaMode {
     AlphaMode::KeyColor
 }
 
-/// thumbnail.png のアルファチャンネルを検査して AlphaMode を返す。
-/// feature: "thumbnail" が有効な場合、PNG の IHDR ヘッダーのみ読み込んで color type を検査する。
-/// feature が無効な場合は常に KeyColor を返す。
+/// PNG/APNG が本物のアルファチャンネルを持つか検査する。
+/// feature: "thumbnail" が有効な場合、IHDR ヘッダーのみ読み込んで color type を検査する
+/// （全ピクセル展開はしない）。feature が無効な場合は常に false を返す。
 #[cfg(feature = "thumbnail")]
-fn detect_thumbnail_alpha(path: &Path) -> AlphaMode {
+fn png_has_alpha_channel(path: &Path) -> bool {
     use image::codecs::png::PngDecoder;
     use image::ColorType;
     use image::ImageDecoder;
 
     let Ok(file) = fs::File::open(path) else {
-        return AlphaMode::KeyColor;
+        return false;
     };
     // PngDecoder は BufRead + Seek を要求するため BufReader で包む
     let Ok(decoder) = PngDecoder::new(std::io::BufReader::new(file)) else {
-        return AlphaMode::KeyColor;
+        return false;
     };
-    // color_type() は ImageDecoder トレイトのメソッド。IHDR チャンクのみ参照し全ピクセル展開は行わない
-    match decoder.color_type() {
-        ColorType::Rgba8 | ColorType::La8 | ColorType::Rgba16 | ColorType::La16 => {
-            AlphaMode::SelfAlpha
-        }
-        _ => AlphaMode::KeyColor,
-    }
+    // color_type() は ImageDecoder トレイトのメソッド。IHDR チャンクのみ参照する
+    matches!(
+        decoder.color_type(),
+        ColorType::Rgba8 | ColorType::La8 | ColorType::Rgba16 | ColorType::La16
+    )
 }
 
 #[cfg(not(feature = "thumbnail"))]
-fn detect_thumbnail_alpha(_path: &Path) -> AlphaMode {
-    AlphaMode::KeyColor
+fn png_has_alpha_channel(_path: &Path) -> bool {
+    false
+}
+
+/// thumbnail.png のアルファチャンネルの有無を AlphaMode へ写す。
+/// アルファ持ちなら SelfAlpha、なければ KeyColor。
+fn detect_thumbnail_alpha(path: &Path) -> AlphaMode {
+    if png_has_alpha_channel(path) {
+        AlphaMode::SelfAlpha
+    } else {
+        AlphaMode::KeyColor
+    }
 }
 
 #[cfg(test)]
@@ -173,7 +196,7 @@ mod tests {
     #[test]
     fn shell_master_がない場合はnoneを返す() {
         let tmp = TempDirGuard::new("ghost_meta_thumb_no_shell");
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -181,7 +204,7 @@ mod tests {
     fn surface0もthumbnailpngもない場合はnoneを返す() {
         let tmp = TempDirGuard::new("ghost_meta_thumb_nothing");
         create_shell_master(tmp.path());
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -191,7 +214,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
         assert_eq!(info.kind, ThumbnailKind::Surface);
     }
@@ -203,7 +226,7 @@ mod tests {
         fs::write(shell_master.join("surface0.apng"), "").unwrap();
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.apng"));
     }
 
@@ -216,7 +239,7 @@ mod tests {
         fs::write(shell_master.join("surface0.png"), "").unwrap();
         fs::write(shell_master.join("surface000.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
     }
 
@@ -228,7 +251,7 @@ mod tests {
         let thumbnail_path = tmp.path().join("thumbnail.png");
         fs::write(&thumbnail_path, "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, thumbnail_path);
         assert_eq!(info.kind, ThumbnailKind::Thumbnail);
     }
@@ -240,7 +263,7 @@ mod tests {
         fs::write(shell_master.join("surface0.png"), "").unwrap();
         fs::write(tmp.path().join("thumbnail.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("surface0.png"));
     }
 
@@ -253,7 +276,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,1\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::SelfAlpha);
     }
 
@@ -264,7 +287,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,0\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }
 
@@ -275,7 +298,7 @@ mod tests {
         write_shell_descript(tmp.path(), "charset,UTF-8\n");
         fs::write(shell_master.join("surface0.png"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }
 
@@ -288,7 +311,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -299,7 +322,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface1.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -310,7 +333,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("surface0x.png"), "").unwrap();
 
-        let result = resolve_thumbnail(tmp.path());
+        let result = resolve_thumbnail(tmp.path(), None);
         assert!(result.is_none());
     }
 
@@ -320,7 +343,7 @@ mod tests {
         let shell_master = create_shell_master(tmp.path());
         fs::write(shell_master.join("Surface0.PNG"), "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, shell_master.join("Surface0.PNG"));
     }
 
@@ -352,6 +375,51 @@ mod tests {
         assert_eq!(alpha, AlphaMode::KeyColor);
     }
 
+    // --- surface0 実画像アルファ検査（宣言より実体を優先） ---
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbaなら宣言なしでもself_alphaになる() {
+        use image::{ImageBuffer, Rgba};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgba_self_alpha");
+        let shell_master = create_shell_master(tmp.path());
+        // descript も seriko.use_self_alpha 宣言もない。実画像のアルファのみで判定させる
+        let img: image::RgbaImage = ImageBuffer::from_pixel(2, 2, Rgba([0u8, 0, 0, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::SelfAlpha);
+    }
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbで宣言なしならkey_colorのまま() {
+        use image::{ImageBuffer, Rgb};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgb_key_color");
+        let shell_master = create_shell_master(tmp.path());
+        // アルファチャンネルを持たない画像は従来どおりキーカラー抜き対象
+        let img: image::RgbImage = ImageBuffer::from_pixel(2, 2, Rgb([0u8, 255, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::KeyColor);
+    }
+
+    #[cfg(feature = "thumbnail")]
+    #[test]
+    fn surface0がrgbでも宣言があればself_alphaになる() {
+        use image::{ImageBuffer, Rgb};
+        let tmp = TempDirGuard::new("ghost_meta_surface_rgb_declared_self_alpha");
+        let shell_master = create_shell_master(tmp.path());
+        // アルファ非保持でも descript 宣言があれば SelfAlpha を維持（フォールバック）
+        write_shell_descript(tmp.path(), "charset,UTF-8\nseriko.use_self_alpha,1\n");
+        let img: image::RgbImage = ImageBuffer::from_pixel(2, 2, Rgb([0u8, 255, 0]));
+        img.save(shell_master.join("surface0.png")).unwrap();
+
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
+        assert_eq!(info.alpha, AlphaMode::SelfAlpha);
+    }
+
     #[cfg(not(feature = "thumbnail"))]
     #[test]
     fn thumbnail_feature無効時はthumbnailpngをkey_colorとして返す() {
@@ -360,7 +428,7 @@ mod tests {
         let thumbnail_path = tmp.path().join("thumbnail.png");
         fs::write(&thumbnail_path, "").unwrap();
 
-        let info = resolve_thumbnail(tmp.path()).unwrap();
+        let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, thumbnail_path);
         assert_eq!(info.alpha, AlphaMode::KeyColor);
     }

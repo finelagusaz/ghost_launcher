@@ -1,31 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { refreshGhostCatalog } from "./ghostCatalogService";
-import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts, replaceGhostsByRequestKey, setCachedFingerprint } from "./ghostDatabase";
-import { executeScan } from "./ghostScanOrchestrator";
+import { cleanupOldGhostCaches, getCachedFingerprint, hasGhosts } from "./ghostDatabase";
+import { invoke } from "@tauri-apps/api/core";
+import { requestKeyFromSettings } from "./ghostScanUtils";
 
 vi.mock("./ghostDatabase", () => ({
   hasGhosts: vi.fn(),
-  replaceGhostsByRequestKey: vi.fn(),
   cleanupOldGhostCaches: vi.fn(),
   getCachedFingerprint: vi.fn(),
-  setCachedFingerprint: vi.fn(),
+  getDb: vi.fn().mockResolvedValue({ select: vi.fn().mockResolvedValue([]) }),
 }));
 
-vi.mock("./ghostScanOrchestrator", () => ({
-  executeScan: vi.fn(),
+vi.mock("./dbMonitor", () => ({
+  reportScanComplete: vi.fn(),
+  reportDbSize: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("refreshGhostCatalog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(setCachedFingerprint).mockResolvedValue(undefined);
     vi.mocked(cleanupOldGhostCaches).mockResolvedValue(undefined);
   });
 
   it("キャッシュが有効ならスキャンをスキップする", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(true);
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cache_hit: true });
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: true, total: 0, fingerprint: "fp1", request_key: "c:/ssp::" });
 
     const result = await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -34,20 +34,15 @@ describe("refreshGhostCatalog", () => {
     });
 
     expect(result.skipped).toBe(true);
-    expect(executeScan).toHaveBeenCalledTimes(1);
-    expect(replaceGhostsByRequestKey).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", expect.objectContaining({
+      cachedFingerprint: "fp1",
+    }));
   });
 
-  it("キャッシュが無効ならスキャンして保存する", async () => {
+  it("キャッシュが無効なら scan_and_store がDB書き込みまで行う", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(true);
-    vi.mocked(executeScan).mockResolvedValue({
-      ghosts: [
-        { name: "A", craftman: "", directory_name: "a", path: "/a", source: "ssp", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "", diff_fingerprint: "fp-row", sakura_name: "", kero_name: "", craftmanw: "" },
-      ],
-      fingerprint: "fp2",
-      cache_hit: false,
-    });
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 1, fingerprint: "fp2", request_key: "c:/ssp::c:/ghosts" });
 
     const result = await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -56,35 +51,27 @@ describe("refreshGhostCatalog", () => {
     });
 
     expect(result.skipped).toBe(false);
-    expect(executeScan).toHaveBeenCalledTimes(1);
-    expect(replaceGhostsByRequestKey).toHaveBeenCalledTimes(1);
-    expect(setCachedFingerprint).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", expect.anything());
   });
 
-  it("DB に ghost が無ければ cachedFingerprint=null でフルスキャンして保存する", async () => {
+  it("DB に ghost が無ければ cachedFingerprint=null でフルスキャンする", async () => {
     vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(false);
-    vi.mocked(executeScan).mockResolvedValue({
-      ghosts: [{ name: "B", craftman: "", directory_name: "b", path: "/b", source: "ssp", sakura_name: "", kero_name: "", craftmanw: "", thumbnail_path: "", thumbnail_use_self_alpha: false, thumbnail_kind: "" }],
-      fingerprint: "fp1",
-      cache_hit: false,
-    });
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 1, fingerprint: "fp1", request_key: "c:/ssp::" });
 
-    const result = await refreshGhostCatalog({
+    await refreshGhostCatalog({
       sspPath: "C:/SSP",
       ghostFolders: [],
       forceFullScan: false,
     });
 
-    expect(result.skipped).toBe(false);
-    expect(executeScan).toHaveBeenCalledWith(
-      expect.objectContaining({ cachedFingerprint: null }),
-    );
-    expect(replaceGhostsByRequestKey).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", expect.objectContaining({
+      cachedFingerprint: null,
+    }));
   });
 
-  it("forceFullScan のときはキャッシュ判定を行わずスキャンする", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
+  it("forceFullScan のときはキャッシュ判定を行わず scan_and_store を呼ぶ", async () => {
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 0, fingerprint: "fp3", request_key: "c:/ssp::" });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -94,19 +81,16 @@ describe("refreshGhostCatalog", () => {
 
     expect(getCachedFingerprint).not.toHaveBeenCalled();
     expect(hasGhosts).not.toHaveBeenCalled();
-    expect(executeScan).toHaveBeenCalledTimes(1);
-    expect(executeScan).toHaveBeenCalledWith({
-      requestKey: "c:/ssp::",
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", {
       sspPath: "C:/SSP",
       additionalFolders: [],
-      forceFullScan: true,
+      requestKey: "c:/ssp::",
       cachedFingerprint: null,
     });
   });
 
-  it("保存後に古い request_key と fingerprint キャッシュを掃除する", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
-    vi.mocked(cleanupOldGhostCaches).mockResolvedValue(undefined);
+  it("cache miss 後に古い request_key キャッシュを掃除する", async () => {
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 0, fingerprint: "fp3", request_key: "c:/ssp::" });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -114,16 +98,14 @@ describe("refreshGhostCatalog", () => {
       forceFullScan: true,
     });
 
-    expect(cleanupOldGhostCaches).toHaveBeenCalledTimes(1);
+    // fire-and-forget なので await 不要だが、呼ばれたことは確認
     expect(cleanupOldGhostCaches).toHaveBeenCalledWith("c:/ssp::");
   });
 
-  // --- 新規テスト（RED）---
-
-  it("executeScan に cachedFingerprint が渡される", async () => {
-    vi.mocked(getCachedFingerprint).mockResolvedValue("fp-cached");
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp-cached", cache_hit: true });
+  it("cache_hit 時は cleanupOldGhostCaches を呼ばない", async () => {
+    vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
     vi.mocked(hasGhosts).mockResolvedValue(true);
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: true, total: 0, fingerprint: "fp1", request_key: "c:/ssp::" });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
@@ -131,37 +113,20 @@ describe("refreshGhostCatalog", () => {
       forceFullScan: false,
     });
 
-    expect(executeScan).toHaveBeenCalledWith(
-      expect.objectContaining({ cachedFingerprint: "fp-cached" }),
-    );
+    expect(cleanupOldGhostCaches).not.toHaveBeenCalled();
   });
 
-  it("forceFullScan のとき cachedFingerprint=null が executeScan に渡される", async () => {
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp3", cache_hit: false });
+  it("requestKey に requestKeyFromSettings の出力を渡す", async () => {
+    vi.mocked(invoke).mockResolvedValue({ cache_hit: false, total: 0, fingerprint: "fp", request_key: "x" });
 
     await refreshGhostCatalog({
       sspPath: "C:/SSP",
-      ghostFolders: [],
+      ghostFolders: ["C:/Ghosts"],
       forceFullScan: true,
     });
 
-    expect(executeScan).toHaveBeenCalledWith(
-      expect.objectContaining({ cachedFingerprint: null }),
-    );
-  });
-
-  it("cache_hit=true のとき replaceGhostsByRequestKey が呼ばれない", async () => {
-    vi.mocked(getCachedFingerprint).mockResolvedValue("fp1");
-    vi.mocked(executeScan).mockResolvedValue({ ghosts: [], fingerprint: "fp1", cache_hit: true });
-    vi.mocked(hasGhosts).mockResolvedValue(true);
-
-    const result = await refreshGhostCatalog({
-      sspPath: "C:/SSP",
-      ghostFolders: [],
-      forceFullScan: false,
-    });
-
-    expect(result.skipped).toBe(true);
-    expect(replaceGhostsByRequestKey).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("scan_and_store", expect.objectContaining({
+      requestKey: requestKeyFromSettings("C:/SSP", ["C:/Ghosts"]),
+    }));
   });
 });

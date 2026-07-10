@@ -35,5 +35,12 @@
   "card.launching": "실행 중...",
   "card.launchError": "실행에 실패했습니다. SSP 폴더 설정과 고스트 정보를 확인하고 다시 시도해주세요.{{detail}}",
   "search.label": "고스트 검색",
-  "search.placeholder": "고스트 이름·작가명으로 검색"
+  "search.placeholder": "고스트 이름·작가명으로 검색",
+  "sort.label": "정렬",
+  "sort.name": "이름순",
+  "sort.recent": "최근 실행순",
+  "sort.frequency": "실행 횟수순",
+  "sort.random": "랜덤",
+  "header.randomLaunch": "랜덤 실행",
+  "header.randomLaunch.empty": "실행할 수 있는 고스트가 없습니다"
 }

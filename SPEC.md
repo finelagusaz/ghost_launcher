@@ -25,6 +25,9 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
 | F-10 | ウィンドウ状態保存         | `tauri-plugin-window-state` によるウィンドウ位置・サイズの永続化                    |
+| F-11 | ソート順切替               | 名前順・最近起動順・起動回数順・ランダム順の切替。最近起動順・起動回数順は `ghosts` の非正規化集計列（`last_launched`/`launch_count`）を基盤とし、起動履歴の権威は `user-data.db`（永続）の `ghost_launches` が持つ |
+| F-12 | ランダム起動               | 一覧から無作為に 1 体選んで起動するボタン                                           |
+| F-13 | 起動履歴記録               | ゴースト起動時に ghost_identity_key と起動日時を永続記録                            |
 
 ---
 
@@ -57,72 +60,46 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 └───────────────────────────────────────────────────────┘
          │                           │
          ▼                           ▼
-   ファイルシステム              SQLite + localStorage
-   (ghost/ ディレクトリ)        (ゴースト一覧 + fingerprint)
+   ファイルシステム         ghosts.db（揮発キャッシュ）+ user-data.db（永続）
+   (ghost/ ディレクトリ)   （ゴースト一覧 + fingerprint / 起動履歴）+ localStorage
 ```
 
-### 3.2 バックエンド（Rust）モジュール構成
+### 3.2 バックエンド（Rust）構成
 
 **`src-tauri/src/`（Tauri コマンド層）**
 
-| ファイル                        | 責務                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| `lib.rs`                        | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション              |
-| `main.rs`                       | エントリポイント（`ghost_launcher_lib::run()` 呼び出し）                             |
-| `commands/ghost/mod.rs`         | `scan_ghosts_with_meta` Tauri コマンド公開                                           |
-| `commands/ghost/scan.rs`        | `ghost-meta` クレートを呼び出してゴースト走査し、`Ghost` 型へ変換                    |
-| `commands/ghost/fingerprint.rs` | フィンガープリントトークン・ハッシュ生成ヘルパー                                     |
-| `commands/ghost/path_utils.rs`  | パス正規化（`\` → `/`、小文字化）                                                    |
-| `commands/ghost/types.rs`       | `Ghost`・`ScanGhostsResponse` 型定義                                                 |
-| `commands/ssp.rs`               | `launch_ghost` コマンド（`ssp.exe /g {ghost}` を起動）                               |
-| `commands/db.rs`                | `reset_ghost_db` コマンド（ghosts.db + WAL/SHM を削除してマイグレーション競合を解消）|
-| `commands/locale.rs`            | `read_user_locale` コマンド（実行ファイル横の `locales/{lang}.json` を読み込み）      |
+| モジュール          | 責務                                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション定義・起動時 DB 検査 |
+| `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
+| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
+| `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
+| `commands/launch_history.rs` | 起動履歴の記録（record_launch）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
+| `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
+| `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 
-**`crates/ghost-meta/`（ワークスペースクレート — ゴーストメタデータ解析）**
+**`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
 
-| ファイル         | 責務                                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `descript.rs`    | `descript.txt` パーサー（UTF-8 BOM / charset フィールド / Shift_JIS フォールバック）     |
-| `ghost.rs`       | `GhostMeta` 構造体定義・`read_ghost`（単体読込）・`scan_ghosts`（ディレクトリ一括走査） |
-| `thumbnail.rs`   | サムネイル解決（surface0*.apng → surface0*.png → thumbnail.png フォールバック）          |
+descript.txt のパース（文字コード判定含む）・単体ゴースト読込・サムネイル解決を提供する。
+ファイル構成と公開 API はクレートのソースを権威とする。
 
-### 3.3 フロントエンド（React/TypeScript）モジュール構成
+### 3.3 フロントエンド（React/TypeScript）構成
 
-| ファイル                   | 責務                                                                     |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `main.tsx`                 | ルートレンダリング。FluentProvider でテーマ設定                          |
-| `App.tsx`                  | アプリ全体のレイアウト・状態管理の統合                                   |
-| `types/index.ts`           | 共有型定義（`Ghost`, `GhostView`, `ScanGhostsResponse`）                 |
-| **lib/**                   |                                                                          |
-| `settingsStore.ts`         | `LazyStore("settings.json")` のシングルトン                              |
-| `ghostScanClient.ts`       | Tauri `invoke` ラッパー（`scanGhostsWithMeta`）                          |
-| `ghostScanOrchestrator.ts` | 重複排除付きスキャン実行（`executeScan`）                                 |
-| `ghostScanUtils.ts`        | パス正規化・リクエストキー生成・エラーメッセージ構築                     |
-| `ghostDatabase.ts`         | SQLite への読み書き（`replaceGhostsByRequestKey`, `hasGhosts`, `searchGhosts`, `cleanupOldGhostCaches`） |
-| `ghostCatalogService.ts`   | キャッシュ判定・スキャン実行・SQLite 保存・fingerprint 更新・寿命管理のユースケース手順 |
-| `ghostLaunchUtils.ts`      | 起動エラーメッセージ構築・ソースフォルダラベル取得                       |
-| `i18n.ts`                  | i18next 初期化・ユーザーロケールファイル読み込み                         |
-| **hooks/**                 |                                                                          |
-| `useSettings.ts`           | 設定（`ssp_path`, `ghost_folders`）の読み込み・更新・永続化              |
-| `useGhosts.ts`             | React 状態（loading / error）管理と refresh トリガ。実処理は `ghostCatalogService.ts` に委譲 |
-| `useSearch.ts`             | SQLite 部分一致検索。バッファマージモデル（隣接/重複範囲をマージし旧データを保持） |
-| `useVirtualizedList.ts`    | 仮想スクロール計算。`totalCount` で固定スクロール空間を確保              |
-| `useElementHeight.ts`      | ResizeObserver による要素高さ追跡                                        |
-| `useSystemTheme.ts`        | OS テーマ（light/dark）検出・追従                                        |
-| **components/**            |                                                                          |
-| `AppHeader.tsx`            | タイトル・再読込ボタン・設定ボタン                                       |
-| `SettingsPanel.tsx`        | SSP フォルダ選択・追加フォルダ管理 UI                                    |
-| `GhostContent.tsx`         | ゴースト一覧エリア（検索ボックス + リスト）のコンテナ                    |
-| `GhostList.tsx`            | ゴーストリスト表示（仮想スクロール・スケルトン描画・debounce fetch）     |
-| `GhostCard.tsx`            | 個別ゴースト表示カード（名前・ディレクトリ名・ソースバッジ・起動ボタン） |
-| `SkeletonCard.tsx`         | 未読込領域のプレースホルダーカード（Fluent UI Skeleton）                  |
-| `SearchBox.tsx`            | 検索入力フィールド                                                       |
+| レイヤー      | 責務                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| `lib/`        | Tauri IPC ラッパー（スキャン・起動・検証）・SQLite 読み書き・キャッシュ判定と寿命管理・設定ストア・i18n 初期化・DB 監視ログ |
+| `hooks/`      | React 状態と lib の橋渡し（設定・スキャン・検索・仮想スクロール・テーマ・シェル状態）        |
+| `components/` | 表示のみ。IPC を直接呼ばず、lib / hooks 経由でデータを受け取る                              |
+| `types/`      | TS 専用型（GhostView・SortOrder 等）と ts-rs 生成型（types/generated/、手書き禁止）         |
+
+依存方向は `components → hooks → lib → IPC` の一方向。ファイル毎の関数名は列挙しない
+（実装事実はコードと `src/CLAUDE.md` が権威）。
 
 ---
 
 ## 4. データモデル
 
-### 4.1 Ghost（Rust / TypeScript 共通）
+### 4.1 Ghost（Rust 内部型）
 
 | フィールド                   | 型        | 説明                                                                            |
 | ---------------------------- | --------- | ------------------------------------------------------------------------------- |
@@ -135,22 +112,21 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `path`                       | `String`  | ゴーストのフルパス                                                              |
 | `source`                     | `String`  | `"ssp"`（SSP 内ゴースト）またはフォルダのフルパス（追加フォルダ）               |
 | `thumbnail_path`             | `String`  | サムネイル画像のフルパス。存在しない場合は空文字列                              |
-| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過 |
+| `thumbnail_use_self_alpha`   | `bool`    | `true` = PNG アルファチャンネル透過、`false` = 左上ピクセルをキーカラーとして透過。判定は実画像の color type を優先し、アルファチャンネルを持つ（RGBA / グレースケール+アルファ）場合は descript の `seriko.use_self_alpha` 宣言に関わらず `true`。持たない場合のみ宣言に従う。加えてフロントは `false` でも左上ピクセルが不透明でなければキー色抜きを行わず native alpha を尊重する（黒消え防止の多層防御） |
 | `thumbnail_kind`             | `String`  | `"surface"` / `"thumbnail"` / `""`（サムネイルなし）                            |
 | `diff_fingerprint`           | `String`  | 差分更新判定用の軽量フィンガープリント（メタデータ全フィールドの SHA-256）       |
 
-### 4.2 GhostView（フロントエンド拡張）
+IPC を渡らない走査結果の内部表現。DB への書き込みは rusqlite がフィールド単位で行う。
 
-`Ghost` に加えて以下を持つ（すべて NFKC 正規化・小文字版、検索用）:
+### 4.2 GhostView（フロントエンド表示型）
 
-| フィールド             | 型       | 元フィールド     |
-| ---------------------- | -------- | ---------------- |
-| `name_lower`           | `string` | `name`           |
-| `sakura_name_lower`    | `string` | `sakura_name`    |
-| `kero_name_lower`      | `string` | `kero_name`      |
-| `craftman_lower`       | `string` | `craftman`       |
-| `craftmanw_lower`      | `string` | `craftmanw`      |
-| `directory_name_lower` | `string` | `directory_name` |
+SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerprint` 等の内部カラムは含まない）。
+選択列は `src/test/fixtures/ghost-view-columns.json` を単一権威として、TS 型・SELECT 文・DB スキーマの
+三者が機械照合される（TS コンパイル時検査 + vitest + cargo test）。
+
+`Ghost`（§4.1）のメタデータフィールドに加えて、NFKC 正規化・小文字版の検索用 6 列
+（`name_lower` / `sakura_name_lower` / `kero_name_lower` / `craftman_lower` /
+`craftmanw_lower` / `directory_name_lower`）と、永続参照キー `ghost_identity_key` を持つ。
 
 ### 4.3 ghosts テーブル（SQLite 揮発キャッシュ）
 
@@ -163,7 +139,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `source`                 | `TEXT`    | `"ssp"` またはフォルダフルパス                           |
 | `name_lower`             | `TEXT`    | `name` の NFKC 正規化・小文字版（検索用）                |
 | `directory_name_lower`   | `TEXT`    | `directory_name` の NFKC 正規化・小文字版（検索用）      |
-| `request_key`            | `TEXT`    | SSP パスと追加フォルダから生成した識別子                 |
+| `request_key`            | `TEXT`    | SSP パスと追加フォルダからフロントエンドが生成した識別子  |
 | `updated_at`             | `TEXT`    | 行の最終更新日時（INSERT 時に `CURRENT_TIMESTAMP`）      |
 | `craftman`               | `TEXT`    | 作者名                                                   |
 | `thumbnail_path`         | `TEXT`    | サムネイル画像パス                                       |
@@ -178,9 +154,12 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `kero_name_lower`        | `TEXT`    | `kero_name` の NFKC 正規化・小文字版（検索用）           |
 | `craftman_lower`         | `TEXT`    | `craftman` の NFKC 正規化・小文字版（検索用）            |
 | `craftmanw_lower`        | `TEXT`    | `craftmanw` の NFKC 正規化・小文字版（検索用）           |
+| `last_launched`          | `TEXT`    | 最終起動日時（非正規化集計列。`user-data.db` の `ghost_launches` から導出）|
+| `launch_count`           | `INTEGER` | 起動回数（非正規化集計列。同上）                          |
 
 - `ghosts` テーブルはファイルシステム索引の揮発キャッシュであり、スキャンで完全再投入可能
 - スキーマ変更時は `DELETE FROM ghosts` を migration に含め、次回起動時のフルスキャンで再投入させる
+- `last_launched`/`launch_count` は `user-data.db`（永続）が権威を持つ起動履歴の導出キャッシュ。`record_launch` コマンドが起動の都度即時更新し、スキャンでのキャッシュ再構築後にバックフィルで再導出する（§4.4 参照）。`ghosts` の行削除・再投入があっても `ghost_identity_key` で再結合されるため値は失われない
 
 ### 4.4 設定ストア（settings.json）
 
@@ -189,7 +168,8 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `ssp_path`      | `string`   | SSP インストールフォルダパス |
 | `ghost_folders` | `string[]` | 追加ゴーストフォルダの配列   |
 
-ゴーストキャッシュと fingerprint は SQLite（`ghosts.db`）に統合保存する。
+ゴーストキャッシュと fingerprint は SQLite（`ghosts.db`）に統合保存する。永続的な起動履歴は
+Rust 専有の別ファイル `user-data.db` に分離されている（§4.4 の `ghost_launches` テーブルを参照）。
 
 #### ghost_fingerprints テーブル
 
@@ -198,6 +178,38 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `request_key`| `TEXT` | PRIMARY KEY。スキャン対象を識別するキー |
 | `fingerprint`| `TEXT` | ディレクトリ構成のフィンガープリント     |
 | `updated_at` | `TEXT` | 最終更新日時                           |
+| `parent_mtimes` | `TEXT` | 親ディレクトリ mtime のスナップショット（Layer 1 高速差分判定用、§7.4） |
+
+#### ghost_launches テーブル（永続・`user-data.db`）
+
+ゴースト起動履歴の永続記録・権威データ。`ghosts.db` とは別ファイルの `user-data.db`
+（Rust 専有、rusqlite 直接アクセス、`tauri-plugin-sql`/sqlx を経由しない）に住み、
+マイグレーションシステム・自動リセット（`reset_ghost_db` / §13）の対象外である。
+`ghosts` テーブルの非正規化集計列 `last_launched`/`launch_count`（§4.3）は本テーブルからの
+導出キャッシュであり、`recent`/`frequency` ソート（§8.6）はその集計列を直接参照する
+（cross-DB の JOIN は行わない）。
+
+| カラム               | 型        | 説明                                             |
+| -------------------- | --------- | ------------------------------------------------ |
+| `id`                 | `INTEGER` | PRIMARY KEY AUTOINCREMENT（表固有の代理キー）     |
+| `ghost_identity_key` | `TEXT`    | 起動されたゴーストの一意キー（`ghosts` への論理参照） |
+| `launched_at`        | `TEXT`    | 起動日時（`datetime('now')`）                    |
+
+- `ghosts.id` ではなく `ghost_identity_key` で `ghosts` 側の集計列と対応付ける（DB をまたぐため SQL の JOIN 自体は組めない。`record_launch` コマンドが両 DB を個別に UPDATE して同期する）
+- `ghosts` が `DELETE FROM` で再投入されても `ghost_identity_key` は不変のため、スキャン時バックフィルで自動的に再結合する
+- インデックス: `idx_ghost_launches_identity(ghost_identity_key)`・`idx_ghost_launches_at(launched_at DESC)`
+
+### 4.5 永続テーブルのキー設計ルール
+
+`ghosts` はファイルシステム索引の**揮発キャッシュ**で、スキーマ変更時に `DELETE FROM ghosts` で全件削除・再投入される（§4.3）。一方 `ghost_launches` や将来の `favorites` 等は**永続テーブル**であり、ユーザーの蓄積データを保持する。`ghost_launches` は `ghosts.db` とは別ファイルの `user-data.db`（Rust 専有）に置かれ、`ghosts` 側は `last_launched`/`launch_count` という導出集計列（§4.3）だけを持つ。両者をまたぐ参照は以下のルールに従う。
+
+- **`ghosts.id`（AUTOINCREMENT）を永続テーブルの外部参照に使わない**。`DELETE`/再 `INSERT` で値が変わり、参照が孤立する。10 万件規模では再投入のたびに大量の蓄積データが一瞬で無効化されうる
+- **外部参照には `ghost_identity_key` を使う**。`NFKC(source) + \x1f + NFKC(directory_name)`（`source` は `"ssp"` または追加フォルダのフルパス）で構成され、`ssp_path`（`request_key`）を含まない。このため SSP パス変更やキャッシュ再投入後も参照が自動的に再結合する
+- 同一ディレクトリ名のゴーストは `source` の違いで一意に区別される
+- UNIQUE INDEX `idx_ghosts_request_key_identity(request_key, ghost_identity_key)` が `ghosts` 側の一意性を保証する
+- 実装例: `ghost_launches.ghost_identity_key`（上記）
+
+> マイグレーション作法（永続テーブルでは `DELETE FROM` 禁止・段階移行）は `src-tauri/CLAUDE.md` の SQLite 節を参照。
 
 ---
 
@@ -230,14 +242,14 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ## 6. Tauri コマンド仕様
 
-### 6.1 `scan_ghosts_with_meta`
+### 6.1 `scan_and_store`
 
 | 項目   | 内容                                                                                             |
 | ------ | ------------------------------------------------------------------------------------------------ |
-| 引数   | `ssp_path: String`, `additional_folders: Vec<String>`, `cached_fingerprint: Option<String>`      |
-| 戻り値 | `ScanGhostsResponse { ghosts: Vec<Ghost>, fingerprint: String, cache_hit: bool }`                |
-| 処理   | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴースト一覧とフィンガープリントを同時に返す。`cached_fingerprint` が一致すれば `cache_hit: true` + `ghosts: []`（省略）を返し IPC 転送量を削減 |
-| ソート | `name` の大文字小文字無視の辞書順                                                                |
+| 引数   | `ssp_path: String`, `additional_folders: Vec<String>`, `request_key: String`, `cached_fingerprint: Option<String>` |
+| 戻り値 | `ScanStoreResult { cache_hit: bool, total: usize, fingerprint: String, request_key: String }`（ts-rs により TS 型を自動生成・CI で照合） |
+| 処理   | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴーストをスキャンして SQLite に直接書き込む。`cached_fingerprint` が一致すれば `cache_hit: true` を返し書き込みをスキップ。`request_key` はフロントエンド（`ghostScanUtils.ts` の `requestKeyFromSettings`）が唯一計算し値として渡す（Rust は受領値をそのまま使う） |
+| ソート | 表示順はフロントエンドの SQL `ORDER BY`（§8.6）が唯一の権威。scan 結果自体は順序を持たない。追加フォルダの正規化はロケール非依存のコードポイント順 |
 | エラー | SSP の `ghost/` フォルダ不在時にエラー。追加フォルダの不在・読取不能は無視して続行               |
 
 ### 6.2 `launch_ghost`
@@ -249,6 +261,33 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
 | 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
 | エラー | `ssp.exe` 不在時・起動失敗時にエラー                                                                                                                            |
+
+### 6.3 `validate_ssp_path`
+
+| 項目   | 内容                                                         |
+| ------ | ------------------------------------------------------------ |
+| 引数   | `ssp_path: String`                                           |
+| 戻り値 | `()`                                                         |
+| 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
+| エラー | `ssp.exe` 不在時にエラーメッセージを返す                     |
+
+### 6.4 `reset_ghost_db`
+
+ghosts.db と WAL/SHM を削除してマイグレーション競合を解消する（§13 の自動回復経路）。
+パス解決は書込側と同一の単一権威（`db_path.rs`）を経由する。
+
+### 6.5 `read_user_locale`
+
+実行ファイル横の `locales/{lang}.json` を読み込む（docs/locale-customization.md 参照）。
+
+### 6.6 `record_launch`
+
+| 項目   | 内容                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------- |
+| 引数   | `ghost_identity_key: String`                                                              |
+| 戻り値 | `()`                                                                                      |
+| 処理   | 起動履歴を記録する。`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する |
+| エラー | いずれかの DB への書込失敗時にエラーを返す（フロントエンドはログのみで UI をブロックしない） |
 
 ---
 
@@ -276,7 +315,20 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 ### 7.3 追加フォルダの正規化
 
 - パスの `\` を `/` に統一し小文字化
-- 重複排除後、正規化パスの辞書順でソート（順序非依存性を保証）
+- 重複排除後、正規化パスのコードポイント順でソート（順序非依存性を保証）
+- `request_key` はフロントエンド（`ghostScanUtils.ts` の `requestKeyFromSettings`）が唯一計算し、`scan_and_store` に値として渡す。Rust は受領値をそのまま使う（不透明トークン）。ソートはロケール非依存のコードポイント順（`localeCompare` ではない）
+
+### 7.4 二層フィンガープリント
+
+`scan_and_store` はフル走査の前に軽量な事前判定を行う。
+
+- **Layer 1（親 mtime 判定, < 1ms）**: 親ディレクトリ（SSP の `ghost/` と各追加フォルダ）の
+  mtime スナップショットを `ghost_fingerprints.parent_mtimes` と比較し、一致すれば走査せず
+  `cache_hit: true` を返す。NTFS では直下のエントリ追加・削除でのみ親 mtime が変化するため、
+  ゴーストの増減はこの層で検出できる。既存ゴースト内の descript.txt 編集は検出できない
+  （「再読込」の強制フルスキャンで対応）
+- **Layer 2（フル fingerprint）**: §7.1〜7.2 のトークンハッシュ。Layer 1 不一致時に全エントリを
+  走査して計算し、`cached_fingerprint` と一致すれば書込をスキップして `parent_mtimes` のみ更新する
 
 ---
 
@@ -289,9 +341,10 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
    1. SQLite に該当 `requestKey` のデータが存在するか確認（`hasGhosts`）
    2. DB にデータがあれば SQLite から fingerprint を取得（`getCachedFingerprint`）→ `cachedFingerprint` として Rust に送る
    3. DB が空なら `cachedFingerprint=null` → Rust は必ず全件を返す
-3. **Rust スキャン**: `scan_ghosts_with_meta(cachedFingerprint)` を実行。fingerprint 一致なら `cache_hit: true` + `ghosts: []`（省略）を返し IPC 転送を最適化
+3. **Rust スキャン**: `scan_and_store(requestKey, cachedFingerprint)` を実行。fingerprint 一致なら `cache_hit: true` を返し SQLite 書き込みをスキップ
 4. **キャッシュヒット時**: `cache_hit=true` → 即リターン（`skipped: true`）。SQLite 更新なし
-5. **キャッシュミス時**: スキャン結果を SQLite へ置換保存（`replaceGhostsByRequestKey`）し、fingerprint を SQLite へ更新（`setCachedFingerprint`）
+5. **キャッシュミス時**: Rust 側が走査結果を rusqlite の差分 UPSERT で直接書き込み、
+   fingerprint と parent_mtimes を同時に更新する（JS は Ghost 配列を受け取らない）
 6. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）。`ghosts` と `ghost_fingerprints` の両テーブルから一括削除
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
@@ -309,14 +362,25 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 - VACUUM は try-catch で囲み、失敗しても DB 接続を阻害しない（warn ログのみ）
 - シングルトン接続のため、これらは起動時に 1 回だけ実行される
 
+**rusqlite 書き込み接続（`configure_connection`）** は sqlx とは独立して以下の PRAGMA を設定する:
+
+| PRAGMA | 値 | 目的 |
+|--------|-----|------|
+| `journal_mode` | WAL | sqlx 側と同一 |
+| `busy_timeout` | 5000 | sqlx 側と同一 |
+| `synchronous` | NORMAL | WAL モードでの書き込み高速化（キャッシュ DB のため許容） |
+| `cache_size` | -65536 | 64MB ページキャッシュ（10 万行の作業セットを収容） |
+| `temp_store` | MEMORY | 一時 B-tree をメモリ上に配置 |
+| `mmap_size` | 134217728 | 128MB メモリマップ I/O |
+
 ### 8.2 責務分離方針
 
 - `hooks/useGhosts.ts`
   - React 状態（loading / error）と画面からの `refresh` トリガのみを担当
 - `lib/ghostCatalogService.ts`
-  - キャッシュ判定、スキャン実行、SQLite 保存、fingerprint 更新のユースケース手順を担当
+  - キャッシュ判定と scan_and_store 呼び出し（走査・書込・fingerprint 更新は Rust 側が一括実行）、寿命管理のユースケース手順を担当
 - `lib/ghostDatabase.ts`
-  - SQLite への ghost・fingerprint 読み書き抽象化を担当
+  - SQLite の読み取り（検索・件数・fingerprint 取得）と寿命管理削除の抽象化を担当
 
 ### 8.3 強制リフレッシュ
 
@@ -328,7 +392,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 ### 8.5 寿命管理
 
-スキャン結果の保存後（`replaceGhostsByRequestKey` 成功直後）に `cleanupOldGhostCaches` を実行し、不要な `request_key` キャッシュを削除する。
+スキャン結果の書込み完了後（`cache_hit=false` 時）に、不要な `request_key` キャッシュを削除する（JS 側で fire-and-forget、失敗許容）。
 
 | 項目                          | 仕様                                                       |
 | ----------------------------- | ---------------------------------------------------------- |
@@ -338,6 +402,17 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `currentRequestKey` の保護    | TTL 切れでも削除対象から除外し、戻り値に必ず含める          |
 | fingerprint の同期削除        | `ghost_fingerprints` テーブルからも同一 `request_key` を削除 |
 | 失敗時の挙動                  | 警告ログのみ。UI への影響なし                              |
+
+### 8.6 表示ソート
+
+一覧の表示順は SQLite の `ORDER BY` が唯一の権威。名前順（NFKC 小文字）・最近起動順・
+起動回数順（いずれも `ghosts` の非正規化集計列 `last_launched`/`launch_count` を単一 DB で
+`ORDER BY` する。cross-DB JOIN は行わない）・ランダム順を提供する。集計列は `record_launch`
+コマンドの即時更新と、スキャンでのキャッシュ再構築後のバックフィルで `user-data.db` の
+`ghost_launches`（権威）と整合を保つ（§4.4・§6.6）。
+ランダム順はセッション毎のシードで `ORDER BY (id * seed) % 素数` を固定し、仮想スクロールの
+ページングとバッファマージに対して順序整合を保つ。「ランダム」再選択でシードを引き直す
+（シード変更は sortEpoch として検索フックのリセット判定に配線され、全置換再取得を強制する）。
 
 ---
 
@@ -413,11 +488,9 @@ stateDiagram-v2
     CheckFingerprintCache --> ExecuteScan : fingerprint あり（cachedFingerprint=値）
 
     ExecuteScan --> Done : cache_hit=true（スキップ）
-    ExecuteScan --> SaveToSQLite : cache_hit=false
+    ExecuteScan --> LifecycleCleanup : cache_hit=false（Rust が差分 UPSERT と fingerprint 更新まで完了）
     ExecuteScan --> HandleError : スキャン失敗
 
-    SaveToSQLite --> UpdateFingerprint : SQLite 置換保存
-    UpdateFingerprint --> LifecycleCleanup : fingerprint を SQLite に保存
     LifecycleCleanup --> Done : 世代超過・TTL 超過キャッシュを削除
 
     HandleError --> Done : エラー表示
@@ -519,7 +592,7 @@ stateDiagram-v2
 
 - トリガー: `main` への push・PR
 - 実行環境: `windows-latest`
-- ステップ: `npm run build` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo check`
+- ステップ: `npm run build` → `npm test` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo test --workspace` → ts-rs 生成型の再生成照合（`git diff --exit-code`）→ ghost-meta feature テスト
 - 備考: E2E テストはリリースビルドと tauri-driver が必要なため CI には含まない。ローカルで手動実行する。
 
 ### 11.2 リリース（`release.yml`）
@@ -568,5 +641,6 @@ stateDiagram-v2
 | スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |
 | 設定保存失敗                         | コンソールエラー + UI ロールバック                       |
 | キャッシュ書き込み失敗               | コンソールエラーのみ（UI 影響なし）                      |
+| マイグレーション競合（起動時）       | DB 読み込みエラーを検出し `reset_ghost_db` で ghosts.db を自動削除 → 再接続。リセット対象は揮発キャッシュの ghosts.db のみで、永続データ（`user-data.db` の `ghost_launches`）は対象外のため失われない。ゴースト一覧・集計列は再スキャンで復元される（バックフィルで `last_launched`/`launch_count` を再導出） |
 
 ---

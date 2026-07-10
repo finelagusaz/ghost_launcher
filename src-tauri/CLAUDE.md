@@ -14,9 +14,17 @@
 
 **マイグレーション SQL の不変性（絶対厳守）**: sqlx は適用済みマイグレーションの SQL 文字列の SHA-384 チェックサムを `_sqlx_migrations` テーブルに記録し、起動時に再検証する。空白・インデントを含む**あらゆる変更**がチェックサム不一致を引き起こし「migration N was previously applied but has been modified」でクラッシュする。このため: (1) 一度でもリリース・コミットした migration の SQL は**絶対に編集しない**。(2) 複数行 SQL は Rust のインデントが文字列に混入しないよう `"ALTER TABLE ...\nCREATE INDEX ..."` のように **`\n` を明示**して書く（raw 改行 + インデントを使うとリファクタリング時にインデントが変わり即クラッシュする）。
 
-**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db はキャッシュ DB であり、再スキャンで復旧可能なため安全。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
+**マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db は純粋キャッシュ（再スキャンで復旧）であり、永続的な起動履歴は `user-data.db`（Rust 専有・rusqlite、`commands/launch_history.rs`）へ分離済みのため、リセットで失われない。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
 **DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
+
+**rusqlite 直接書き込み（scan_and_store）**: `scan_and_store` コマンドは `tauri-plugin-sql`（sqlx）を経由せず rusqlite で直接 SQLite に書き込む。rusqlite の接続は sqlx 側の PRAGMA を継承しないため、`configure_connection` で独立して PRAGMA を設定する（WAL・busy_timeout・synchronous=NORMAL・cache_size・temp_store・mmap_size）。`rusqlite::Connection::execute_batch` は `sqlite3_exec` を使用するため、セミコロン区切りの複数文を正しく実行できる（sqlx の `sqlite3_prepare_v2` とは異なる）。`request_key` はフロントエンドが単一権威として計算し、`scan_and_store` は値で受け取る。Rust 側で再計算しない（不透明トークンとして扱う）。
+
+**cross-DB JOIN は不可（sqlx プールで ATTACH が揮発）**: `tauri-plugin-sql`（sqlx）の `Database.load` は `Pool::connect` で接続を都度取得する（`select`/`execute` が毎回 `pool.fetch_all`/`pool.execute`）。このため `db.execute("ATTACH …")` と後続の JOIN クエリが別接続に載り **ATTACH が揮発**し、JS/sqlx 経路で複数 DB ファイルをまたぐ JOIN は成立しない。永続テーブル `ghost_launches` を Rust 専有の `user-data.db`（`commands/launch_history.rs`、rusqlite 単一接続なので ATTACH 安全）へ分離したのはこの制約が理由。読み取り側は `ghosts` の非正規化集計列 `last_launched`/`launch_count`（`record_launch` 即時更新＋スキャン時 backfill 再導出）で recent/frequency を単一 DB ORDER BY にする。クロス DB 集計が要る場合は JS/sqlx の ATTACH に頼らず、Rust 単一接続で ATTACH するか非正規化列を使う。詳細は `SPEC.md` §4.5/§6.6 を参照。
+
+**store_ghosts の差分 UPSERT**: `store_ghosts` は DELETE-all + INSERT-all ではなく、既存行の `(ghost_identity_key, row_fingerprint)` をカバリングインデックスから読み、スキャン結果と比較して INSERT/UPDATE/DELETE を最小限に実行する。`ghost_identity_key` は NFKC(source) + `\x1f` + NFKC(directory_name) で構成される論理主キー、`row_fingerprint` は 9 メタデータフィールドの SHA-256。変更なしの行は完全にスキップされる。
+
+**永続テーブルのマイグレーション**: `ghost_launches` や将来の `favorites` 等の永続テーブル（ユーザー蓄積データ）は、揮発キャッシュの `ghosts` と異なり**マイグレーションで `DELETE FROM` してはならない**。破壊的スキーマ変更はデータ移行 SQL を必須とし、段階移行（新列追加 → バックフィル → 参照切替）で行う。ゴーストへの外部参照は `ghosts.id`（再投入で値が変わる）ではなく `ghost_identity_key` を使う。起動履歴は現在 `user-data.db` へ分離済み。将来の `favorites` 等の永続テーブルも user-data.db 側へ置き、揮発キャッシュ ghosts.db との運命共有を避ける。データモデルの根拠とキー構成は `SPEC.md` §4.5 を参照。
 
 ## IPC 型の管理
 
@@ -25,6 +33,8 @@
 **戻り値のフィールド名**: Tauri の `invoke()` は引数名を camelCase → snake_case に自動変換するが、**戻り値のフィールド名は変換しない**。`#[derive(Serialize)]` がそのまま JS に渡るため、TS 型は Rust のフィールド名（snake_case）と完全一致させる。`#[serde(rename_all = "camelCase")]` を使わない限り、JS 側で camelCase を期待してはならない。
 
 ## その他
+
+**rusqlite と sqlx-sqlite の libsqlite3-sys 共有制約**: `rusqlite` と `sqlx-sqlite`（`tauri-plugin-sql` 経由）は両方とも `links = "sqlite3"` を宣言するため、`libsqlite3-sys` を必ず同一バージョンで共有しなければならない（cargo の links 制約）。`tauri-plugin-sql` 2.4.0 系は `sqlx-sqlite 0.8.x`（libsqlite3-sys ^0.30）に固定されているため、`rusqlite` の上限は **0.32**（libsqlite3-sys 0.30）。`rusqlite` の major bump は `tauri-plugin-sql` が新 `sqlx`（libsqlite3-sys 0.37+）系に追従するまで待機する。**解錠条件**: `sqlx-sqlite 0.9` は libsqlite3-sys 要求を `>=0.30.1, <0.38.0` へ拡大したため、`tauri-plugin-sql` が `sqlx 0.9` 対応版を公開した時点で `rusqlite` は **0.39**（libsqlite3-sys 0.37）まで引き上げ可能になる（0.40 は libsqlite3-sys 0.38 要求で依然不可）。2026-06 時点で sqlx 0.9 対応の `tauri-plugin-sql` は未公開。
 
 **descript.txt 文字コード判定**: UTF-8 BOM → `charset` フィールド → Shift_JIS フォールバックの順で判定します（`crates/ghost-meta/src/descript.rs`）。
 

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   Badge,
   Button,
@@ -14,6 +14,8 @@ import {
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
+import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
+import { launchGhost } from "../lib/sspClient";
 import type { GhostView } from "../types";
 
 interface Props {
@@ -172,13 +174,7 @@ const ThumbnailCanvas = memo(function ThumbnailCanvas({ src, className }: { src:
       ctx.drawImage(img, 0, 0);
       try {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        const [keyR, keyG, keyB] = [data[0], data[1], data[2]];
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i] === keyR && data[i + 1] === keyG && data[i + 2] === keyB) {
-            data[i + 3] = 0;
-          }
-        }
+        applyKeyColorAlpha(imageData.data);
         ctx.putImageData(imageData, 0, 0);
       } catch {
         // CORS 等で getImageData が失敗した場合はそのまま表示
@@ -221,11 +217,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
     setLaunching(true);
     setError(null);
     try {
-      await invoke("launch_ghost", {
-        sspPath,
-        ghostDirectoryName: ghost.directory_name,
-        ghostSource: ghost.source,
-      });
+      await launchGhost(sspPath, ghost);
     } catch (e) {
       setError(t("card.launchError", { detail: formatErrorDetail(e) }));
     } finally {

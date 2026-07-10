@@ -1,8 +1,9 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { Ghost, GhostView } from "../types";
+import { GhostView, SortOrder } from "../types";
+import { measureSearch, reportDbSize } from "./dbMonitor";
 
-let dbInstance: Database | null = null;
+let dbInitPromise: Promise<Database> | null = null;
 
 const VACUUM_FREE_RATIO = 0.25;
 const VACUUM_FREE_BYTES = 1_048_576;
@@ -43,180 +44,43 @@ async function loadDb(): Promise<Database> {
   return db;
 }
 
-export async function getDb(): Promise<Database> {
-  if (!dbInstance) {
-    console.log("[ghostDatabase] Loading SQLite database...");
-    try {
-      dbInstance = await loadDb();
-    } catch (e) {
-      const msg = String(e);
-      if (msg.includes("migration") || msg.includes("duplicate column")) {
-        console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
-        await invoke("reset_ghost_db");
-        dbInstance = await loadDb();
-        console.log("[ghostDatabase] DB をリセットして再接続しました");
-      } else {
-        throw e;
-      }
-    }
+async function initializeDb(): Promise<Database> {
+  try {
+    const db = await loadDb();
     console.log("[ghostDatabase] Database loaded successfully");
+    void reportDbSize(db, "startup").catch(() => {});
+    return db;
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes("migration") || msg.includes("duplicate column")) {
+      console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
+      await invoke("reset_ghost_db");
+      const db = await loadDb();
+      console.log("[ghostDatabase] DB をリセットして再接続しました");
+      return db;
+    }
+    // リカバリ不能: Promise をリセットして次回再試行可能にする
+    dbInitPromise = null;
+    throw e;
   }
-  return dbInstance;
 }
 
-export async function clearGhostsByRequestKey(requestKey: string): Promise<void> {
-  const db = await getDb();
-  await db.execute("DELETE FROM ghosts WHERE request_key = ?", [requestKey]);
-  console.log(`[ghostDatabase] Cleared ghosts table for requestKey=${requestKey}`);
+export function getDb(): Promise<Database> {
+  if (!dbInitPromise) {
+    console.log("[ghostDatabase] Loading SQLite database...");
+    dbInitPromise = initializeDb();
+  }
+  return dbInitPromise;
 }
 
-const GHOST_KEY_SEPARATOR = "\u001f";
+/// DB 初期化を早期にキックオフする（fire-and-forget）。
+/// React のレンダリング前に呼ぶことで、最初の DB アクセスを高速化する。
+export function warmUpDb(): void {
+  void getDb().catch((e) => console.warn("[ghostDatabase] warmup に失敗しました", e));
+}
 
-function normalizeForKey(value: string): string {
+export function normalizeForKey(value: string): string {
   return value.normalize("NFKC").toLowerCase();
-}
-
-function buildGhostIdentityKey(ghost: Ghost): string {
-  return `${normalizeForKey(ghost.source)}${GHOST_KEY_SEPARATOR}${normalizeForKey(ghost.directory_name)}`;
-}
-
-function buildGhostDiffFingerprint(ghost: Ghost): string {
-  if (ghost.diff_fingerprint) {
-    return ghost.diff_fingerprint;
-  }
-  return [
-    ghost.name,
-    ghost.sakura_name,
-    ghost.kero_name,
-    ghost.craftman,
-    ghost.craftmanw,
-    ghost.path,
-    ghost.thumbnail_path,
-    ghost.thumbnail_use_self_alpha ? "1" : "0",
-    ghost.thumbnail_kind,
-  ].join(GHOST_KEY_SEPARATOR);
-}
-
-const GHOST_INSERT_SQL_PREFIX =
-  "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ";
-
-const GHOST_INSERT_PLACEHOLDER = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)";
-
-function buildGhostInsertRow(requestKey: string, ghost: Ghost): { identityKey: string; params: (string | number)[] } {
-  const identityKey = buildGhostIdentityKey(ghost);
-  return {
-    identityKey,
-    params: [
-      requestKey,
-      identityKey,
-      buildGhostDiffFingerprint(ghost),
-      ghost.name,
-      ghost.sakura_name,
-      ghost.kero_name,
-      ghost.craftman,
-      ghost.craftmanw,
-      ghost.directory_name,
-      ghost.path,
-      ghost.source,
-      normalizeForKey(ghost.name),
-      normalizeForKey(ghost.sakura_name),
-      normalizeForKey(ghost.kero_name),
-      normalizeForKey(ghost.craftman),
-      normalizeForKey(ghost.craftmanw),
-      normalizeForKey(ghost.directory_name),
-      ghost.thumbnail_path,
-      ghost.thumbnail_use_self_alpha ? 1 : 0,
-      ghost.thumbnail_kind,
-    ],
-  };
-}
-
-export async function insertGhostsBatch(requestKey: string, ghosts: Ghost[]): Promise<void> {
-  if (ghosts.length === 0) return;
-  const db = await getDb();
-
-  // SQLite の SQLITE_MAX_VARIABLE_NUMBER = 999。14列中プレースホルダ13個×75行=975で安全圏。
-  const chunkSize = 75;
-  let inserted = 0;
-  for (let i = 0; i < ghosts.length; i += chunkSize) {
-    const chunk = ghosts.slice(i, i + chunkSize);
-    const placeholders: string[] = [];
-    const params: (string | number)[] = [];
-
-    for (const ghost of chunk) {
-      const row = buildGhostInsertRow(requestKey, ghost);
-      placeholders.push(GHOST_INSERT_PLACEHOLDER);
-      params.push(...row.params);
-    }
-
-    await db.execute(GHOST_INSERT_SQL_PREFIX + placeholders.join(", "), params);
-    inserted += chunk.length;
-  }
-  console.log(`[ghostDatabase] Inserted ${inserted} ghosts into SQLite for requestKey=${requestKey}`);
-}
-
-// tauri-plugin-sql は sqlx コネクションプール（max_connections=10）を使用するため、
-// 複数の execute() 呼び出しが異なるコネクションに到達しうる。
-// 明示的トランザクション（BEGIN/COMMIT/ROLLBACK）はコネクション間で共有されず
-// SQLITE_BUSY を引き起こすため、各操作を auto-commit で実行する。
-// キャッシュ DB のため、中断時はフルスキャンで復旧可能。
-export async function replaceGhostsByRequestKey(requestKey: string, ghosts: Ghost[]): Promise<void> {
-  // NOT IN の変数上限: SQLITE_MAX_VARIABLE_NUMBER(999) から request_key の 1 を引いた最大。
-  // 998 件超はゴーストが極めて多いレアケースのため全削除→再挿入にフォールバックする。
-  const NOT_IN_MAX = 998;
-  if (ghosts.length > NOT_IN_MAX) {
-    await clearGhostsByRequestKey(requestKey);
-    await insertGhostsBatch(requestKey, ghosts);
-    console.log(`[ghostDatabase] Replaced ghosts (full reset) for requestKey=${requestKey}`);
-    return;
-  }
-
-  const db = await getDb();
-
-  // tauri-plugin-sql はトランザクション境界を共有できないため、
-  // upsert と不要行削除を auto-commit で順次実行する。
-  const chunkSize = 75;
-  const keepKeys: string[] = [];
-
-  for (let i = 0; i < ghosts.length; i += chunkSize) {
-    const chunk = ghosts.slice(i, i + chunkSize);
-    const placeholders: string[] = [];
-    const params: (string | number)[] = [];
-
-    for (const ghost of chunk) {
-      const row = buildGhostInsertRow(requestKey, ghost);
-      keepKeys.push(row.identityKey);
-      placeholders.push(GHOST_INSERT_PLACEHOLDER);
-      params.push(...row.params);
-    }
-
-    let sql = GHOST_INSERT_SQL_PREFIX + placeholders.join(", ");
-    sql += " ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET ";
-    sql += "row_fingerprint = excluded.row_fingerprint, ";
-    sql += "name = excluded.name, sakura_name = excluded.sakura_name, kero_name = excluded.kero_name, ";
-    sql += "craftman = excluded.craftman, craftmanw = excluded.craftmanw, directory_name = excluded.directory_name, ";
-    sql += "path = excluded.path, source = excluded.source, name_lower = excluded.name_lower, ";
-    sql += "sakura_name_lower = excluded.sakura_name_lower, kero_name_lower = excluded.kero_name_lower, ";
-    sql += "craftman_lower = excluded.craftman_lower, craftmanw_lower = excluded.craftmanw_lower, ";
-    sql += "directory_name_lower = excluded.directory_name_lower, thumbnail_path = excluded.thumbnail_path, ";
-    sql += "thumbnail_use_self_alpha = excluded.thumbnail_use_self_alpha, thumbnail_kind = excluded.thumbnail_kind, ";
-    sql += "updated_at = CURRENT_TIMESTAMP ";
-    sql += "WHERE ghosts.row_fingerprint <> excluded.row_fingerprint";
-
-    await db.execute(sql, params);
-  }
-
-  if (keepKeys.length > 0) {
-    const placeholders = buildInClausePlaceholders(keepKeys.length);
-    await db.execute(
-      `DELETE FROM ghosts WHERE request_key = ? AND ghost_identity_key NOT IN (${placeholders})`,
-      [requestKey, ...keepKeys],
-    );
-  } else {
-    await clearGhostsByRequestKey(requestKey);
-  }
-
-  console.log(`[ghostDatabase] Upserted ghosts and pruned stale rows for requestKey=${requestKey}`);
 }
 
 interface RequestKeyRow {
@@ -273,14 +137,6 @@ export async function getCachedFingerprint(requestKey: string): Promise<string |
   return rows.length > 0 ? rows[0].fingerprint : null;
 }
 
-export async function setCachedFingerprint(requestKey: string, fingerprint: string): Promise<void> {
-  const db = await getDb();
-  await db.execute(
-    "INSERT OR REPLACE INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-    [requestKey, fingerprint]
-  );
-}
-
 export async function hasGhosts(requestKey: string): Promise<boolean> {
   const db = await getDb();
   const countResult = await db.select<{ count: number }[]>(
@@ -291,8 +147,33 @@ export async function hasGhosts(requestKey: string): Promise<boolean> {
   return total > 0;
 }
 
-const GHOST_SELECT_COLUMNS =
-  "name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind";
+// SELECT 対象列の単一権威。satisfies が GhostView に無い列名（typo・削除漏れ）を弾く。
+// 列を増減するときは GhostView（src/types/index.ts）と
+// src/test/fixtures/ghost-view-columns.json も更新する（Rust 側テストがスキーマと照合）。
+export const GHOST_VIEW_COLUMNS = [
+  "name",
+  "sakura_name",
+  "kero_name",
+  "craftman",
+  "craftmanw",
+  "directory_name",
+  "path",
+  "source",
+  "name_lower",
+  "sakura_name_lower",
+  "kero_name_lower",
+  "craftman_lower",
+  "craftmanw_lower",
+  "directory_name_lower",
+  "thumbnail_path",
+  "thumbnail_use_self_alpha",
+  "thumbnail_kind",
+  "ghost_identity_key",
+] as const satisfies readonly (keyof GhostView)[];
+
+// GhostView のフィールドで GHOST_VIEW_COLUMNS に列挙されていないもの。
+// 列挙漏れがあると never でなくなり、下の型注釈が never に解決されて代入が型エラーになる。
+type MissingGhostViewColumns = Exclude<keyof GhostView, (typeof GHOST_VIEW_COLUMNS)[number]>;
 
 const GHOST_SEARCH_LOWER_COLUMNS = [
   "name_lower",
@@ -306,15 +187,53 @@ const GHOST_SEARCH_LOWER_COLUMNS = [
 const GHOST_SEARCH_WHERE =
   GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
 
-export async function searchGhostsInitialPage(requestKey: string, limit: number): Promise<GhostView[]> {
-  const db = await getDb();
-  const rows = await db.select<GhostView[]>(
-    `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? ORDER BY name_lower ASC LIMIT ?`,
-    [requestKey, limit]
-  );
+const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
+  GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
 
-  console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}) → rows=${rows.length}`);
-  return rows;
+// random ソート用のセッションシード。ORDER BY 式を固定することで、
+// 仮想スクロールの offset ページングとバッファマージに対して順序が安定する。
+// 素数の剰余で id を攪拌する。剰余の衝突は第 2 キー g.id で安定化する。
+const RANDOM_SORT_MODULUS = 1000003;
+
+function newRandomSortSeed(): number {
+  return Math.floor(Math.random() * (RANDOM_SORT_MODULUS - 1)) + 1;
+}
+
+let randomSortSeed = newRandomSortSeed();
+
+/// random ソートの並びを引き直す（ソートで「ランダム」を選択したときに呼ぶ）
+export function reseedRandomSort(): void {
+  randomSortSeed = newRandomSortSeed();
+}
+
+// SELECT の ORDER BY 式を返す。recent/frequency は ghosts の非正規化集計列
+// （last_launched / launch_count）で並べる。起動履歴は user-data.db（Rust 専有）に
+// 分離され、集計列は record_launch とスキャン時バックフィルで維持される。
+export function buildOrderBy(sortOrder: SortOrder): string {
+  switch (sortOrder) {
+    case "random":
+      return `(g.id * ${randomSortSeed}) % ${RANDOM_SORT_MODULUS}, g.id`;
+    case "recent":
+      return "g.last_launched DESC NULLS LAST, g.name_lower ASC";
+    case "frequency":
+      return "g.launch_count DESC, g.name_lower ASC";
+    default:
+      return "g.name_lower ASC";
+  }
+}
+
+export async function searchGhostsInitialPage(requestKey: string, limit: number, sortOrder: SortOrder = "name"): Promise<GhostView[]> {
+  return measureSearch("searchGhostsInitialPage", async () => {
+    const db = await getDb();
+    const orderBy = buildOrderBy(sortOrder);
+    const rows = await db.select<GhostView[]>(
+      `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ?`,
+      [requestKey, limit]
+    );
+
+    console.log(`[ghostDatabase] searchGhostsInitialPage(requestKey=${requestKey}, limit=${limit}, sort=${sortOrder}) → rows=${rows.length}`);
+    return rows;
+  });
 }
 
 export async function countGhostsByQuery(requestKey: string, query: string): Promise<number> {
@@ -338,21 +257,38 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
   return countResult.length > 0 ? countResult[0].count : 0;
 }
 
-export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number): Promise<{ ghosts: GhostView[], total: number }> {
+export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number, sortOrder: SortOrder = "name"): Promise<{ ghosts: GhostView[], total: number }> {
+  return measureSearch("searchGhosts", async () => {
+    const db = await getDb();
+
+    const normalizedQuery = normalizeForKey(query);
+    const likePattern = `%${normalizedQuery}%`;
+    const orderBy = buildOrderBy(sortOrder);
+    const searchWhere = GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
+
+    const [total, rows] = await Promise.all([
+      countGhostsByQuery(requestKey, query),
+      db.select<GhostView[]>(
+        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? AND (${searchWhere}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+        [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
+      ),
+    ]);
+
+    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}, sort=${sortOrder}) → total=${total}`);
+    console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
+    return { ghosts: rows, total };
+  });
+}
+
+export async function recordLaunch(ghostIdentityKey: string): Promise<void> {
+  await invoke("record_launch", { ghostIdentityKey });
+}
+
+export async function getRandomGhost(requestKey: string): Promise<GhostView | null> {
   const db = await getDb();
-
-  const normalizedQuery = normalizeForKey(query);
-  const likePattern = `%${normalizedQuery}%`;
-
-  const [total, rows] = await Promise.all([
-    countGhostsByQuery(requestKey, query),
-    db.select<GhostView[]>(
-      `SELECT ${GHOST_SELECT_COLUMNS} FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE}) ORDER BY name_lower ASC LIMIT ? OFFSET ?`,
-      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
-    ),
-  ]);
-
-  console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}) → total=${total}`);
-  console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
-  return { ghosts: rows, total };
+  const rows = await db.select<GhostView[]>(
+    `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY RANDOM() LIMIT 1`,
+    [requestKey]
+  );
+  return rows.length > 0 ? rows[0] : null;
 }

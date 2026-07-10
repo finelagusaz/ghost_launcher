@@ -29,7 +29,7 @@ function detectOsLanguage(): Language {
   return "en";
 }
 
-// バンドルリソースを使う同期初期化（initImmediate: false で同期完了を保証）
+// バンドルリソースを使う同期初期化（initAsync: false で同期完了を保証）
 i18n.use(initReactI18next).init({
   resources: {
     ja: { translation: ja },
@@ -42,7 +42,7 @@ i18n.use(initReactI18next).init({
   lng: detectOsLanguage(),
   fallbackLng: "en",
   interpolation: { escapeValue: true },
-  initImmediate: false,
+  initAsync: false,
 });
 
 /** JSON 文字列を検証し、文字列値のみを抽出する。非文字列値は無視する */

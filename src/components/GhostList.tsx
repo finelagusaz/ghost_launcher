@@ -112,7 +112,9 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
     return () => clearTimeout(timer);
   }, [startIndex, endIndex, loadedStart, loadedEnd, shouldVirtualize, total, searchLoading]);
 
-  if (loading) {
+  // スキャン中でも表示可能なキャッシュがあれば一覧を維持する（stale-while-revalidate）。
+  // 表示するゴーストが無いときのみスピナーを出す
+  if (loading && total === 0 && ghosts.length === 0) {
     return (
       <div className={styles.state}>
         <Spinner label={t("list.loading")} />
