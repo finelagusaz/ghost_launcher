@@ -39,7 +39,7 @@ git log --oneline main..HEAD  # PR に含まれるコミット一覧
 
 ### ステップ 3: リモートへの push（gh-HTTPS）
 
-> この環境は SSH push が `~/.ssh/config` の ACL で失敗するため、`/post-merge-sync` と同方式の gh-HTTPS で迂回する。SSH remote にも永続 git config にも触れない。
+> SSH push が `~/.ssh/config` の ACL で失敗するため、`/post-merge-sync` の「gh-HTTPS 方式」で迂回する（理由の詳細は同スキルが正典）。操作は push のみ差し替える。SSH remote にも永続 git config にも触れない。
 
 ```bash
 git -c credential.helper= -c credential.helper='!gh auth git-credential' \

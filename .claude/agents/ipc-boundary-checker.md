@@ -1,6 +1,9 @@
 ---
 name: ipc-boundary-checker
 description: Tauri IPC 境界（invoke）の型同期・引数変換・戻り値フィールド名を検証するサブエージェント。Rust コマンドや TS 型定義の変更時に使用する。
+model: sonnet
+effort: medium
+tools: Read, Grep, Glob, Bash
 ---
 
 # IPC 境界チェック
@@ -41,8 +44,8 @@ description: Tauri IPC 境界（invoke）の型同期・引数変換・戻り値
 - `#[serde(rename_all = "camelCase")]` を使っていないのに camelCase でアクセスしていないか
 - `Option<T>` → `T | null` の対応が正しいか
 
-### 4. エラー型
-- `Result<T, String>` のエラーメッセージにユーザーのファイルシステム情報が過剰に含まれていないか
+### 4. エラー型（IPC エラー漏洩の一次担当）
+- `Result<T, String>` のエラーメッセージにユーザーのファイルシステム情報が過剰に含まれていないか（この観点は当エージェントに一本化。`security-reviewer` は重複検査しない）
 - フロントエンドでエラーが適切にキャッチされているか
 
 ### 5. GhostView との整合

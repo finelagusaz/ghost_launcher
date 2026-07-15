@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 GitHub 上で PR がマージされた後、ローカル `main` を最新化し、作業ブランチを安全に削除する。
 
-> **この環境固有の制約**: `origin`（`git@github.com:finelagusaz/ghost_launcher.git`、SSH）への `git push`/`fetch` は `~/.ssh/config` の ACL で失敗する。`gh` はトークン認証済みのため、HTTPS + gh 資格情報ヘルパーで迂回する。SSH remote にも永続 git config にも触れない。
+> **この環境固有の制約（gh-HTTPS 方式の正典）**: `origin`（`git@github.com:finelagusaz/ghost_launcher.git`、SSH）への `git push`/`fetch` は `~/.ssh/config` の ACL で失敗する。`gh` はトークン認証済みのため、HTTPS + gh 資格情報ヘルパーで迂回する。SSH remote にも永続 git config にも触れない。この「gh-HTTPS 方式」の理由はこのスキルが一次記述であり、`/pr`・`/start-issue` は操作（push/pull）だけ差し替えて同方式を参照する。
 
 ## 引数
 

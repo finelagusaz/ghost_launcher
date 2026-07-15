@@ -1,6 +1,9 @@
 ---
 name: ux-reviewer
 description: UI デザインガイドライン準拠とユーザー体験の観点でコード変更をレビューするサブエージェント。UI コンポーネント・スタイル・操作フローの変更時に使用する。
+model: sonnet
+effort: low
+tools: Read, Grep, Glob, Bash
 ---
 
 # UX レビュー
