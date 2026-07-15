@@ -149,7 +149,7 @@ ghost_launcher/
 | `/retrospective` | サイクル終了後 | 教訓抽出→RETROSPECTIVE.md 上書き |
 | `/deps-update` | 依存更新時 | cargo/npm 一括更新と検証 |
 | `/commit` | コミット時 | コミット前チェックリスト実行→コミット |
-| `/pr` | PR 作成時 | 変更分析→gh-HTTPS push→PR 作成 |
+| `/pr` | PR 作成時 | 変更分析→push→PR 作成 |
 | `/e2e` | E2E 実行時 | 環境固有の E2E 実行手順 |
 | `/post-merge-sync` | PR マージ後 | main 同期・ブランチ後始末 |
 

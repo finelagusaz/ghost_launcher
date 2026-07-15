@@ -23,15 +23,11 @@ gh issue view <N>
 
 `git status` が "nothing to commit, working tree clean" であることを確認する。未コミット変更がある場合は中断し、ユーザーに退避（コミット or stash）を確認する。
 
-## ステップ 3: main の最新化（gh-HTTPS）
-
-> SSH push/fetch が失敗するため、`/post-merge-sync` の「gh-HTTPS 方式」で迂回する（理由の詳細は同スキルが正典）。操作は pull + update-ref のみ差し替える。
+## ステップ 3: main の最新化
 
 ```bash
 git switch main
-git -c credential.helper= -c credential.helper='!gh auth git-credential' \
-  pull https://github.com/finelagusaz/ghost_launcher.git main --ff-only
-git update-ref refs/remotes/origin/main "$(git rev-parse main)"
+git pull origin main --ff-only
 ```
 
 ## ステップ 4: ブランチ作成

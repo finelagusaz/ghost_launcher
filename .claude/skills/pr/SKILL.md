@@ -37,16 +37,13 @@ git log --oneline main..HEAD  # PR に含まれるコミット一覧
 - **影響範囲**: どのモジュール・レイヤーに変更が及んでいるか
 - **要点**: ユーザーが PR レビュアーに伝えたい核心は何か
 
-### ステップ 3: リモートへの push（gh-HTTPS）
-
-> SSH push が `~/.ssh/config` の ACL で失敗するため、`/post-merge-sync` の「gh-HTTPS 方式」で迂回する（理由の詳細は同スキルが正典）。操作は push のみ差し替える。SSH remote にも永続 git config にも触れない。
+### ステップ 3: リモートへの push
 
 ```bash
-git -c credential.helper= -c credential.helper='!gh auth git-credential' \
-  push https://github.com/finelagusaz/ghost_launcher.git HEAD
+git push -u origin HEAD
 ```
 
-URL 指定の push は upstream を設定しないため、`gh pr create` には `--head <ブランチ名>` を明示する。
+`-u` で upstream を張るため、以降 `gh pr create` は現在のブランチを自動で head に取る（`--head <ブランチ名>` の明示は任意）。
 
 ### ステップ 4: PR の作成
 
