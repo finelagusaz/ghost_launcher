@@ -1,0 +1,15 @@
+{
+  "searchLowerColumns": [
+    "name_lower",
+    "sakura_name_lower",
+    "kero_name_lower",
+    "craftman_lower",
+    "craftmanw_lower",
+    "directory_name_lower"
+  ],
+  "orderBy": {
+    "name": "g.name_lower ASC",
+    "recent": "g.last_launched DESC NULLS LAST, g.name_lower ASC",
+    "frequency": "g.launch_count DESC, g.name_lower ASC"
+  }
+}

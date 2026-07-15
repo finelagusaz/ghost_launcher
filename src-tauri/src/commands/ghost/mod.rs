@@ -5,6 +5,14 @@ mod scan;
 pub(crate) mod store;
 mod types;
 
+// ベンチ計測用の内部関数・型の最小露出。feature 無効時は一切影響しない。
+#[cfg(feature = "bench")]
+pub(crate) use fingerprint::{check_parent_mtimes_match, collect_parent_mtimes};
+#[cfg(feature = "bench")]
+pub(crate) use scan::scan_ghosts_with_fingerprint_internal;
+#[cfg(feature = "bench")]
+pub(crate) use types::Ghost;
+
 pub use types::ScanStoreResult;
 
 /// request_key が空なら Err を返す。JS 単一権威の信頼境界での最小防御。

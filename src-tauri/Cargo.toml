@@ -31,5 +31,19 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 unicode-normalization = "0.1"
 rayon = "1"
 
+[features]
+bench = []
+
 [dev-dependencies]
 ts-rs = "12"
+criterion = "0.5"
+
+[[bench]]
+name = "search_bench"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
+name = "scan_bench"
+harness = false
+required-features = ["bench"]
