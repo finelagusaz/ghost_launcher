@@ -175,7 +175,7 @@ export const GHOST_VIEW_COLUMNS = [
 // 列挙漏れがあると never でなくなり、下の型注釈が never に解決されて代入が型エラーになる。
 type MissingGhostViewColumns = Exclude<keyof GhostView, (typeof GHOST_VIEW_COLUMNS)[number]>;
 
-const GHOST_SEARCH_LOWER_COLUMNS = [
+export const GHOST_SEARCH_LOWER_COLUMNS = [
   "name_lower",
   "sakura_name_lower",
   "kero_name_lower",

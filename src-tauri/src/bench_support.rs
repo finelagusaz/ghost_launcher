@@ -102,6 +102,38 @@ pub fn seed_ghosts_db(conn: &Connection, request_key: &str, n: usize) -> Result<
     Ok(())
 }
 
+/// 検索対象の _lower 列（GHOST_SEARCH_LOWER_COLUMNS と一致）。真の権威は ghostDatabase.ts。
+pub const SEARCH_LOWER_COLUMNS: [&str; 6] = [
+    "name_lower",
+    "sakura_name_lower",
+    "kero_name_lower",
+    "craftman_lower",
+    "craftmanw_lower",
+    "directory_name_lower",
+];
+
+/// searchGhosts と同形の WHERE（g. 前置き・6 列 OR）。
+pub fn search_where_prefixed() -> String {
+    SEARCH_LOWER_COLUMNS
+        .iter()
+        .map(|c| format!("g.{c} LIKE ?"))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+/// buildOrderBy(ghostDatabase.ts:212) と同形の ORDER BY 式。
+/// random は固定シード/剰余で再現（本番は session シード）。
+pub fn order_by(sort: &str) -> String {
+    const RANDOM_SORT_MODULUS: u64 = 1000003;
+    const BENCH_SEED: u64 = 2654435761 % RANDOM_SORT_MODULUS;
+    match sort {
+        "random" => format!("(g.id * {BENCH_SEED}) % {RANDOM_SORT_MODULUS}, g.id"),
+        "recent" => "g.last_launched DESC NULLS LAST, g.name_lower ASC".to_string(),
+        "frequency" => "g.launch_count DESC, g.name_lower ASC".to_string(),
+        _ => "g.name_lower ASC".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +213,31 @@ mod tests {
             .unwrap();
         // 一部のみ非 NULL（全 NULL でも全非 NULL でもない）
         assert!(launched > 0 && launched < 400);
+    }
+
+    #[test]
+    fn sql形状が共有fixtureと一致する() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/search-sql-shapes.json"
+        );
+        let raw = std::fs::read_to_string(path).expect("fixture を読めること");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+        let cols: Vec<String> = v["searchLowerColumns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(SEARCH_LOWER_COLUMNS.to_vec(), cols);
+
+        assert_eq!(order_by("name"), v["orderBy"]["name"].as_str().unwrap());
+        assert_eq!(order_by("recent"), v["orderBy"]["recent"].as_str().unwrap());
+        assert_eq!(
+            order_by("frequency"),
+            v["orderBy"]["frequency"].as_str().unwrap()
+        );
     }
 
     #[test]
