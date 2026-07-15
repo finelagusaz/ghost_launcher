@@ -37,6 +37,7 @@
   "card.launchSuccess": "「{{name}}」を起動しました",
   "search.label": "ゴースト検索",
   "search.placeholder": "ゴースト名・作者名で検索",
+  "search.clear": "検索をクリア",
   "sort.label": "並び替え",
   "sort.name": "名前順",
   "sort.recent": "最近起動した順",

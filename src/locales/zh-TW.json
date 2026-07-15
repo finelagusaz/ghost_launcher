@@ -37,6 +37,7 @@
   "card.launchSuccess": "已啟動「{{name}}」",
   "search.label": "搜尋幽靈",
   "search.placeholder": "以名稱或作者搜尋",
+  "search.clear": "清除搜尋",
   "sort.label": "排序方式",
   "sort.name": "名稱",
   "sort.recent": "最近啟動",

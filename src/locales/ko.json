@@ -37,6 +37,7 @@
   "card.launchSuccess": "'{{name}}' 고스트를 실행했습니다",
   "search.label": "고스트 검색",
   "search.placeholder": "고스트 이름·작가명으로 검색",
+  "search.clear": "검색 지우기",
   "sort.label": "정렬",
   "sort.name": "이름순",
   "sort.recent": "최근 실행순",

@@ -9,6 +9,7 @@ import {
   Text,
   Tooltip,
   makeStyles,
+  mergeClasses,
   tokens,
 } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
@@ -22,6 +23,8 @@ import type { GhostView } from "../types";
 interface Props {
   ghost: GhostView;
   sspPath: string;
+  // キーボード選択中のハイライト対象か
+  selected?: boolean;
 }
 
 const useStyles = makeStyles({
@@ -41,6 +44,11 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground2,
       boxShadow: tokens.shadow8,
     },
+  },
+  // キーボード選択中の行。hover と区別できるようブランド色の枠＋選択背景にする
+  cardSelected: {
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    backgroundColor: tokens.colorNeutralBackground1Selected,
   },
   row: {
     display: "grid",
@@ -187,7 +195,7 @@ const ThumbnailCanvas = memo(function ThumbnailCanvas({ src, className }: { src:
   return <canvas ref={canvasRef} className={className} style={overlayMaxSize} />;
 });
 
-export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
+export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
   const { notifySuccess } = useLauncherToasts();
@@ -244,8 +252,9 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
 
   return (
     <Card
-      className={styles.card}
+      className={mergeClasses(styles.card, selected && styles.cardSelected)}
       appearance="outline"
+      data-selected={selected ? "true" : undefined}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

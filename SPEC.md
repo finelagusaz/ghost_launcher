@@ -590,6 +590,24 @@ stateDiagram-v2
 - OS の `prefers-color-scheme` に追従
 - Fluent UI の `webLightTheme` / `webDarkTheme` を切り替え
 
+### 10.4 キーボード操作
+
+launcher の速さを支えるため、検索欄を起点にキーボードだけでゴーストを探して起動できる。
+
+| キー | 動作 |
+| ---- | ---- |
+| （起動時） | 検索欄へオートフォーカス。すぐに打鍵で検索できる |
+| 文字入力 | 検索。先頭候補を既定でハイライトする |
+| `↑` / `↓` | 選択行を移動（`[0, 件数-1]` にクランプ）。選択行は viewport 内へスクロールする |
+| `Enter` | 選択中のゴーストを起動（トースト通知）。読込済み範囲外（SkeletonCard）の行は no-op |
+| `Esc` | 検索をクリア |
+| `×` ボタン | 検索をクリア（`Input` の `contentAfter` スロット、`search.clear` の aria-label） |
+
+- **IME 対応**: 変換中（composition）の `Esc`（変換取消）・`Enter`（確定）・`↑↓`（候補移動）は検索操作に流用しない。
+- **選択スクロール**: 仮想化時は選択行が DOM に無いことがあり `scrollIntoView` が使えないため、選択 index から `scrollTop` を算出して代入する（`GhostList`。行高は推定 108px）。
+- **状態の所在**: 選択 index は `GhostContent` が保持し、検索クエリ・ソート変更で先頭へリセットする。起動は共有ランチャ `useGhostLauncher`（ランダム起動と共有）経由。
+- **既知の制限（a11y）**: 選択ハイライトは視覚的なもので、`aria-activedescendant` 等の combobox セマンティクスは未実装。仮想化リストでは未描画行を activedescendant として参照できない制約があり、将来対応とする。
+
 ---
 
 ## 11. CI/CD

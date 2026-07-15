@@ -1,9 +1,10 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Dropdown, Option, Text, Tooltip, makeStyles, tokens } from "@fluentui/react-components";
 import { ArrowShuffleRegular, SettingsRegular } from "@fluentui/react-icons";
 import { GhostList } from "./GhostList";
 import { SearchBox } from "./SearchBox";
+import { useGhostLauncher } from "../hooks/useGhostLauncher";
 import type { GhostView, SortOrder } from "../types";
 
 interface Props {
@@ -90,6 +91,32 @@ export const GhostContent = memo(function GhostContent({
     }
   }, [onRandomLaunch]);
 
+  // キーボード選択: 先頭候補を既定でハイライトし「打って Enter」で最上位を起動できる
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const launch = useGhostLauncher(sspPath);
+
+  // 検索クエリ・ソート変更で選択を先頭へ戻す
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [searchQuery, sortOrder]);
+  // 件数が減ったら選択を範囲内へクランプする
+  useEffect(() => {
+    setSelectedIndex((i) => Math.min(i, Math.max(0, total - 1)));
+  }, [total]);
+
+  const handleArrowDown = useCallback(() => {
+    setSelectedIndex((i) => Math.min(i + 1, Math.max(0, total - 1)));
+  }, [total]);
+  const handleArrowUp = useCallback(() => {
+    setSelectedIndex((i) => Math.max(i - 1, 0));
+  }, []);
+  const handleEnter = useCallback(() => {
+    // 読込済み範囲内のときのみ起動する。未ロード行（SkeletonCard）は no-op
+    const localIndex = selectedIndex - loadedStart;
+    const ghost = localIndex >= 0 && localIndex < ghosts.length ? ghosts[localIndex] : null;
+    if (ghost) void launch(ghost);
+  }, [selectedIndex, loadedStart, ghosts, launch]);
+
   if (!sspPath) {
     return (
       <div className={styles.emptyState} data-testid="empty-state">
@@ -105,7 +132,13 @@ export const GhostContent = memo(function GhostContent({
     <>
       <div className={styles.toolbar}>
         <div className={styles.searchWrapper}>
-          <SearchBox value={searchQuery} onChange={onSearchChange} />
+          <SearchBox
+            value={searchQuery}
+            onChange={onSearchChange}
+            onArrowDown={handleArrowDown}
+            onArrowUp={handleArrowUp}
+            onEnter={handleEnter}
+          />
         </div>
         <div className={styles.sortWrapper}>
           <Dropdown
@@ -142,6 +175,7 @@ export const GhostContent = memo(function GhostContent({
           error={error}
           onLoadMore={onLoadMore}
           searchQuery={searchQuery}
+          selectedIndex={selectedIndex}
         />
       </div>
     </>
