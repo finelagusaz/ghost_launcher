@@ -607,6 +607,7 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 - **IME 対応**: 変換中（composition）の `Esc`（変換取消）・`Enter`（確定）・`↑↓`（候補移動）は検索操作に流用しない。
 - **選択スクロール**: 仮想化時は選択行が DOM に無いことがあり `scrollIntoView` が使えないため、選択 index から `scrollTop` を算出して代入する（`GhostList`。行高は推定 108px）。
 - **状態の所在**: 選択 index は `GhostContent` が保持し、検索クエリ・ソート変更で先頭へリセットする。起動は共有ランチャ `useGhostLauncher`（ランダム起動と共有）経由。
+- **hover と selected の区別**: hover（マウス）は「操作できる合図」で中立・一時的、selected（キーボードの起動対象）はブランド印で持続的。両者は種類が違い、ブランド印は起動対象専用。詳細は `docs/ui-guidelines.md` の「インタラクション状態」。
 - **既知の制限（a11y）**: 選択ハイライトは視覚的なもので、`aria-activedescendant` 等の combobox セマンティクスは未実装。仮想化リストでは未描画行を activedescendant として参照できない制約があり、将来対応とする。
 
 ---

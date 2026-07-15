@@ -40,9 +40,10 @@ const useStyles = makeStyles({
     transitionDuration: tokens.durationNormal,
     transitionProperty: "background-color, box-shadow",
     transitionTimingFunction: tokens.curveEasyEase,
+    // hover は「操作できる」合図（＝一時的・中立）。selected のブランド印とは種類が
+    // 違うため、浮き（影）ではなく中立色の淡い塗りに留め、両者を混同させない
     ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2,
-      boxShadow: tokens.shadow8,
+      backgroundColor: tokens.colorNeutralBackground1Hover,
     },
   },
   // キーボード選択中の行。色だけに頼らないよう、選択背景（明度差）＋左端アクセントバー
@@ -52,9 +53,10 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorBrandStroke1}`,
     backgroundColor: tokens.colorNeutralBackground1Selected,
     boxShadow: `${tokens.shadow4}, inset 3px 0 0 0 ${tokens.colorBrandStroke1}`,
+    // hover しても起動対象の見た目（選択背景＋アクセント）を維持し、浮きも出さない
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground1Selected,
-      boxShadow: `${tokens.shadow8}, inset 3px 0 0 0 ${tokens.colorBrandStroke1}`,
+      boxShadow: `${tokens.shadow4}, inset 3px 0 0 0 ${tokens.colorBrandStroke1}`,
     },
   },
   row: {
