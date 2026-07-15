@@ -45,10 +45,17 @@ const useStyles = makeStyles({
       boxShadow: tokens.shadow8,
     },
   },
-  // キーボード選択中の行。hover と区別できるようブランド色の枠＋選択背景にする
+  // キーボード選択中の行。色だけに頼らないよう、選択背景（明度差）＋左端アクセントバー
+  // （形状の手がかり）＋ブランド枠で示す。hover 時も card 側の hover 背景に上書きされない
+  // よう選択背景とアクセントを維持する
   cardSelected: {
     border: `1px solid ${tokens.colorBrandStroke1}`,
     backgroundColor: tokens.colorNeutralBackground1Selected,
+    boxShadow: `${tokens.shadow4}, inset 3px 0 0 0 ${tokens.colorBrandStroke1}`,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Selected,
+      boxShadow: `${tokens.shadow8}, inset 3px 0 0 0 ${tokens.colorBrandStroke1}`,
+    },
   },
   row: {
     display: "grid",
