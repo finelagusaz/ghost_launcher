@@ -1,10 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { GhostCard } from "./GhostCard";
 import type { GhostView } from "../types";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+// 起動の成否とトースト通知をテストごとに制御する
+const mocks = vi.hoisted(() => ({
+  launchGhostSpy: vi.fn(),
+  launcherToasts: {
+    notifySuccess: vi.fn(),
+    notifyError: vi.fn(),
+    notifyWarning: vi.fn(),
+  },
+}));
+vi.mock("../lib/sspClient", () => ({
+  launchGhost: (...args: unknown[]) => mocks.launchGhostSpy(...args),
+}));
+vi.mock("../hooks/useLauncherToasts", () => ({
+  useLauncherToasts: () => mocks.launcherToasts,
+  TOASTER_ID: "test-toaster",
 }));
 
 const makeGhost = (overrides?: Partial<GhostView>): GhostView => ({
@@ -97,5 +114,47 @@ describe("GhostCard の TruncatedText: ウィンドウリサイズ対応", () =>
     });
 
     expect(screen.getByTestId("ghost-name")).not.toHaveAttribute("aria-label");
+  });
+});
+
+describe("GhostCard の起動フィードバック", () => {
+  beforeEach(() => {
+    // GhostCard は TruncatedText 経由で ResizeObserver を使う
+    vi.stubGlobal(
+      "ResizeObserver",
+      vi.fn(function () {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    mocks.launchGhostSpy.mockReset();
+    mocks.launcherToasts.notifySuccess.mockReset();
+    mocks.launcherToasts.notifyError.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("起動成功時に成功トーストを出す", async () => {
+    mocks.launchGhostSpy.mockResolvedValue(undefined);
+    render(<GhostCard ghost={makeGhost({ name: "Reimu" })} sspPath="C:/SSP" />);
+
+    fireEvent.click(screen.getByTestId("launch-button"));
+
+    await waitFor(() =>
+      expect(mocks.launcherToasts.notifySuccess).toHaveBeenCalledWith("card.launchSuccess"),
+    );
+    expect(mocks.launchGhostSpy).toHaveBeenCalled();
+  });
+
+  it("起動失敗時は成功トーストを出さず、カード内にエラーを表示する（非破壊）", async () => {
+    mocks.launchGhostSpy.mockRejectedValue(new Error("boom"));
+    render(<GhostCard ghost={makeGhost({ name: "Marisa" })} sspPath="C:/SSP" />);
+
+    fireEvent.click(screen.getByTestId("launch-button"));
+
+    // 失敗時はカード内 role="alert" にインライン表示（既存挙動を維持）
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(mocks.launcherToasts.notifySuccess).not.toHaveBeenCalled();
   });
 });

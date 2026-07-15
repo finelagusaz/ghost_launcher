@@ -59,6 +59,14 @@ describe("i18n", () => {
     expect(msg).toContain("起動に失敗しました");
     expect(msg).toContain(" (error)");
   });
+
+  it("補間値を HTML エスケープしない（React が描画時にエスケープするため二重エスケープを避ける）", async () => {
+    await i18n.changeLanguage("ja");
+    // ゴースト名に & を含むケース（エミリ等）で &amp; に化けないこと
+    const msg = i18n.t("card.launchSuccess", { name: "エミリ&ロード" });
+    expect(msg).toBe("「エミリ&ロード」を起動しました");
+    expect(msg).not.toContain("&amp;");
+  });
 });
 
 describe("extractStringValues", () => {

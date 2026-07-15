@@ -41,7 +41,9 @@ i18n.use(initReactI18next).init({
   },
   lng: detectOsLanguage(),
   fallbackLng: "en",
-  interpolation: { escapeValue: true },
+  // React が描画時にテキストを自動エスケープするため i18next 側では無効化する。
+  // 有効のままだと補間値の & 等が二重エスケープされ &amp; と表示される
+  interpolation: { escapeValue: false },
   initAsync: false,
 });
 
