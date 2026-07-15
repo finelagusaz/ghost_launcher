@@ -30,6 +30,8 @@
   "content.openSettings": "설정 열기",
   "list.loading": "로드 중...",
   "list.empty": "고스트를 찾을 수 없습니다",
+  "list.emptySearch": "'{{query}}' 검색 결과가 없습니다",
+  "list.clearSearch": "검색 지우기",
   "list.count": "{{count}} 개의 고스트",
   "card.launch": "실행",
   "card.launching": "실행 중...",

@@ -30,6 +30,8 @@
   "content.openSettings": "打开设置",
   "list.loading": "加载中...",
   "list.empty": "未找到幽灵",
+  "list.emptySearch": "未找到与「{{query}}」匹配的幽灵",
+  "list.clearSearch": "清除搜索",
   "list.count": "{{count}} 个幽灵",
   "card.launch": "启动",
   "card.launching": "启动中...",
