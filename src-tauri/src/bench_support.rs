@@ -411,4 +411,37 @@ mod tests {
         generate_ghost_tree(&ssp, 25).unwrap();
         assert_eq!(full_scan_count(&ssp.to_string_lossy()).unwrap(), 25);
     }
+
+    // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
+    // ここで cargo test（debug-assertions 有効）による回帰ガードを置く）。
+    #[test]
+    fn store_with_real_mtimes_後は_layer1_hit_が_true() {
+        let tmp = TempDirGuard::new("bench_layer1_hit");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 10).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        let (handle, fp) = scan_to_handle(&ssp_str).unwrap();
+        let conn = open_bench_db(&tmp.path().join("ghosts.db")).unwrap();
+        store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
+
+        // 実 mtimes を保存したので、無変更のまま再照合すれば hit（Layer 1 高速パス成立）
+        assert!(layer1_hit(&conn, "rk", &ssp_str), "実 mtimes 保存後は hit のはず");
+    }
+
+    #[test]
+    fn store_handle_後は_layer1_hit_が_false() {
+        let tmp = TempDirGuard::new("bench_layer1_miss");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 10).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        let (handle, fp) = scan_to_handle(&ssp_str).unwrap();
+        let conn = open_bench_db(&tmp.path().join("ghosts.db")).unwrap();
+        store_handle(&conn, "rk", &handle, &fp).unwrap();
+
+        // store_handle は parent_mtimes を "bench-mtimes" 固定で保存するため、
+        // 実 mtimes（"path:nanos" 形式）とは決して一致せず miss になる
+        assert!(!layer1_hit(&conn, "rk", &ssp_str), "bench-mtimes 固定後は miss のはず");
+    }
 }
