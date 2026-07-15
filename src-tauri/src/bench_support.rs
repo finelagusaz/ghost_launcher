@@ -203,6 +203,7 @@ mod tests {
         };
         assert_eq!(count(Q_NONE), 0);
         assert!(count(Q_RARE) > 0 && count(Q_RARE) < 100); // ~0.1% = ~10
-        assert!(count(Q_COMMON) > 500); // ~10% = ~1000
+        // 上限も縛る: 全一致(選択率100%)への劣化を検出する（Q_RARE と同じ両側境界）
+        assert!(count(Q_COMMON) > 500 && count(Q_COMMON) < 2000); // ~10% = ~1000
     }
 }
