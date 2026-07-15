@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{configure_connection, store_ghosts};
-use crate::commands::ghost::Ghost;
+use crate::commands::ghost::{
+    check_parent_mtimes_match, collect_parent_mtimes, scan_ghosts_with_fingerprint_internal, Ghost,
+};
 
 /// クレートルートから内部経路へ到達できることを確認するプレースホルダ。
 /// 後続タスクで seeder / generator / wrapper に置き換える。
@@ -176,6 +178,54 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
     Ok(ssp_root.to_path_buf())
 }
 
+/// スキャン結果の Ghost 群を外部ベンチに対して opaque に保持する。
+pub struct ScannedGhosts {
+    ghosts: Vec<Ghost>,
+}
+
+/// フル走査を 1 回行い、opaque ハンドルと fingerprint を返す。
+pub fn scan_to_handle(ssp_path: &str) -> Result<(ScannedGhosts, String), String> {
+    let (ghosts, fp) = scan_ghosts_with_fingerprint_internal(ssp_path, &[])?;
+    Ok((ScannedGhosts { ghosts }, fp))
+}
+
+/// ハンドルの Ghost 群を本番 store_ghosts で書き込む（差分 UPSERT）。
+pub fn store_handle(
+    conn: &Connection,
+    request_key: &str,
+    h: &ScannedGhosts,
+    fp: &str,
+) -> Result<usize, String> {
+    store_ghosts(conn, request_key, &h.ghosts, fp, "bench-mtimes")
+}
+
+/// ハンドルを実際の親 mtime 付きで書き込む。これを使うと後続の layer1_hit が真に成立する
+/// （store_handle は "bench-mtimes" 固定のため mtime 照合が必ず外れる）。
+pub fn store_with_real_mtimes(
+    conn: &Connection,
+    request_key: &str,
+    h: &ScannedGhosts,
+    fp: &str,
+    ssp_path: &str,
+) -> Result<usize, String> {
+    let mtimes = collect_parent_mtimes(ssp_path, &[]);
+    store_ghosts(conn, request_key, &h.ghosts, fp, &mtimes)
+}
+
+/// フル走査を行い体数だけ返す（walk+parse コスト計測用）。
+pub fn full_scan_count(ssp_path: &str) -> Result<usize, String> {
+    let (ghosts, _fp) = scan_ghosts_with_fingerprint_internal(ssp_path, &[])?;
+    Ok(ghosts.len())
+}
+
+/// Layer 1 高速パス（親 mtime 一致判定）を測る。事前に store_with_real_mtimes で
+/// 保存していれば true（hit）、store_handle で保存していれば false（miss）を返すが、
+/// 計測対象の「1 行 SELECT + 文字列比較」コストはどちらも同等。
+pub fn layer1_hit(conn: &Connection, request_key: &str, ssp_path: &str) -> bool {
+    let mtimes = collect_parent_mtimes(ssp_path, &[]);
+    check_parent_mtimes_match(conn, request_key, &mtimes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,5 +386,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ghosts.len(), 30);
+    }
+
+    #[test]
+    fn scan_to_handle_と_store_handle_が往復する() {
+        let tmp = TempDirGuard::new("bench_scan_store");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 40).unwrap();
+
+        let (handle, fp) = scan_to_handle(&ssp.to_string_lossy()).unwrap();
+        let db = tmp.path().join("ghosts.db");
+        let conn = open_bench_db(&db).unwrap();
+        let stored = store_handle(&conn, "rk", &handle, &fp).unwrap();
+        assert_eq!(stored, 40);
+        // 2 回目は差分ゼロ（同一 handle）→ 行数不変
+        let stored2 = store_handle(&conn, "rk", &handle, &fp).unwrap();
+        assert_eq!(stored2, 40);
+    }
+
+    #[test]
+    fn full_scan_count_が体数を返す() {
+        let tmp = TempDirGuard::new("bench_full_scan");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 25).unwrap();
+        assert_eq!(full_scan_count(&ssp.to_string_lossy()).unwrap(), 25);
     }
 }
