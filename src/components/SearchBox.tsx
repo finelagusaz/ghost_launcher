@@ -10,6 +10,8 @@ interface Props {
   onArrowDown?: () => void;
   onArrowUp?: () => void;
   onEnter?: () => void;
+  // 検索欄のフォーカス状態を親へ通知する（起動対象ハイライトの表示制御に使う）
+  onFocusChange?: (focused: boolean) => void;
 }
 
 const useStyles = makeStyles({
@@ -19,7 +21,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function SearchBox({ value, onChange, onArrowDown, onArrowUp, onEnter }: Props) {
+export function SearchBox({ value, onChange, onArrowDown, onArrowUp, onEnter, onFocusChange }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
   // IME 変換中は props.onChange（検索クエリ更新）をブロックするフラグ
@@ -83,6 +85,8 @@ export function SearchBox({ value, onChange, onArrowDown, onArrowUp, onEnter }: 
                 size="small"
                 icon={<DismissRegular />}
                 aria-label={t("search.clear")}
+                // フォーカスを input から奪わない（クリア時の印のちらつき防止）
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={clearQuery}
                 data-testid="search-clear-button"
               />
@@ -91,6 +95,8 @@ export function SearchBox({ value, onChange, onArrowDown, onArrowUp, onEnter }: 
           placeholder={t("search.placeholder")}
           value={inputValue}
           onKeyDown={handleKeyDown}
+          onFocus={() => onFocusChange?.(true)}
+          onBlur={() => onFocusChange?.(false)}
           onChange={(_: unknown, data: { value: string }) => {
             setInputValue(data.value);
             if (!isComposing.current) onChange(data.value);

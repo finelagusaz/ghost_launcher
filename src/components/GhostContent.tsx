@@ -93,6 +93,9 @@ export const GhostContent = memo(function GhostContent({
 
   // キーボード選択: 先頭候補を既定でハイライトし「打って Enter」で最上位を起動できる
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // 起動対象の印は検索欄フォーカス中のみ見せる。矢印/Enter は検索欄フォーカス時のみ
+  // 効くため、フォーカスが外れている間に印を出すと「Enter で起動できそう」な誤解を招く
+  const [searchFocused, setSearchFocused] = useState(false);
   const launch = useGhostLauncher(sspPath);
 
   // 検索クエリ・ソート変更で選択を先頭へ戻す
@@ -138,6 +141,7 @@ export const GhostContent = memo(function GhostContent({
             onArrowDown={handleArrowDown}
             onArrowUp={handleArrowUp}
             onEnter={handleEnter}
+            onFocusChange={setSearchFocused}
           />
         </div>
         <div className={styles.sortWrapper}>
@@ -176,6 +180,7 @@ export const GhostContent = memo(function GhostContent({
           onLoadMore={onLoadMore}
           searchQuery={searchQuery}
           selectedIndex={selectedIndex}
+          selectionVisible={searchFocused}
         />
       </div>
     </>

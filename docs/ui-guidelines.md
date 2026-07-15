@@ -76,7 +76,7 @@
 |------|------|--------|
 | `rest` | 通常 | 素のカード（`colorNeutralBackground1` / `colorNeutralStroke1`） |
 | `hover` | ポインタが乗っている＝**操作できる合図**（一時的）。マウス操作は起動ボタンで確定するため hover は「選択」ではない | 中立色の淡い塗り（`colorNeutralBackground1Hover`）。浮き（影）は使わない |
-| `selected` | キーボードの**起動対象**（明示的・持続的）。矢印で定め Enter が作用する | ブランド左アクセントバー（`inset 3px colorBrandStroke1`）＋選択背景（`colorNeutralBackground1Selected`）＋ブランド枠。先頭行を既定として常時表示 |
+| `selected` | キーボードの**起動対象**（明示的・持続的）。矢印で定め Enter が作用する | ブランド左アクセントバー（`inset 3px colorBrandStroke1`）＋選択背景（`colorNeutralBackground1Selected`）＋ブランド枠。**検索欄フォーカス中のみ表示**（＝矢印/Enter が効く間だけ。先頭行が既定） |
 | `focus` | フォーカス位置 | Fluent 既定のフォーカスリングを CSS で妨げない |
 
 **原則**:

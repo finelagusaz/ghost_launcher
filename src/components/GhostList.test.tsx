@@ -33,6 +33,7 @@ const baseProps = {
   loadedStart: 0,
   onLoadMore: vi.fn(),
   selectedIndex: 0,
+  selectionVisible: true,
 };
 
 describe("GhostList - スキャン中のキャッシュ表示（stale-while-revalidate）", () => {

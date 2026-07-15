@@ -108,6 +108,23 @@ describe("GhostContent - キーボード選択と Enter 起動", () => {
     expect(selectedName()).toBe("Reimu");
   });
 
+  it("検索欄からフォーカスが外れると起動対象の印が消え、戻ると再表示される", () => {
+    const ghosts = [makeGhost("Reimu"), makeGhost("Marisa")];
+    render(<GhostContent {...baseProps} ghosts={ghosts} total={2} loadedStart={0} />);
+    const input = screen.getByRole("textbox");
+
+    // オートフォーカスで先頭に印が出ている
+    expect(selectedName()).toBe("Reimu");
+
+    // 検索欄からフォーカスが外れると印が消える（キー操作が効かない間は誤解を招かない）
+    fireEvent.blur(input);
+    expect(selectedName()).toBeNull();
+
+    // フォーカスが戻ると再表示
+    fireEvent.focus(input);
+    expect(selectedName()).toBe("Reimu");
+  });
+
   it("選択行が読込済み範囲外なら Enter で起動しない（未ロード行のガード）", () => {
     // 仮想化: 全 100 件・読込済みは index 5〜6 のみ。初期選択 index 0 は範囲外
     const ghosts = [makeGhost("G5"), makeGhost("G6")];

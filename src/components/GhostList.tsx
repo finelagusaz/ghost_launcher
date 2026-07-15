@@ -18,6 +18,8 @@ interface Props {
   error: string | null;
   onLoadMore: (targetOffset: number) => void;
   selectedIndex: number;
+  // 起動対象ハイライトを表示するか（検索欄フォーカス中のみ true）
+  selectionVisible: boolean;
 }
 
 const ESTIMATED_ROW_HEIGHT = 100;
@@ -66,7 +68,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore, selectedIndex }: Props) {
+export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore, selectedIndex, selectionVisible }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -171,7 +173,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
                 key={ghost.path}
                 ghost={ghost}
                 sspPath={sspPath}
-                selected={loadedStart + idx === selectedIndex}
+                selected={selectionVisible && loadedStart + idx === selectedIndex}
               />
             ))}
           </div>
@@ -186,7 +188,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   for (let i = startIndex; i < endIndex; i++) {
     if (i >= loadedStart && i < loadedEnd) {
       const ghost = ghosts[i - loadedStart];
-      cards.push(<GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} selected={i === selectedIndex} />);
+      cards.push(<GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} selected={selectionVisible && i === selectedIndex} />);
     } else {
       cards.push(<SkeletonCard key={`skeleton-${i}`} />);
     }
