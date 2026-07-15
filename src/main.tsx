@@ -1,10 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./lib/i18n";
-import { FluentProvider, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
+import { FluentProvider, Toaster, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import App from "./App";
 import "./index.css";
 import { useSystemTheme } from "./hooks/useSystemTheme";
+import { TOASTER_ID } from "./hooks/useLauncherToasts";
 import { warmUpSettingsStore } from "./lib/settingsStore";
 import { warmUpDb } from "./lib/ghostDatabase";
 
@@ -30,6 +31,7 @@ function Root() {
       style={{ backgroundColor: tokens.colorNeutralBackground3, minHeight: "100vh" }}
     >
       <App />
+      <Toaster toasterId={TOASTER_ID} />
     </FluentProvider>
   );
 }

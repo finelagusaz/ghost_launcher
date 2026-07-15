@@ -85,6 +85,7 @@ locales/
 | `card.launch` | 起動ボタン | — |
 | `card.launching` | 起動中ボタン（押下後） | — |
 | `card.launchError` | 起動失敗時のエラーメッセージ | `{{detail}}` |
+| `card.launchSuccess` | ランダム起動成功のトースト通知 | `{{name}}` |
 | `search.label` | 検索ボックスのラベル | — |
 | `search.placeholder` | 検索ボックスのプレースホルダ | — |
 | `sort.label` | 並び替えラベル | — |
@@ -189,6 +190,7 @@ locales/
 | `card.launch` | Launch button | — |
 | `card.launching` | Launch button after clicked | — |
 | `card.launchError` | Error message on launch failure | `{{detail}}` |
+| `card.launchSuccess` | Toast shown on random launch success | `{{name}}` |
 | `search.label` | Search box label | — |
 | `search.placeholder` | Search box placeholder | — |
 | `sort.label` | Sort selector label | — |

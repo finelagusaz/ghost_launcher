@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, act } from "@testing-library/react";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -35,6 +35,13 @@ const mocks = vi.hoisted(() => ({
   },
   useSearchSpy: vi.fn(),
   ghostContentSpy: vi.fn(),
+  launchGhostSpy: vi.fn(),
+  getRandomGhostSpy: vi.fn(),
+  launcherToasts: {
+    notifySuccess: vi.fn(),
+    notifyError: vi.fn(),
+    notifyWarning: vi.fn(),
+  },
 }));
 
 vi.mock("./hooks/useGhosts", () => ({
@@ -54,9 +61,19 @@ vi.mock("./components/GhostContent", () => ({
 }));
 // plugin-sql のロードを避けるため DB アクセス関数はモック化する
 vi.mock("./lib/ghostDatabase", () => ({
-  getRandomGhost: vi.fn(),
+  getRandomGhost: (...args: unknown[]) => mocks.getRandomGhostSpy(...args),
   recordLaunch: vi.fn(),
   reseedRandomSort: vi.fn(),
+}));
+// ランダム起動の成否をテストごとに制御する
+vi.mock("./lib/sspClient", () => ({
+  launchGhost: (...args: unknown[]) => mocks.launchGhostSpy(...args),
+  validateSspPath: vi.fn(),
+}));
+// トースト通知はスパイに差し替える（Fluent の Toaster コンテキスト非依存で検証する）
+vi.mock("./hooks/useLauncherToasts", () => ({
+  useLauncherToasts: () => mocks.launcherToasts,
+  TOASTER_ID: "test-toaster",
 }));
 
 import App from "./App";
@@ -116,5 +133,64 @@ describe("App - スキャンエラー時のキャッシュ保持（SPEC 9 エラ
 
     const props = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
     expect(props?.error).toBe("scan failed");
+  });
+});
+
+describe("App - ランダム起動のフィードバック（トースト・一覧非破壊）", () => {
+  async function invokeRandomLaunch() {
+    render(<App />);
+    const onRandomLaunch = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onRandomLaunch;
+    await act(async () => {
+      await onRandomLaunch();
+    });
+  }
+
+  it("成功時は成功トーストを出し、一覧エラーには混入しない", async () => {
+    mocks.ghostsState = { loading: false, error: null, refresh: () => {} };
+    mocks.searchState = {
+      ghosts: [makeGhost("Reimu")],
+      total: 1,
+      loadedStart: 0,
+      loading: false,
+      dbError: null,
+    };
+    mocks.getRandomGhostSpy.mockResolvedValue(makeGhost("Marisa"));
+    mocks.launchGhostSpy.mockResolvedValue(undefined);
+
+    await invokeRandomLaunch();
+
+    expect(mocks.launcherToasts.notifySuccess).toHaveBeenCalledWith("card.launchSuccess");
+    expect(mocks.launcherToasts.notifyError).not.toHaveBeenCalled();
+    // 起動結果が一覧の error prop に流れ込まない（一覧を破壊しない）
+    const after = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
+    expect(after?.error).toBeNull();
+  });
+
+  it("失敗時はエラートーストを出し、一覧を破壊しない（error prop は null のまま）", async () => {
+    mocks.ghostsState = { loading: false, error: null, refresh: () => {} };
+    mocks.searchState = {
+      ghosts: [makeGhost("Reimu")],
+      total: 1,
+      loadedStart: 0,
+      loading: false,
+      dbError: null,
+    };
+    mocks.getRandomGhostSpy.mockResolvedValue(makeGhost("Marisa"));
+    mocks.launchGhostSpy.mockRejectedValue(new Error("boom"));
+
+    await invokeRandomLaunch();
+
+    expect(mocks.launcherToasts.notifyError).toHaveBeenCalledWith("card.launchError");
+    const after = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
+    expect(after?.error).toBeNull();
+  });
+
+  it("起動できるゴーストが無い場合は警告トーストを出し、起動しない", async () => {
+    mocks.getRandomGhostSpy.mockResolvedValue(null);
+
+    await invokeRandomLaunch();
+
+    expect(mocks.launcherToasts.notifyWarning).toHaveBeenCalledWith("header.randomLaunch.empty");
+    expect(mocks.launchGhostSpy).not.toHaveBeenCalled();
   });
 });
