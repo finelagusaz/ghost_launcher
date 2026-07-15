@@ -140,8 +140,8 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   }, [startIndex, endIndex, loadedStart, loadedEnd, shouldVirtualize, total, searchLoading]);
 
   // スキャン中でも表示可能なキャッシュがあれば一覧を維持する（stale-while-revalidate）。
-  // 表示するゴーストが無いときのみスピナーを出す。検索の解決中（searchLoading）も、
-  // 「一致なし」を早合点して見せないようスピナーで待つ
+  // 表示するゴーストが無いときのみスピナーを出す。初回ロードや再検索の解決中
+  // （searchLoading）にキャッシュが空でも、空表示（0件）を早合点しないようスピナーで待つ
   if ((loading || searchLoading) && total === 0 && ghosts.length === 0) {
     return (
       <div className={styles.state}>

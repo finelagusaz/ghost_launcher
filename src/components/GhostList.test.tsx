@@ -55,6 +55,13 @@ describe("GhostList - スキャン中のキャッシュ表示（stale-while-reva
     expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument();
   });
 
+  it("検索解決中（searchLoading）でキャッシュが空ならスピナーを出し、空表示を早合点しない", () => {
+    render(<GhostList {...baseProps} ghosts={[]} total={0} loading={false} searchLoading={true} />);
+
+    expect(screen.getByText("list.loading")).toBeInTheDocument();
+    expect(screen.queryByTestId("empty-state")).not.toBeInTheDocument();
+  });
+
   it("スキャン完了後（loading=false）にゴーストが無ければ空状態を表示する", () => {
     render(<GhostList {...baseProps} ghosts={[]} total={0} loading={false} />);
 
