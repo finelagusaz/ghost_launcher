@@ -81,6 +81,8 @@ locales/
 | `content.openSettings` | 設定を開くリンク | — |
 | `list.loading` | ゴーストリスト読み込み中 | — |
 | `list.empty` | ゴーストが 0 件のときの表示 | — |
+| `list.emptySearch` | 検索で 0 件のときの表示 | `{{query}}` |
+| `list.clearSearch` | 検索0件表示の「検索をクリア」ボタン | — |
 | `list.count` | ゴースト件数表示 | `{{count}}` |
 | `card.launch` | 起動ボタン | — |
 | `card.launching` | 起動中ボタン（押下後） | — |
@@ -187,6 +189,8 @@ locales/
 | `content.openSettings` | Open settings link | — |
 | `list.loading` | Ghost list loading state | — |
 | `list.empty` | Shown when no ghosts are found | — |
+| `list.emptySearch` | Shown when a search returns no matches | `{{query}}` |
+| `list.clearSearch` | "Clear search" button in the no-match state | — |
 | `list.count` | Ghost count display | `{{count}}` |
 | `card.launch` | Launch button | — |
 | `card.launching` | Launch button after clicked | — |

@@ -30,6 +30,8 @@
   "content.openSettings": "Открыть настройки",
   "list.loading": "Загрузка...",
   "list.empty": "Духи не найдены",
+  "list.emptySearch": "Нет духов по запросу «{{query}}»",
+  "list.clearSearch": "Очистить поиск",
   "list.count": "{{count}} духов",
   "card.launch": "Запустить",
   "card.launching": "Запуск...",

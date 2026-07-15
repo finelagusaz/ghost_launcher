@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { GhostCard } from "./GhostCard";
 import { SkeletonCard } from "./SkeletonCard";
 import { useElementHeight } from "../hooks/useElementHeight";
@@ -20,6 +20,8 @@ interface Props {
   selectedIndex: number;
   // 起動対象ハイライトを表示するか（検索欄フォーカス中のみ true）
   selectionVisible: boolean;
+  // 検索0件の空表示から検索をクリアする
+  onClearSearch: () => void;
 }
 
 const ESTIMATED_ROW_HEIGHT = 100;
@@ -66,9 +68,15 @@ const useStyles = makeStyles({
   error: {
     color: tokens.colorPaletteRedForeground1,
   },
+  emptyContent: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "12px",
+  },
 });
 
-export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore, selectedIndex, selectionVisible }: Props) {
+export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore, selectedIndex, selectionVisible, onClearSearch }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -132,8 +140,9 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   }, [startIndex, endIndex, loadedStart, loadedEnd, shouldVirtualize, total, searchLoading]);
 
   // スキャン中でも表示可能なキャッシュがあれば一覧を維持する（stale-while-revalidate）。
-  // 表示するゴーストが無いときのみスピナーを出す
-  if (loading && total === 0 && ghosts.length === 0) {
+  // 表示するゴーストが無いときのみスピナーを出す。検索の解決中（searchLoading）も、
+  // 「一致なし」を早合点して見せないようスピナーで待つ
+  if ((loading || searchLoading) && total === 0 && ghosts.length === 0) {
     return (
       <div className={styles.state}>
         <Spinner label={t("list.loading")} />
@@ -152,9 +161,21 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   }
 
   if (total === 0 && ghosts.length === 0) {
+    // 「検索で0件」と「そもそもゴースト0体」を描き分ける。前者は次の一手
+    // （検索クリア）を添える
+    const query = searchQuery.trim();
     return (
       <div className={styles.state} data-testid="empty-state">
-        <Text>{t("list.empty")}</Text>
+        {query ? (
+          <div className={styles.emptyContent}>
+            <Text>{t("list.emptySearch", { query })}</Text>
+            <Button appearance="secondary" onClick={onClearSearch}>
+              {t("list.clearSearch")}
+            </Button>
+          </div>
+        ) : (
+          <Text>{t("list.empty")}</Text>
+        )}
       </div>
     );
   }

@@ -181,6 +181,7 @@ export const GhostContent = memo(function GhostContent({
           searchQuery={searchQuery}
           selectedIndex={selectedIndex}
           selectionVisible={searchFocused}
+          onClearSearch={() => onSearchChange("")}
         />
       </div>
     </>

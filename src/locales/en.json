@@ -30,6 +30,8 @@
   "content.openSettings": "Open settings",
   "list.loading": "Loading...",
   "list.empty": "No ghosts found",
+  "list.emptySearch": "No ghosts match \"{{query}}\"",
+  "list.clearSearch": "Clear search",
   "list.count_one": "{{count}} ghost",
   "list.count_other": "{{count}} ghosts",
   "card.launch": "Launch",

@@ -30,6 +30,8 @@
   "content.openSettings": "開啟設定",
   "list.loading": "載入中...",
   "list.empty": "找不到幽靈",
+  "list.emptySearch": "找不到與「{{query}}」相符的幽靈",
+  "list.clearSearch": "清除搜尋",
   "list.count": "{{count}} 個幽靈",
   "card.launch": "啟動",
   "card.launching": "啟動中...",

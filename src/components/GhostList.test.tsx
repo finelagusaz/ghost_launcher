@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { GhostList } from "./GhostList";
 import type { GhostView } from "../types";
 
@@ -34,6 +34,7 @@ const baseProps = {
   onLoadMore: vi.fn(),
   selectedIndex: 0,
   selectionVisible: true,
+  onClearSearch: vi.fn(),
 };
 
 describe("GhostList - スキャン中のキャッシュ表示（stale-while-revalidate）", () => {
@@ -68,5 +69,29 @@ describe("GhostList - スキャン中のキャッシュ表示（stale-while-reva
     const cards = screen.getAllByTestId("ghost-card");
     expect(cards[0]).not.toHaveAttribute("data-selected");
     expect(cards[1]).toHaveAttribute("data-selected", "true");
+  });
+});
+
+describe("GhostList - 空状態の描き分け", () => {
+  it("検索クエリがあり0件のときは検索専用の空表示とクリアボタンを出す", () => {
+    const onClearSearch = vi.fn();
+    render(
+      <GhostList {...baseProps} ghosts={[]} total={0} loading={false} searchQuery="foo" onClearSearch={onClearSearch} />,
+    );
+
+    expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    expect(screen.getByText("list.emptySearch")).toBeInTheDocument();
+    expect(screen.queryByText("list.empty")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("list.clearSearch"));
+    expect(onClearSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("検索クエリが無く0件のときは通常の空表示（クリアボタンなし）", () => {
+    render(<GhostList {...baseProps} ghosts={[]} total={0} loading={false} searchQuery="" />);
+
+    expect(screen.getByText("list.empty")).toBeInTheDocument();
+    expect(screen.queryByText("list.emptySearch")).not.toBeInTheDocument();
+    expect(screen.queryByText("list.clearSearch")).not.toBeInTheDocument();
   });
 });
