@@ -42,3 +42,8 @@ criterion = "0.5"
 name = "search_bench"
 harness = false
 required-features = ["bench"]
+
+[[bench]]
+name = "scan_bench"
+harness = false
+required-features = ["bench"]
