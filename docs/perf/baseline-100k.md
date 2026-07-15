@@ -75,6 +75,8 @@ cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench scan_b
 
 （n=100k は `sample_size=10` の indicative 値。full_scan はツリー生成直後の warm cache 状態での計測であり、コールドキャッシュのディスク読み込みを含まない点に留意。）
 
+**store 行の計測条件（PRAGMA）に関する注記**: `store_initial` / `store_rescan_nodiff` は、ベンチが `open_bench_db` で開いた**読み取り経路 PRAGMA**（本番 `loadDb` 準拠。`synchronous=FULL`・SQLite ページキャッシュ約 2 MB・mmap なし）の接続上で `store_ghosts` を計測している。一方、本番の書き込み経路（`scan_and_store` が `configure_connection` で張る `synchronous=NORMAL`・`cache_size≈64 MB`・`temp_store=MEMORY`・`mmap_size=128 MB`）は本値より速いため、これらの store 行は**本番書込よりやや悲観的（遅め）に出ている可能性がある上界**とみなすべき（特に `store_rescan_nodiff` の既存行カバリング index 読み取りは cache サイズ差の影響を受ける）。ヘッドラインの `full_scan`（純 FS・PRAGMA 非依存）・`layer1_hit`（indexed 1 行 + FS stat・実質 PRAGMA 非依存）・および SQL 層の検索/ソート/OFFSET 指標（正しい読み取り接続で計測）はこの差の影響を受けず、下記の推奨優先順位は変わらない。
+
 **フル走査 − Layer1 hit = 1 体増減で払う代償**: n=100k で 3.4693 s − 0.013357 ms ≈ **3.469 秒**（約 259,800 倍）。NTFS の親ディレクトリ mtime は「配下の何かが変わった」ことしか示さず、どのゴーストが変わったかまでは分からない粒度のため、100k 体中のどれか 1 体を追加・削除・更新しただけで Layer 1（親 mtime 一致判定）がミスし、100k 体全件の再走査（ディレクトリ列挙 + `descript.txt` パース）が発生する。full_scan は N に対しほぼ線形（1k→10k で 11.25 倍、10k→100k で 11.57 倍。単純な線形なら 10 倍のところ、ディレクトリ規模拡大に伴う readdir コスト増でやや超線形）。
 
 ## 所見（修正は別サイクル・推奨のみ）
