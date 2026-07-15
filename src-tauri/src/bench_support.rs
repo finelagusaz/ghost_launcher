@@ -22,7 +22,9 @@ mod tests {
     #[test]
     fn 内部型と関数へ到達できる() {
         // 再エクスポート4種すべての疎通確認（import できてコンパイルが通れば可視性は正しい）。
-        // 全てに触れることで feature ビルドの unused 警告も防ぐ。
+        // 注: この use は #[cfg(test)] 配下のため、feature 有効の非テストビルドでは
+        // 再エクスポートに消費者がなく unused 警告が出る（Task 6 が bench_support 関数で
+        // scan/fingerprint を消費した時点で解消。CI は --features bench をビルドしないため無害）。
         use crate::commands::ghost::{
             check_parent_mtimes_match, collect_parent_mtimes,
             scan_ghosts_with_fingerprint_internal, Ghost,
