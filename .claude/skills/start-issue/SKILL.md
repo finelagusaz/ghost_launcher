@@ -25,7 +25,7 @@ gh issue view <N>
 
 ## ステップ 3: main の最新化（gh-HTTPS）
 
-> この環境は SSH push/fetch が壊れているため、`/post-merge-sync` と同方式の gh-HTTPS で迂回する。
+> SSH push/fetch が失敗するため、`/post-merge-sync` の「gh-HTTPS 方式」で迂回する（理由の詳細は同スキルが正典）。操作は pull + update-ref のみ差し替える。
 
 ```bash
 git switch main

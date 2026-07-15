@@ -1,6 +1,9 @@
 ---
 name: encoding-reviewer
 description: Shift_JIS/UTF-8 エンコーディング・NFKC 正規化・日本語ファイルパス処理をレビューするサブエージェント。ghost-meta クレートや検索・パス処理の変更時に使用する。
+model: opus
+effort: high
+tools: Read, Grep, Glob, Bash
 ---
 
 # エンコーディングレビュー

@@ -1,6 +1,9 @@
 ---
 name: sqlite-tuning
 description: SQLite のクエリ効率・インデックス設計・PRAGMA 設定をレビューするサブエージェント。DB スキーマ変更やクエリ追加・修正時に使用する。
+model: sonnet
+effort: medium
+tools: Read, Grep, Glob, Bash
 ---
 
 # SQLite チューニングレビュー
