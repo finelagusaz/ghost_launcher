@@ -1,7 +1,8 @@
 //! 10万体規模の性能計測用フィクスチャ生成器と本番経路ラッパー。
 //! `bench` feature 有効時のみコンパイルされ、本番ビルドには含まれない。
 
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
@@ -134,6 +135,47 @@ pub fn order_by(sort: &str) -> String {
     }
 }
 
+/// {ssp_root}/ghost 配下に N 体のゴーストツリーを生成する。
+/// - 全体に ghost/master/descript.txt（UTF-8、一部 Shift_JIS）
+/// - i % 3 == 0 に shell/master/surface0.png（thumbnail 解決経路）
+pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String> {
+    let ghost_dir = ssp_root.join("ghost");
+    fs::create_dir_all(&ghost_dir).map_err(|e| format!("mkdir ghost: {e}"))?;
+
+    for i in 0..n {
+        let g = synth_ghost(i);
+        let master = ghost_dir.join(&g.directory_name).join("ghost").join("master");
+        fs::create_dir_all(&master).map_err(|e| format!("mkdir master: {e}"))?;
+
+        let descript = format!(
+            "name,{}\nsakura.name,{}\nkero.name,{}\ncraftman,{}\n",
+            g.name,
+            if g.sakura_name.is_empty() { "" } else { &g.sakura_name },
+            if g.kero_name.is_empty() { "" } else { &g.kero_name },
+            g.craftman
+        );
+        let descript_path = master.join("descript.txt");
+        if i % 7 == 0 {
+            // Shift_JIS（charset 明示）で文字コード判定経路を踏む
+            let sjis_body = format!("charset,Shift_JIS\n{descript}");
+            let (bytes, _, _) = encoding_rs::SHIFT_JIS.encode(&sjis_body);
+            fs::write(&descript_path, bytes).map_err(|e| format!("write sjis: {e}"))?;
+        } else {
+            let utf8_body = format!("charset,UTF-8\n{descript}");
+            fs::write(&descript_path, utf8_body).map_err(|e| format!("write utf8: {e}"))?;
+        }
+
+        // 一部に surface0.png を置き thumbnail 解決を発生させる
+        if i % 3 == 0 {
+            let shell_master = ghost_dir.join(&g.directory_name).join("shell").join("master");
+            fs::create_dir_all(&shell_master).map_err(|e| format!("mkdir shell: {e}"))?;
+            fs::write(shell_master.join("surface0.png"), b"")
+                .map_err(|e| format!("write png: {e}"))?;
+        }
+    }
+    Ok(ssp_root.to_path_buf())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +304,37 @@ mod tests {
         assert!(count(Q_RARE) > 0 && count(Q_RARE) < 100); // ~0.1% = ~10
         // 上限も縛る: 全一致(選択率100%)への劣化を検出する（Q_RARE と同じ両側境界）
         assert!(count(Q_COMMON) > 500 && count(Q_COMMON) < 2000); // ~10% = ~1000
+    }
+
+    #[test]
+    fn generate_ghost_tree_が_n_体を生成する() {
+        let tmp = TempDirGuard::new("bench_tree");
+        let ssp = tmp.path().join("ssp");
+        let returned = generate_ghost_tree(&ssp, 20).unwrap();
+        assert_eq!(returned, ssp);
+
+        let ghost_dir = ssp.join("ghost");
+        let count = std::fs::read_dir(&ghost_dir).unwrap().count();
+        assert_eq!(count, 20);
+
+        // 各体に descript.txt が存在する
+        for entry in std::fs::read_dir(&ghost_dir).unwrap() {
+            let d = entry.unwrap().path().join("ghost").join("master").join("descript.txt");
+            assert!(d.exists(), "descript missing: {}", d.display());
+        }
+    }
+
+    #[test]
+    fn generate_ghost_tree_を本番スキャンが読める() {
+        let tmp = TempDirGuard::new("bench_tree_scan");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 30).unwrap();
+
+        let (ghosts, _fp) = crate::commands::ghost::scan_ghosts_with_fingerprint_internal(
+            &ssp.to_string_lossy(),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(ghosts.len(), 30);
     }
 }
