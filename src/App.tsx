@@ -17,12 +17,12 @@ import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
 import { useAppShellState } from "./hooks/useAppShellState";
 import { useLauncherToasts } from "./hooks/useLauncherToasts";
+import { useGhostLauncher } from "./hooks/useGhostLauncher";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
 import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
-import { launchGhost } from "./lib/sspClient";
 import type { SortOrder } from "./types";
 
 const useStyles = makeStyles({
@@ -66,7 +66,7 @@ const useStyles = makeStyles({
 function App() {
   const styles = useStyles();
   const { t } = useTranslation();
-  const { notifySuccess, notifyError, notifyWarning } = useLauncherToasts();
+  const { notifyError, notifyWarning } = useLauncherToasts();
   const {
     sspPath,
     saveSspPath,
@@ -78,6 +78,7 @@ function App() {
     loading: settingsLoading,
     languageApplying,
   } = useSettings();
+  const launch = useGhostLauncher(sspPath);
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("name");
@@ -137,12 +138,13 @@ function App() {
         notifyWarning(t("header.randomLaunch.empty"));
         return;
       }
-      await launchGhost(sspPath, ghost);
-      notifySuccess(t("card.launchSuccess", { name: ghost.name }));
+      // launch は内部で成功/失敗トーストまで処理する。ここの catch は
+      // getRandomGhost（DB アクセス）失敗時のみに来る
+      await launch(ghost);
     } catch (e) {
       notifyError(t("card.launchError", { detail: formatErrorDetail(e) }));
     }
-  }, [searchRequestKey, sspPath, t, notifySuccess, notifyError, notifyWarning]);
+  }, [searchRequestKey, sspPath, launch, t, notifyError, notifyWarning]);
 
   const handleSortChange = useCallback((value: SortOrder) => {
     // 「ランダム」を選ぶたびに並びを引き直す。同値再選択は sortOrder/offset が

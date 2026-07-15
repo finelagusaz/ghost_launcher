@@ -9,8 +9,8 @@ vi.mock("react-i18next", () => ({
 
 // GhostCard はサムネイル解決等の依存を持つため、表示有無の検証用に最小モック化する
 vi.mock("./GhostCard", () => ({
-  GhostCard: ({ ghost }: { ghost: GhostView }) => (
-    <div data-testid="ghost-card">{ghost.name}</div>
+  GhostCard: ({ ghost, selected }: { ghost: GhostView; selected?: boolean }) => (
+    <div data-testid="ghost-card" data-selected={selected ? "true" : undefined}>{ghost.name}</div>
   ),
 }));
 
@@ -32,6 +32,8 @@ const baseProps = {
   error: null as string | null,
   loadedStart: 0,
   onLoadMore: vi.fn(),
+  selectedIndex: 0,
+  selectionVisible: true,
 };
 
 describe("GhostList - スキャン中のキャッシュ表示（stale-while-revalidate）", () => {
@@ -57,5 +59,14 @@ describe("GhostList - スキャン中のキャッシュ表示（stale-while-reva
 
     expect(screen.getByTestId("empty-state")).toBeInTheDocument();
     expect(screen.getByText("list.empty")).toBeInTheDocument();
+  });
+
+  it("selectedIndex のカードにハイライト（data-selected）が付く", () => {
+    const ghosts = [makeGhost("Reimu"), makeGhost("Marisa")];
+    render(<GhostList {...baseProps} ghosts={ghosts} total={2} loading={false} selectedIndex={1} />);
+
+    const cards = screen.getAllByTestId("ghost-card");
+    expect(cards[0]).not.toHaveAttribute("data-selected");
+    expect(cards[1]).toHaveAttribute("data-selected", "true");
   });
 });

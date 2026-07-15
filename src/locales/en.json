@@ -38,6 +38,7 @@
   "card.launchSuccess": "Launched \"{{name}}\"",
   "search.label": "Search ghosts",
   "search.placeholder": "Search by name or author",
+  "search.clear": "Clear search",
   "sort.label": "Sort by",
   "sort.name": "Name",
   "sort.recent": "Recently launched",

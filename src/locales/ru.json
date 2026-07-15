@@ -37,6 +37,7 @@
   "card.launchSuccess": "Дух «{{name}}» запущен",
   "search.label": "Поиск духов",
   "search.placeholder": "Поиск по имени духа или автора",
+  "search.clear": "Очистить поиск",
   "sort.label": "Сортировка",
   "sort.name": "По имени",
   "sort.recent": "Недавно запущенные",

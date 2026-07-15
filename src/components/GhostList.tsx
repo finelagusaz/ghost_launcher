@@ -17,6 +17,9 @@ interface Props {
   searchLoading: boolean;
   error: string | null;
   onLoadMore: (targetOffset: number) => void;
+  selectedIndex: number;
+  // 起動対象ハイライトを表示するか（検索欄フォーカス中のみ true）
+  selectionVisible: boolean;
 }
 
 const ESTIMATED_ROW_HEIGHT = 100;
@@ -65,7 +68,7 @@ const useStyles = makeStyles({
   },
 });
 
-export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore }: Props) {
+export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, loading, searchLoading, error, onLoadMore, selectedIndex, selectionVisible }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -79,6 +82,22 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
       viewport.scrollTop = 0;
     }
   }, [searchQuery]);
+
+  // 選択行を viewport 内へスクロールする（nearest）。仮想化時は選択行が DOM に無い
+  // ことがあり scrollIntoView が使えないため、index から scrollTop を算出して代入する。
+  // 代入により onScroll が発火し、仮想ウィンドウが再計算されて対象行が描画される。
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rowHeight = ESTIMATED_ROW_HEIGHT + STACK_GAP;
+    const top = selectedIndex * rowHeight;
+    const bottom = top + rowHeight;
+    if (top < viewport.scrollTop) {
+      viewport.scrollTop = top;
+    } else if (bottom > viewport.scrollTop + viewport.clientHeight) {
+      viewport.scrollTop = bottom - viewport.clientHeight;
+    }
+  }, [selectedIndex]);
 
   const shouldVirtualize = total >= 80;
   const viewportHeight = useElementHeight(viewportRef, shouldVirtualize, DEFAULT_VIEWPORT_HEIGHT);
@@ -149,8 +168,13 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
         </Text>
         <div className={styles.viewport} ref={viewportRef} data-testid="ghost-list-viewport">
           <div className={styles.stack}>
-            {ghosts.map((ghost) => (
-              <GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />
+            {ghosts.map((ghost, idx) => (
+              <GhostCard
+                key={ghost.path}
+                ghost={ghost}
+                sspPath={sspPath}
+                selected={selectionVisible && loadedStart + idx === selectedIndex}
+              />
             ))}
           </div>
         </div>
@@ -164,7 +188,7 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   for (let i = startIndex; i < endIndex; i++) {
     if (i >= loadedStart && i < loadedEnd) {
       const ghost = ghosts[i - loadedStart];
-      cards.push(<GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} />);
+      cards.push(<GhostCard key={ghost.path} ghost={ghost} sspPath={sspPath} selected={selectionVisible && i === selectedIndex} />);
     } else {
       cards.push(<SkeletonCard key={`skeleton-${i}`} />);
     }
