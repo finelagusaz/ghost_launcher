@@ -34,6 +34,7 @@
   "card.launch": "Запустить",
   "card.launching": "Запуск...",
   "card.launchError": "Не удалось запустить. Проверьте настройки папки SSP и информацию о духе, затем попробуйте снова.{{detail}}",
+  "card.launchSuccess": "Дух «{{name}}» запущен",
   "search.label": "Поиск духов",
   "search.placeholder": "Поиск по имени духа или автора",
   "sort.label": "Сортировка",

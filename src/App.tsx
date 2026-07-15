@@ -16,10 +16,11 @@ import { useSettings } from "./hooks/useSettings";
 import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
 import { useAppShellState } from "./hooks/useAppShellState";
+import { useLauncherToasts } from "./hooks/useLauncherToasts";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { requestKeyFromSettings } from "./lib/ghostScanUtils";
+import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
 import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
 import { launchGhost } from "./lib/sspClient";
 import type { SortOrder } from "./types";
@@ -65,6 +66,7 @@ const useStyles = makeStyles({
 function App() {
   const styles = useStyles();
   const { t } = useTranslation();
+  const { notifySuccess, notifyError, notifyWarning } = useLauncherToasts();
   const {
     sspPath,
     saveSspPath,
@@ -127,21 +129,20 @@ function App() {
   const handleOpenSettings = openSettings;
   const handleCloseSettings = closeSettings;
 
-  const [randomLaunchError, setRandomLaunchError] = useState<string | null>(null);
   const handleRandomLaunch = useCallback(async () => {
     if (!searchRequestKey || !sspPath) return;
-    setRandomLaunchError(null);
     try {
       const ghost = await getRandomGhost(searchRequestKey);
       if (!ghost) {
-        setRandomLaunchError(t("header.randomLaunch.empty"));
+        notifyWarning(t("header.randomLaunch.empty"));
         return;
       }
       await launchGhost(sspPath, ghost);
+      notifySuccess(t("card.launchSuccess", { name: ghost.name }));
     } catch (e) {
-      setRandomLaunchError(e instanceof Error ? e.message : String(e));
+      notifyError(t("card.launchError", { detail: formatErrorDetail(e) }));
     }
-  }, [searchRequestKey, sspPath, t]);
+  }, [searchRequestKey, sspPath, t, notifySuccess, notifyError, notifyWarning]);
 
   const handleSortChange = useCallback((value: SortOrder) => {
     // 「ランダム」を選ぶたびに並びを引き直す。同値再選択は sortOrder/offset が
@@ -185,7 +186,7 @@ function App() {
           sortOrder={sortOrder}
           loading={ghostsLoading}
           searchLoading={searchLoading}
-          error={scanError ?? dbError ?? randomLaunchError}
+          error={scanError ?? dbError}
           onSearchChange={setSearchQuery}
           onSortChange={handleSortChange}
           onRandomLaunch={handleRandomLaunch}

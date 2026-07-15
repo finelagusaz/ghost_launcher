@@ -16,6 +16,7 @@ import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
 import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
 import { launchGhost } from "../lib/sspClient";
+import { useLauncherToasts } from "../hooks/useLauncherToasts";
 import type { GhostView } from "../types";
 
 interface Props {
@@ -189,6 +190,7 @@ const ThumbnailCanvas = memo(function ThumbnailCanvas({ src, className }: { src:
 export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
+  const { notifySuccess } = useLauncherToasts();
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -218,6 +220,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath }: Props) {
     setError(null);
     try {
       await launchGhost(sspPath, ghost);
+      notifySuccess(t("card.launchSuccess", { name: ghost.name }));
     } catch (e) {
       setError(t("card.launchError", { detail: formatErrorDetail(e) }));
     } finally {
