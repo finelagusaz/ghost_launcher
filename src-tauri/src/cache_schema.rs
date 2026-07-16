@@ -58,6 +58,40 @@ pub(crate) fn ensure_cache_schema(conn: &mut Connection) -> Result<(), String> {
     tx.commit().map_err(|e| format!("リビルド commit エラー: {e}"))
 }
 
+/// ghosts.db を開き、PRAGMA 設定とスキーマ確定まで行って返す。失敗時は DB ファイル一式
+/// （本体・-wal・-shm）を削除して 1 回だけ作り直す: sqlx migration 層の撤去で修復経路が
+/// 単一層化したことへの補償（設計書 §4）。起動時・webview ロード前専用（fs 削除が安全）。
+/// 2 回目の失敗（disk full・権限等）は呼び出し側がログのみで続行する。
+pub(crate) fn open_with_recovery(ghosts_path: &std::path::Path) -> Result<Connection, String> {
+    match open_and_ensure(ghosts_path) {
+        Ok(conn) => Ok(conn),
+        Err(first) => {
+            eprintln!("[cache-schema] 初期化に失敗、DB を作り直します: {first}");
+            remove_db_files(ghosts_path);
+            open_and_ensure(ghosts_path)
+        }
+    }
+}
+
+/// open → PRAGMA → ensure_cache_schema の一連（リトライの単位）。
+fn open_and_ensure(ghosts_path: &std::path::Path) -> Result<Connection, String> {
+    let mut conn = Connection::open(ghosts_path)
+        .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
+    crate::commands::ghost::store::configure_connection(&conn)?;
+    ensure_cache_schema(&mut conn)?;
+    Ok(conn)
+}
+
+/// DB 本体と WAL/SHM を削除する（SQLite の命名規約 <db>-wal / <db>-shm に従う）。
+fn remove_db_files(ghosts_path: &std::path::Path) {
+    let _ = std::fs::remove_file(ghosts_path);
+    for suffix in ["-wal", "-shm"] {
+        let mut os = ghosts_path.as_os_str().to_owned();
+        os.push(suffix);
+        let _ = std::fs::remove_file(std::path::PathBuf::from(os));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +231,25 @@ mod tests {
                 "{table} の table_info が一致しない"
             );
         }
+    }
+
+    #[test]
+    fn open_with_recoveryは壊れたdbファイルを作り直して開く() {
+        let dir = crate::testutil::TempDirGuard::new("cache_schema_recovery_test");
+        let db = dir.path().join("ghosts.db");
+        // SQLite ヘッダとして不正なゴミを書いておく（sanitize をすり抜けた破損の想定）
+        std::fs::write(&db, b"this is not a sqlite database").unwrap();
+
+        let conn = open_with_recovery(&db).unwrap();
+        // 作り直され、スキーマと user_version が確定している
+        assert_eq!(user_version(&conn), cache_schema_version());
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ghosts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
     }
 }

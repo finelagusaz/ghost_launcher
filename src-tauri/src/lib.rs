@@ -256,13 +256,12 @@ fn sanitize_ghost_db(app: &tauri::App) {
 }
 
 /// ghosts.db を開いて使い捨てスキーマを確定させる（webview ロード前・同期）。
+/// 失敗時は cache_schema::open_with_recovery が fs 削除リトライを 1 回行う。
 /// Phase 2 でアクター構築（actor::bootstrap）へ吸収される予定の暫定配線。
 fn init_cache_schema(app: &tauri::App) -> Result<(), String> {
     let path = db_path::ghost_db_path(app)?;
-    let mut conn =
-        rusqlite::Connection::open(&path).map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
-    commands::ghost::store::configure_connection(&conn)?;
-    cache_schema::ensure_cache_schema(&mut conn)
+    let _conn = cache_schema::open_with_recovery(&path)?;
+    Ok(())
 }
 
 /// user-data.db を初期化し、旧 ghosts.db.ghost_launches の履歴を一度だけ移送する。
