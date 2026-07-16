@@ -1,5 +1,4 @@
 use rusqlite::Connection;
-use tauri::Manager;
 
 /// user-data.db に起動履歴テーブルを冪等に用意する。
 /// ここは sqlx マイグレーション系に載せない（永続ストアなので自動削除の事故クラスが構造上発生しない）。
@@ -10,21 +9,9 @@ pub(crate) fn ensure_schema(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("user-data スキーマ作成エラー: {e}"))
 }
 
-/// user-data.db を開き、書込用 PRAGMA を適用し、スキーマを用意して返す。
-pub(crate) fn open_user_data_db<R: tauri::Runtime>(
-    manager: &impl Manager<R>,
-) -> Result<Connection, String> {
-    let path = crate::db_path::user_data_db_path(manager)?;
-    let conn = Connection::open(&path).map_err(|e| format!("user-data.db オープンエラー: {e}"))?;
-    crate::commands::ghost::store::configure_connection(&conn)?;
-    ensure_schema(&conn)?;
-    Ok(conn)
-}
-
 /// 起動履歴を記録する。user-data.db へ INSERT（権威）し、ghosts.db の集計列を bump（導出）する。
 /// user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回バックフィルで整合する。
-/// 呼び出し元は actor::handle_job（Task 7 で spawn_actor が配線されるまで本番到達不能・dead_code 許可）。
-#[allow(dead_code)]
+/// 呼び出し元は actor::handle_job（アクタースレッド上）。
 pub(crate) fn record_launch_inner(
     user_conn: &Connection,
     ghosts_conn: &Connection,

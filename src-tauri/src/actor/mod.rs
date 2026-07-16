@@ -2,15 +2,59 @@
 //! Connection はこのスレッドだけが所有する。排他は「消費者が 1 人のキュー」という構造
 //! そのものであり、Mutex もロック配線テストも存在しない。
 //!
-//! #146 Phase2 の段階配線: `spawn_actor` を呼び `.manage(ActorHandle)` するのは Task 7
-//! （lib.rs の setup 配線）。それまでは受信ループ以下（spawn_actor/run_loop/handle_job/
-//! run_guarded・Job のフィールド読み取り）が本番コードから到達不能なため、dead_code を
-//! 一時的に許可する（テストのみが到達する）。Task 7 で配線後にこの allow は不要になる。
-#![allow(dead_code)]
+//! `bootstrap` が起動配線（設計書 §2.1）を担い、`.manage(ActorHandle)` するのは
+//! lib.rs の setup。ghosts.db のパス解決（db_path）はこのモジュール専有（設計書 §2.3）。
+
+mod db_path;
 
 use rusqlite::Connection;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use tokio::sync::{mpsc, oneshot};
+
+/// 起動配線（設計書 §2.1 の 5 ステップ・すべて setup スレッドで同期実行）。
+/// 順序は不変条件: sanitize → user-data 初期化＋legacy 移送 → スキーマ確定 → スレッド起動。
+/// 特に「移送 → ensure_cache_schema」の順序を破ると、旧世代 DB の永続履歴が
+/// リビルドの全 DROP に巻き込まれて失われる（issue #93/#146）。
+pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
+    // (1) パス解決（単一権威・ここ以外に ghosts.db のパスを知るコードは存在しない）と最小 sanitize
+    let db_dir = db_path::ghost_db_dir(app)?;
+    let ghosts_path = db_dir.join(db_path::GHOST_DB_FILES[0]);
+    sanitize(&db_dir, &ghosts_path);
+
+    // (2) user-data 初期化 + legacy 移送
+    let user_path = db_path::user_data_db_path(app)?;
+    let user_conn = rusqlite::Connection::open(&user_path)
+        .map_err(|e| format!("user-data.db オープンエラー: {e}"))?;
+    crate::commands::ghost::store::configure_connection(&user_conn)?;
+    crate::commands::launch_history::ensure_schema(&user_conn)?;
+    if ghosts_path.exists() {
+        if let Ok(g) = rusqlite::Connection::open(&ghosts_path) {
+            let _ = crate::commands::launch_history::migrate_legacy_launch_history(&g, &user_conn);
+        }
+    }
+
+    // (3) ghosts を開きスキーマ確定（webview ロード前なので初回 SELECT は必ず確定後）。
+    //     失敗時は fs 削除リトライ 1 回（cache_schema::open_with_recovery と同一の回復）。
+    let ghosts_conn = crate::cache_schema::open_with_recovery(&ghosts_path)?;
+
+    // (4) 所有権 move でスレッド起動
+    Ok(spawn_actor(ghosts_conn, user_conn))
+}
+
+/// ghosts.db が破損して open 不能なら関連ファイルごと削除する（webview ロード前なので競合なし）。
+fn sanitize(db_dir: &std::path::Path, ghosts_path: &std::path::Path) {
+    if !ghosts_path.exists() {
+        return;
+    }
+    let ok = rusqlite::Connection::open(ghosts_path)
+        .and_then(|c| c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)))
+        .is_ok();
+    if !ok {
+        for filename in db_path::GHOST_DB_FILES {
+            let _ = std::fs::remove_file(db_dir.join(filename));
+        }
+    }
+}
 
 /// ghosts.db への書き込みの全種類（設計書 §3）。新しい writer は必ずここに variant を足す。
 pub(crate) enum Job {

@@ -1,6 +1,5 @@
 mod actor;
 mod commands;
-mod db_path;
 mod scan_coordinator;
 mod cache_schema;
 #[cfg(test)]
@@ -230,57 +229,9 @@ mod tests {
     }
 }
 
-/// ghosts.db が破損して open 不能なら関連ファイルごと削除する（webview ロード前なので競合なし）。
-/// スキーマ検査は不要になった: 使い捨てスキーマは ensure_cache_schema が version 不一致で
-/// 自動リビルドするため、「マイグレーション競合」という事故クラス自体が存在しない。
-fn sanitize_ghost_db(app: &tauri::App) {
-    let Ok(db_dir) = db_path::ghost_db_dir(app) else {
-        return;
-    };
-    let db_path = db_dir.join(db_path::GHOST_DB_FILES[0]);
-    if !db_path.exists() {
-        return;
-    }
-    let ok = rusqlite::Connection::open(&db_path)
-        .and_then(|c| c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)))
-        .is_ok();
-    if !ok {
-        for filename in db_path::GHOST_DB_FILES {
-            let _ = std::fs::remove_file(db_dir.join(filename));
-        }
-    }
-}
-
-/// ghosts.db を開いて使い捨てスキーマを確定させる（webview ロード前・同期）。
-/// 失敗時は cache_schema::open_with_recovery が fs 削除リトライを 1 回行う。
-/// Phase 2 でアクター構築（actor::bootstrap）へ吸収される予定の暫定配線。
-fn init_cache_schema(app: &tauri::App) -> Result<(), String> {
-    let path = db_path::ghost_db_path(app)?;
-    let _conn = cache_schema::open_with_recovery(&path)?;
-    Ok(())
-}
-
-/// user-data.db を初期化し、旧 ghosts.db.ghost_launches の履歴を一度だけ移送する。
-/// Rust setup（JS の Database.load によるマイグレーションより先に走る）で呼ぶことで、
-/// migration 13 の旧テーブル DROP より前に移送を完了させる。
-fn init_user_data(app: &tauri::App) {
-    let Ok(user_conn) = commands::launch_history::open_user_data_db(app) else {
-        eprintln!("[user-data] user-data.db を初期化できませんでした");
-        return;
-    };
-    let Ok(ghosts_path) = db_path::ghost_db_path(app) else {
-        return;
-    };
-    // ghosts.db が存在するときだけ legacy 移送を試みる（空ファイルの事前生成を避ける）
-    if ghosts_path.exists() {
-        if let Ok(ghosts_conn) = rusqlite::Connection::open(&ghosts_path) {
-            let _ = commands::launch_history::migrate_legacy_launch_history(&ghosts_conn, &user_conn);
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -288,10 +239,11 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(scan_coordinator::ScanCoordinator::default())
         .setup(|app| {
-            sanitize_ghost_db(app);
-            init_user_data(app); // legacy 移送を含む。ensure より先が不変条件（設計書 §2.1）
-            if let Err(e) = init_cache_schema(app) {
-                eprintln!("[cache-schema] 初期化に失敗しました: {e}");
+            match actor::bootstrap(app) {
+                Ok(handle) => {
+                    app.manage(handle);
+                }
+                Err(e) => return Err(format!("DB アクターの起動に失敗しました: {e}").into()),
             }
             Ok(())
         })
