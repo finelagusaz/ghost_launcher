@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    full_scan_count, generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle, store_handle,
-    store_with_real_mtimes,
+    add_one_ghost, fingerprint_only, fingerprint_only_filetype, full_scan_count,
+    generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle, store_handle,
+    store_with_real_mtimes, walk_dir_mtime, walk_full, walk_nameset,
 };
 
 /// ベンチ用の一時ディレクトリガード（lib 内部 TempDirGuard は非 pub のためローカルに持つ）。
@@ -52,6 +53,25 @@ fn bench_scan(c: &mut Criterion) {
             b.iter(|| full_scan_count(&ssp_str).unwrap());
         });
 
+        // walk スペクトラム（parse 抜き・各 fidelity レベル）
+        group.bench_function("walk_full_fidelity_3stat", |b| {
+            b.iter(|| fingerprint_only(&ssp_str).unwrap());
+        });
+        // full fidelity のまま逐次 is_dir を file_type に置換（同一 fingerprint・F-04 不変）。
+        // walk_full_fidelity_3stat との差 = 逐次 is_dir pass 単独のコスト。
+        group.bench_function("walk_full_fidelity_filetype", |b| {
+            b.iter(|| fingerprint_only_filetype(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_full_2stat_filetype", |b| {
+            b.iter(|| walk_full(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_dir_mtime_1stat", |b| {
+            b.iter(|| walk_dir_mtime(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_nameset_0stat", |b| {
+            b.iter(|| walk_nameset(&ssp_str).unwrap());
+        });
+
         // Layer1 hit（無変更時の高速パス）。実 mtimes を保存して真の hit にする。
         {
             let conn = open_bench_db(&db_path).unwrap();
@@ -83,6 +103,26 @@ fn bench_scan(c: &mut Criterion) {
             store_handle(&conn, "rk", &handle, &fp).unwrap();
             group.bench_function("store_rescan_nodiff", |b| {
                 b.iter(|| store_handle(&conn, "rk", &handle, &fp).unwrap());
+            });
+        }
+
+        // 1体変更→再走査（現行ベースライン）: setup で 1 体追加し Layer1 ミス+差分1を強制、
+        // routine でフル walk+parse + store 差分（現行の miss 経路）を測る。
+        {
+            let conn = open_bench_db(&guard.path().join("rescan.db")).unwrap();
+            store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
+            group.bench_function("rescan_one_change", |b| {
+                b.iter_batched(
+                    || {
+                        let tag = fastrand_like() as usize;
+                        add_one_ghost(&ssp_str, tag).unwrap();
+                    },
+                    |_| {
+                        let (h, f) = scan_to_handle(&ssp_str).unwrap();
+                        store_handle(&conn, "rk", &h, &f).unwrap();
+                    },
+                    criterion::BatchSize::PerIteration,
+                );
             });
         }
 

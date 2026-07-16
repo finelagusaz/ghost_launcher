@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{configure_connection, store_ghosts};
@@ -178,6 +179,22 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
     Ok(ssp_root.to_path_buf())
 }
 
+/// 既存ツリーに一意名（dir_added_{tag}）のゴースト1体を追加する。
+/// 親 {ssp}/ghost の mtime を bump するため、以後の layer1 判定はミスする。
+pub fn add_one_ghost(ssp_path: &str, tag: usize) -> Result<(), String> {
+    let master = Path::new(ssp_path)
+        .join("ghost")
+        .join(format!("dir_added_{tag:09}"))
+        .join("ghost")
+        .join("master");
+    fs::create_dir_all(&master).map_err(|e| format!("mkdir added: {e}"))?;
+    fs::write(
+        master.join("descript.txt"),
+        format!("charset,UTF-8\nname,追加{tag}\n"),
+    )
+    .map_err(|e| format!("write added: {e}"))
+}
+
 /// スキャン結果の Ghost 群を外部ベンチに対して opaque に保持する。
 pub struct ScannedGhosts {
     ghosts: Vec<Ghost>,
@@ -216,6 +233,61 @@ pub fn store_with_real_mtimes(
 pub fn full_scan_count(ssp_path: &str) -> Result<usize, String> {
     let (ghosts, _fp) = scan_ghosts_with_fingerprint_internal(ssp_path, &[])?;
     Ok(ghosts.len())
+}
+
+/// フル fidelity walk を parse 抜きで実行し fingerprint を返す（walk_only 計測）。
+/// full_scan_count との差が parse コスト。
+pub fn fingerprint_only(ssp_path: &str) -> Result<String, String> {
+    crate::commands::ghost::fingerprint_only_internal(ssp_path, &[])
+}
+
+/// fingerprint_only と同一 fingerprint を返すが、逐次 is_dir を file_type に置換した版。
+/// fingerprint_only との差 = 逐次 is_dir pass 単独のコスト（token/hash と分離）。
+pub fn fingerprint_only_filetype(ssp_path: &str) -> Result<String, String> {
+    crate::commands::ghost::fingerprint_only_filetype_internal(ssp_path)
+}
+
+/// {ssp}/ghost 直下の子ディレクトリパスを列挙する（is_dir 判定はキャッシュ済み
+/// find-data の file_type を使い syscall ゼロ）。本番 walk_parent の is_dir(stat)
+/// を file_type に置換したときの walk を模す計測用ヘルパー。
+fn ghost_children(ssp_path: &str) -> Result<Vec<PathBuf>, String> {
+    let ghost_dir = Path::new(ssp_path).join("ghost");
+    let entries = fs::read_dir(&ghost_dir).map_err(|e| format!("read_dir: {e}"))?;
+    Ok(entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .collect())
+}
+
+/// 名前集合レベル: 子1体あたり stat ゼロ（read_dir + file_type のみ）。
+/// add/del/rename は検知できるが同名置換は検知できない fidelity 下限。
+pub fn walk_nameset(ssp_path: &str) -> Result<usize, String> {
+    Ok(ghost_children(ssp_path)?.len())
+}
+
+/// dir_mtime レベル: 子1体あたり fs::metadata 1 回（dir mtime のみ、descript stat なし）。
+/// 同名置換まで検知できる。
+pub fn walk_dir_mtime(ssp_path: &str) -> Result<usize, String> {
+    let paths = ghost_children(ssp_path)?;
+    let count = paths.par_iter().filter(|p| fs::metadata(p).is_ok()).count();
+    Ok(count)
+}
+
+/// full fidelity レベル（file_type 版）: 子1体あたり 2 stat（dir mtime + descript）。
+/// 本番 walk_parent は is_dir(stat) を足して 3 stat のため、fingerprint_only との差が
+/// is_dir→file_type の無料削減効果。
+pub fn walk_full(ssp_path: &str) -> Result<usize, String> {
+    let paths = ghost_children(ssp_path)?;
+    let count = paths
+        .par_iter()
+        .filter(|p| {
+            let _dir = fs::metadata(p).is_ok(); // stat 1: dir mtime
+            let descript = p.join("ghost").join("master").join("descript.txt");
+            fs::metadata(&descript).is_ok() // stat 2: descript 有無/mtime（結果を使用）
+        })
+        .count();
+    Ok(count)
 }
 
 /// Layer 1 高速パス（親 mtime 一致判定）を測る。事前に store_with_real_mtimes で
@@ -410,6 +482,170 @@ mod tests {
         let ssp = tmp.path().join("ssp");
         generate_ghost_tree(&ssp, 25).unwrap();
         assert_eq!(full_scan_count(&ssp.to_string_lossy()).unwrap(), 25);
+    }
+
+    #[test]
+    fn fingerprint_only_がフルスキャンと同じfingerprintを返す() {
+        let tmp = TempDirGuard::new("bench_fp_only");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 30).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        let (_ghosts, full_fp) =
+            crate::commands::ghost::scan_ghosts_with_fingerprint_internal(&ssp_str, &[]).unwrap();
+        let walk_fp = fingerprint_only(&ssp_str).unwrap();
+
+        // parse 抜き walk でも同一トークン集合 → 同一 fingerprint
+        assert_eq!(walk_fp, full_fp);
+    }
+
+    #[test]
+    fn fingerprint_only_filetype_が同一fingerprintを返す() {
+        let tmp = TempDirGuard::new("bench_fp_filetype");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 30).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // 逐次 is_dir を file_type に置換しても同一トークン集合 → 同一 fingerprint
+        assert_eq!(
+            fingerprint_only_filetype(&ssp_str).unwrap(),
+            fingerprint_only(&ssp_str).unwrap()
+        );
+    }
+
+    // 判別計測（Task 6 追補）: fingerprint_only（逐次 is_dir 込み）と
+    // fingerprint_only_filetype（file_type・逐次 is_dir なし）を同一ツリーで時間比較する。
+    // 両者の差 = 逐次 is_dir pass 単独のコスト。これで「walk コストの過半が逐次 is_dir か
+    // token/hash か」を切り分ける。#[ignore]（診断・手動実行）。
+    // 実行: cargo test --features bench -- --ignored --nocapture 逐次is_dir
+    #[test]
+    #[ignore = "診断: 逐次 is_dir vs token/hash の切り分け計測（手動・--nocapture）"]
+    fn 逐次is_dirとfiletypeの時間差を計測する() {
+        use std::time::Instant;
+        const N: usize = 30_000;
+        const ITERS: u32 = 5;
+
+        let tmp = TempDirGuard::new("bench_isdir_discriminate");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, N).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // warm up（OS キャッシュ）
+        let _ = fingerprint_only(&ssp_str).unwrap();
+        let _ = fingerprint_only_filetype(&ssp_str).unwrap();
+
+        let mut best_seq = f64::MAX;
+        let mut best_ft = f64::MAX;
+        for _ in 0..ITERS {
+            let t0 = Instant::now();
+            let _ = fingerprint_only(&ssp_str).unwrap();
+            best_seq = best_seq.min(t0.elapsed().as_secs_f64());
+
+            let t1 = Instant::now();
+            let _ = fingerprint_only_filetype(&ssp_str).unwrap();
+            best_ft = best_ft.min(t1.elapsed().as_secs_f64());
+        }
+
+        println!(
+            "\n[判別計測 N={N}] fingerprint_only(逐次is_dir込み)={:.1}ms  \
+             fingerprint_only_filetype(is_dirなし)={:.1}ms  \
+             逐次is_dir単独≈{:.1}ms（差 {:.0}%）",
+            best_seq * 1000.0,
+            best_ft * 1000.0,
+            (best_seq - best_ft) * 1000.0,
+            (best_seq - best_ft) / best_seq * 100.0,
+        );
+        // 同値であることも確認
+        assert_eq!(
+            fingerprint_only_filetype(&ssp_str).unwrap(),
+            fingerprint_only(&ssp_str).unwrap()
+        );
+    }
+
+    #[test]
+    fn walk_モデル3種が全て子ディレクトリ数を返す() {
+        let tmp = TempDirGuard::new("bench_walk_levels");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 50).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        assert_eq!(walk_nameset(&ssp_str).unwrap(), 50);
+        assert_eq!(walk_dir_mtime(&ssp_str).unwrap(), 50);
+        assert_eq!(walk_full(&ssp_str).unwrap(), 50);
+        // 本番フル走査の体数とも一致（全子に descript 有り）
+        assert_eq!(full_scan_count(&ssp_str).unwrap(), 50);
+    }
+
+    #[test]
+    fn add_one_ghost_が体数を1増やしlayer1をミスさせる() {
+        let tmp = TempDirGuard::new("bench_add_one");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 20).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // 初期状態を real mtimes で保存 → layer1 hit する
+        let (handle, fp) = scan_to_handle(&ssp_str).unwrap();
+        let conn = open_bench_db(&tmp.path().join("ghosts.db")).unwrap();
+        store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
+        assert!(layer1_hit(&conn, "rk", &ssp_str));
+
+        // 1 体追加 → 体数 +1、layer1 ミス
+        add_one_ghost(&ssp_str, 1).unwrap();
+        assert_eq!(full_scan_count(&ssp_str).unwrap(), 21);
+        assert!(!layer1_hit(&conn, "rk", &ssp_str), "追加で親 mtime が変わり miss のはず");
+    }
+
+    // キャッシュ mtime 信頼性テスト（Task 5）: entry.metadata()（find-data 由来・syscall
+    // ゼロ）の mtime が、ツリー変更後の「新しい read_dir 列挙」で fs::metadata と一致するか。
+    //
+    // 所見（2026-07-16 実測・Windows 11 / NTFS）: FAIL。新しい read_dir 列挙でも
+    // entry.metadata() の mtime は fs::metadata と不一致（実測差 ~63ms、find-data
+    // キャッシュが陳腐化）。→ dir_mtime レベルは find-data mtime を無料利用できず、
+    // fs::metadata で 1 実 stat/子 が必須。真に安価な walk は name-set（0 stat）のみで、
+    // それは同名置換検知を失う。コードベースが fs::metadata を全面採用している判断
+    // （scan.rs の NTFS 陳腐化回避コメント）が実測で裏付けられた。
+    //
+    // #[ignore]: 上記所見を記録した回帰ガードとして残す。プラットフォーム挙動が変われば
+    // 手動実行（cargo test --features bench -- --ignored キャッシュmtime）で再検証する。
+    #[test]
+    #[ignore = "所見: Windows では find-data mtime が新しい列挙でも陳腐化する（dir_mtime は fs::metadata 必須）"]
+    fn キャッシュmtimeが新しい列挙で更新を反映する() {
+        use std::time::Duration;
+        let tmp = TempDirGuard::new("bench_mtime_reliability");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 5).unwrap();
+        let ghost_dir = ssp.join("ghost");
+
+        // 対象の子ディレクトリを1つ選ぶ
+        let target = ghost_dir.join("dir_000000");
+
+        // mtime を確実に前進させるため、少し待ってから中身を更新する
+        std::thread::sleep(Duration::from_millis(50));
+        fs::write(
+            target.join("ghost").join("master").join("descript.txt"),
+            "charset,UTF-8\nname,更新後\n",
+        )
+        .unwrap();
+        // ディレクトリ自身の mtime を bump するためファイルを1つ足す
+        fs::write(target.join("touch.tmp"), b"x").unwrap();
+
+        // 変更後に「新しい read_dir 列挙」で entry.metadata() と fs::metadata を比較
+        let mut cached = None;
+        for entry in fs::read_dir(&ghost_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path() == target {
+                cached = entry.metadata().ok().and_then(|m| m.modified().ok());
+            }
+        }
+        let fresh = fs::metadata(&target).ok().and_then(|m| m.modified().ok());
+
+        // 新しい列挙のキャッシュ mtime が fs::metadata と一致するか（所見）。
+        // 一致するなら dir_mtime レベルは find-data mtime で 0 syscall 化できる。
+        assert_eq!(
+            cached, fresh,
+            "新しい read_dir 列挙の entry.metadata() mtime が fs::metadata と不一致。\
+             dir_mtime レベルは find-data mtime を使えない（fs::metadata で 1 stat 必要）。"
+        );
     }
 
     // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
