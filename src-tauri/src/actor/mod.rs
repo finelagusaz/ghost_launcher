@@ -166,7 +166,8 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
         }
         Job::Maintenance => {
             // 失敗してもログのみで続行（現行 JS の try-catch 方針を踏襲）。reply なし。
-            if let Err(e) = maintenance(ghosts) {
+            // 他ジョブと同様 run_guarded で包み、panic でもアクターと接続健全性を守る（設計書 §3.1）。
+            if let Err(e) = run_guarded(ghosts, |g| maintenance(g)) {
                 eprintln!("[ghost-db-actor] メンテナンスをスキップしました: {e}");
             }
         }
@@ -326,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn maintenanceジョブはエラーでもアクターを止めない() {
+    fn maintenanceジョブの後も後続ジョブが処理される() {
         let dir = TempDirGuard::new("actor_maintenance_test");
         let handle = spawn_test_actor(&dir);
         handle.send(Job::Maintenance).unwrap();
