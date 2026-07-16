@@ -1,6 +1,7 @@
 mod commands;
 mod db_path;
 mod scan_coordinator;
+mod cache_schema;
 #[cfg(test)]
 pub(crate) mod testutil;
 #[cfg(feature = "bench")]
