@@ -65,6 +65,10 @@ fn sanitize(db_dir: &std::path::Path, ghosts_path: &std::path::Path) {
 const CLEANUP_MAX_GENERATIONS: usize = 5;
 const CLEANUP_TTL_DAYS: i64 = 30;
 
+/// VACUUM の実行条件（JS vacuumIfNeeded の移植・設計書 §5.2）
+const VACUUM_FREE_RATIO: f64 = 0.25;
+const VACUUM_FREE_BYTES: i64 = 1_048_576;
+
 /// ghosts.db への書き込みの全種類（設計書 §3）。新しい writer は必ずここに variant を足す。
 pub(crate) enum Job {
     RecordLaunch {
@@ -82,6 +86,8 @@ pub(crate) enum Job {
         current_request_key: String,
         reply: oneshot::Sender<Result<u32, String>>,
     },
+    /// 起動直後の自己投入ジョブ: ANALYZE（optimize）と条件付き VACUUM（設計書 §5.2）。reply なし。
+    Maintenance,
     /// テスト専用: run_guarded の panic 隔離・接続健全性を検証するための故意 panic。
     #[cfg(test)]
     PanicForTest { reply: oneshot::Sender<Result<(), String>> },
@@ -116,6 +122,9 @@ pub(crate) fn spawn_actor(ghosts_conn: Connection, user_conn: Connection) -> Act
         .name("ghost-db-actor".to_string())
         .spawn(move || run_loop(ghosts_conn, user_conn, rx))
         .expect("DB アクタースレッドの起動に失敗");
+    // 起動直後の自己投入（設計書 §2.1 ステップ 5・§5.2）。reply なしジョブなので
+    // 送信失敗（起動直後のためあり得ない）は無視して構わない。
+    let _ = tx.send(Job::Maintenance);
     ActorHandle {
         tx,
         #[cfg(test)]
@@ -155,6 +164,12 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
             });
             let _ = reply.send(result);
         }
+        Job::Maintenance => {
+            // 失敗してもログのみで続行（現行 JS の try-catch 方針を踏襲）。reply なし。
+            if let Err(e) = maintenance(ghosts) {
+                eprintln!("[ghost-db-actor] メンテナンスをスキップしました: {e}");
+            }
+        }
         #[cfg(test)]
         Job::PanicForTest { reply } => {
             let result = run_guarded(ghosts, |_| -> Result<(), String> { panic!("テスト用 panic") });
@@ -176,6 +191,33 @@ fn run_guarded<T>(
         let _ = conn.execute_batch("ROLLBACK");
     }
     result
+}
+
+/// 起動直後の自己投入ジョブ: ANALYZE（optimize）と条件付き VACUUM。
+/// アクタースレッド上で走るため webview ロードも setup もブロックしない（設計書 §5.2）。
+fn maintenance(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch("PRAGMA optimize=0x10002;")
+        .map_err(|e| format!("optimize エラー: {e}"))?;
+    let q = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(0) };
+    let page_count = q("PRAGMA page_count");
+    if page_count == 0 {
+        return Ok(());
+    }
+    let freelist = q("PRAGMA freelist_count");
+    let page_size = {
+        let v = q("PRAGMA page_size");
+        if v == 0 {
+            4096
+        } else {
+            v
+        }
+    };
+    let free_bytes = freelist * page_size;
+    let free_ratio = freelist as f64 / page_count as f64;
+    if free_ratio >= VACUUM_FREE_RATIO && free_bytes >= VACUUM_FREE_BYTES {
+        conn.execute_batch("VACUUM").map_err(|e| format!("VACUUM エラー: {e}"))?;
+    }
+    Ok(())
 }
 
 // テストは検証用に別接続で ghosts.db/user-data.db を直接開く（actor 経由の書込との整合を確認するため）。
@@ -281,6 +323,15 @@ mod tests {
             .unwrap();
         assert_eq!(ghosts, 1, "直列化後は 1 体（後勝ちの entries）のはず");
         assert_eq!(ghosts, entries, "ghosts と scan_entries が整合しているはず");
+    }
+
+    #[test]
+    fn maintenanceジョブはエラーでもアクターを止めない() {
+        let dir = TempDirGuard::new("actor_maintenance_test");
+        let handle = spawn_test_actor(&dir);
+        handle.send(Job::Maintenance).unwrap();
+        // Maintenance は reply を持たない。後続ジョブの成功が「止まっていない」ことの観測
+        send_record(&handle, "after-maintenance").unwrap();
     }
 
     #[test]

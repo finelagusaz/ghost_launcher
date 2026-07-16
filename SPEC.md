@@ -373,29 +373,28 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
-初回接続時に以下の PRAGMA とメンテナンスを順次実行する:
+JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以下の PRAGMA のみ実行する:
 
-| 順序 | 処理 | 目的 |
-|------|------|------|
-| 1 | `PRAGMA journal_mode=WAL` | 並行読み取り性能向上 |
-| 2 | `PRAGMA busy_timeout=5000` | ロック待機 5 秒（SQLITE_BUSY 回避） |
-| 3 | `PRAGMA journal_size_limit=4194304` | WAL ファイルを 4MB 以下に制限 |
-| 4 | `PRAGMA optimize=0x10002` | 全テーブルのクエリプラン統計を更新 |
-| 5 | 条件付き VACUUM | 未使用率 ≥ 25% かつ未使用サイズ ≥ 1MB の場合のみ実行 |
+| PRAGMA | 目的 |
+|--------|------|
+| `busy_timeout=5000` | ロック待機 5 秒（SQLITE_BUSY 回避）。sqlx-sqlite が接続確立毎に既定 5 秒を適用するため、この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤） |
 
-- VACUUM は try-catch で囲み、失敗しても DB 接続を阻害しない（warn ログのみ）
-- シングルトン接続のため、これらは起動時に 1 回だけ実行される
+- `journal_mode=WAL` はファイル永続属性のため、rusqlite 書き込み接続側の設定で足りる（JS 側で再設定不要）
+- `PRAGMA optimize` と条件付き VACUUM は Rust 側 DB アクターの `Job::Maintenance`（起動直後の自己投入ジョブ）へ移動済み。webview ロードも setup もブロックしない（§2.1/§5.2、失敗時はログのみで続行）
 
 **rusqlite 書き込み接続（`configure_connection`）** は sqlx とは独立して以下の PRAGMA を設定する:
 
 | PRAGMA | 値 | 目的 |
 |--------|-----|------|
-| `journal_mode` | WAL | sqlx 側と同一 |
+| `journal_mode` | WAL | 並行読み取り性能向上（sqlx 側の読み取りもこの WAL に乗る） |
 | `busy_timeout` | 5000 | sqlx 側と同一 |
+| `journal_size_limit` | 4194304 | WAL ファイルを 4MB 以下に制限（旧 JS `loadDb` から移設） |
 | `synchronous` | NORMAL | WAL モードでの書き込み高速化（キャッシュ DB のため許容） |
 | `cache_size` | -65536 | 64MB ページキャッシュ（10 万行の作業セットを収容） |
 | `temp_store` | MEMORY | 一時 B-tree をメモリ上に配置 |
 | `mmap_size` | 134217728 | 128MB メモリマップ I/O |
+
+**`Job::Maintenance`**（アクター起動直後の自己投入ジョブ）: `PRAGMA optimize=0x10002`（全テーブルのクエリプラン統計を更新）を実行後、未使用率 ≥ 25% かつ未使用サイズ ≥ 1MB の場合のみ `VACUUM` を実行する。失敗してもログのみで続行し、アクターや後続ジョブを阻害しない。
 
 ### 8.2 責務分離方針
 

@@ -5,42 +5,12 @@ import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
 
-const VACUUM_FREE_RATIO = 0.25;
-const VACUUM_FREE_BYTES = 1_048_576;
-
-async function vacuumIfNeeded(db: Database): Promise<void> {
-  try {
-    const pageCountRows = await db.select<{ page_count: number }[]>("PRAGMA page_count");
-    const pageCount = pageCountRows[0]?.page_count ?? 0;
-    if (pageCount === 0) return;
-
-    const freelistRows = await db.select<{ freelist_count: number }[]>("PRAGMA freelist_count");
-    const freelistCount = freelistRows[0]?.freelist_count ?? 0;
-    const pageSizeRows = await db.select<{ page_size: number }[]>("PRAGMA page_size");
-    const pageSize = pageSizeRows[0]?.page_size ?? 4096;
-    const freeBytes = freelistCount * pageSize;
-    const freeRatio = freelistCount / pageCount;
-
-    if (freeRatio >= VACUUM_FREE_RATIO && freeBytes >= VACUUM_FREE_BYTES) {
-      console.log(
-        `[ghostDatabase] VACUUM 実行: 未使用率=${(freeRatio * 100).toFixed(1)}%, 未使用=${(freeBytes / 1024 / 1024).toFixed(1)}MB`
-      );
-      await db.execute("VACUUM");
-    }
-  } catch (e) {
-    console.warn("[ghostDatabase] VACUUM をスキップしました", e);
-  }
-}
-
 async function loadDb(): Promise<Database> {
   const db = await Database.load("sqlite:ghosts.db");
-  await db.execute("PRAGMA journal_mode=WAL");
+  // 読者に必要な PRAGMA のみ。journal_mode=WAL はファイル永続属性で Rust 側が設定済み。
+  // sqlx-sqlite は接続確立毎にデフォルト 5 秒の busy_timeout を全プール接続へ適用するため
+  // この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤）。
   await db.execute("PRAGMA busy_timeout=5000");
-  await db.execute("PRAGMA journal_size_limit=4194304");
-  // 0x10002: 全テーブル対象（0x10000）+ ANALYZE 実行（0x02）。
-  // 長命な接続では接続直後にクエリ履歴がないため、全テーブル対象が必要。
-  await db.execute("PRAGMA optimize=0x10002");
-  await vacuumIfNeeded(db);
   return db;
 }
 

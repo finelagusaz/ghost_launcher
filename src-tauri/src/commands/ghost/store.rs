@@ -34,6 +34,7 @@ pub(crate) fn configure_connection(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;\
          PRAGMA busy_timeout=5000;\
+         PRAGMA journal_size_limit=4194304;\
          PRAGMA synchronous=NORMAL;\
          PRAGMA cache_size=-65536;\
          PRAGMA temp_store=MEMORY;\

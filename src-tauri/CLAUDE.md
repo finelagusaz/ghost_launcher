@@ -16,7 +16,7 @@
 
 **マイグレーションエラー自動回復**: `getDb()` は `Database.load()` 時のマイグレーションエラー（`duplicate column` 等）をキャッチし、`reset_ghost_db` Rust コマンドで DB ファイルを削除して再接続する。ghosts.db は純粋キャッシュ（再スキャンで復旧）であり、永続的な起動履歴は `user-data.db`（Rust 専有・rusqlite、`commands/launch_history.rs`）へ分離済みのため、リセットで失われない。マイグレーションシステム外で `ALTER TABLE ADD COLUMN` を行ってはならない（マイグレーションと競合して起動不能になる）。
 
-**DB 初期化 PRAGMA**: `loadDb()` は接続後に `journal_mode=WAL` → `busy_timeout` → `journal_size_limit` → `optimize=0x10002` の順で PRAGMA を設定し、条件付き VACUUM を実行する。VACUUM はメンテナンス処理のため try-catch で囲み、失敗しても接続を阻害しない。詳細は `SPEC.md` §8.1.1 を参照。
+**DB 初期化 PRAGMA**: JS `loadDb()` は `busy_timeout` のみを設定する読み取り専用スコープ。`journal_mode=WAL`／`journal_size_limit` は rusqlite 書き込み接続の `configure_connection` が設定し、`PRAGMA optimize`／条件付き VACUUM は DB アクターの `Job::Maintenance`（起動直後の自己投入ジョブ・失敗してもログのみで続行）が担う。詳細は `SPEC.md` §8.1.1 を参照。
 
 **rusqlite 直接書き込み（scan_and_store）**: `scan_and_store` コマンドは `tauri-plugin-sql`（sqlx）を経由せず rusqlite で直接 SQLite に書き込む。rusqlite の接続は sqlx 側の PRAGMA を継承しないため、`configure_connection` で独立して PRAGMA を設定する（WAL・busy_timeout・synchronous=NORMAL・cache_size・temp_store・mmap_size）。`rusqlite::Connection::execute_batch` は `sqlite3_exec` を使用するため、セミコロン区切りの複数文を正しく実行できる（sqlx の `sqlite3_prepare_v2` とは異なる）。`request_key` はフロントエンドが単一権威として計算し、`scan_and_store` は値で受け取る。Rust 側で再計算しない（不透明トークンとして扱う）。
 
