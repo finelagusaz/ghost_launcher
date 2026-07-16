@@ -1,4 +1,3 @@
-pub mod db;
 pub mod ghost;
 pub mod launch_history;
 pub mod locale;

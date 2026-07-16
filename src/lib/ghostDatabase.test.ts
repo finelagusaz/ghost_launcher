@@ -31,31 +31,6 @@ describe("ghostDatabase - GhostView 列同期", () => {
   });
 });
 
-describe("ghostDatabase - getDb マイグレーションエラー回復", () => {
-  it("migration エラー時に reset_ghost_db を呼んで再接続する", async () => {
-    mockLoad
-      .mockRejectedValueOnce(new Error("while executing migration 4: duplicate column name: craftman"))
-      .mockResolvedValueOnce({ execute: mockExecute, select: mockSelect });
-
-    const { invoke: mockInvoke } = await import("@tauri-apps/api/core");
-    const { getDb } = await import("./ghostDatabase");
-    const db = await getDb();
-
-    expect(db).toBeDefined();
-    expect(mockInvoke).toHaveBeenCalledWith("reset_ghost_db");
-    expect(mockLoad).toHaveBeenCalledTimes(2);
-  });
-
-  it("migration 以外のエラーはそのまま throw する", async () => {
-    mockLoad.mockRejectedValueOnce(new Error("disk I/O error"));
-
-    const { invoke: mockInvoke } = await import("@tauri-apps/api/core");
-    const { getDb } = await import("./ghostDatabase");
-    await expect(getDb()).rejects.toThrow("disk I/O error");
-    expect(mockInvoke).not.toHaveBeenCalledWith("reset_ghost_db");
-  });
-});
-
 describe("ghostDatabase - getDb Promise 重複防止", () => {
   it("並行呼び出しで loadDb が 1 回だけ実行される", async () => {
     const { getDb } = await import("./ghostDatabase");

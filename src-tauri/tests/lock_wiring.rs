@@ -1,4 +1,4 @@
-//! `scan_and_store` / `reset_ghost_db` / `record_launch` の直列化ロック配線の回帰ガード（統合テスト）。
+//! `scan_and_store` / `record_launch` の直列化ロック配線の回帰ガード（統合テスト）。
 //!
 //! 両コマンドを `mock_builder` で実際に呼び、外部から `ScanCoordinator` のロックを保持している間は
 //! コマンドが完了しない（`spawn_blocking` 内の `lock.lock()` 待ちでブロックする）ことを確認する。
@@ -13,7 +13,7 @@
 //! のみ埋め込める（lib ユニットテストハーネスにはこのスコープが届かず、埋め込むと本番 bin と競合する）。
 //! このためロック配線テストは lib 内ではなくここに置く。
 
-use ghost_launcher_lib::{record_launch, reset_ghost_db, scan_and_store, ScanCoordinator};
+use ghost_launcher_lib::{record_launch, scan_and_store, ScanCoordinator};
 use std::sync::mpsc;
 use std::time::Duration;
 use tauri::test::MockRuntime;
@@ -21,8 +21,8 @@ use tauri::Manager;
 
 /// `ScanCoordinator` を manage した `mock_builder` 製のテスト用 App を作る。
 /// `identifier` を一意にすることで `app_config_dir`（= `config_dir()/{identifier}`）を実在しない
-/// サブディレクトリへ逃がし、`reset_ghost_db` の削除・`scan_and_store` の DB open が実ファイルへ
-/// 及ばないようにする（テストの純粋性）。
+/// サブディレクトリへ逃がし、`scan_and_store` の DB open が実ファイルへ及ばないようにする
+/// （テストの純粋性）。
 fn build_mock_app(identifier: &str) -> tauri::App<MockRuntime> {
     let mut context = tauri::test::mock_context(tauri::test::noop_assets());
     context.config_mut().identifier = identifier.to_string();
@@ -96,17 +96,6 @@ fn record_launchは外部ロック保持中は完了せずロック解放後に�
         tauri::async_runtime::block_on(async {
             let coordinator = handle.state::<ScanCoordinator>();
             let _ = record_launch(handle.clone(), "sspg".to_string(), coordinator).await;
-        });
-    });
-}
-
-#[test]
-fn reset_ghost_dbは外部ロック保持中は完了せずロック解放後に完了する() {
-    let app = build_mock_app("com.ghostlauncher.reset-lock-test");
-    assert_serialized_by_lock(&app, |handle| {
-        tauri::async_runtime::block_on(async {
-            let coordinator = handle.state::<ScanCoordinator>();
-            let _ = reset_ghost_db(handle.clone(), coordinator).await;
         });
     });
 }

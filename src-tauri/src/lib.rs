@@ -11,8 +11,6 @@ pub mod bench_support;
 // 可視性の変更のみで IPC 契約・挙動・ScanStoreResult には影響しない（bench_support と同種のテスト公開）。
 // lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
 #[doc(hidden)]
-pub use commands::db::reset_ghost_db;
-#[doc(hidden)]
 pub use commands::ghost::scan_and_store;
 #[doc(hidden)]
 pub use commands::launch_history::record_launch;
@@ -300,7 +298,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::db::reset_ghost_db,
             commands::ghost::scan_and_store,
             commands::launch_history::record_launch,
             commands::ssp::launch_ghost,

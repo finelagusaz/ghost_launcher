@@ -51,15 +51,9 @@ async function initializeDb(): Promise<Database> {
     void reportDbSize(db, "startup").catch(() => {});
     return db;
   } catch (e) {
-    const msg = String(e);
-    if (msg.includes("migration") || msg.includes("duplicate column")) {
-      console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
-      await invoke("reset_ghost_db");
-      const db = await loadDb();
-      console.log("[ghostDatabase] DB をリセットして再接続しました");
-      return db;
-    }
-    // リカバリ不能: Promise をリセットして次回再試行可能にする
+    // リカバリ不能: Promise をリセットして次回再試行可能にする。
+    // 旧「マイグレーション競合 → reset」の回復パスは、使い捨てスキーマ化（Rust 側
+    // ensure_cache_schema が起動時に自動リビルド）でエラークラスごと消滅した。
     dbInitPromise = null;
     throw e;
   }
