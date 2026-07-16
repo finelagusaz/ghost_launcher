@@ -705,6 +705,6 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 | 設定保存失敗                         | コンソールエラー + UI ロールバック                       |
 | キャッシュ書き込み失敗               | コンソールエラーのみ（UI 影響なし）                      |
 | スキーマ世代不一致（起動時）         | `ensure_cache_schema` が `PRAGMA user_version` の不一致を検知し、単一トランザクションで ghosts.db を自動リビルド（DROP+CREATE）してから続行。対象は揮発キャッシュの ghosts.db のみで、永続データ（`user-data.db` の `ghost_launches`）は対象外のため失われない。ゴースト一覧・集計列は再スキャンで復元される（バックフィルで `last_launched`/`launch_count` を再導出） |
-| ghosts.db 破損（起動時 open 不能）   | 起動時 sanitize が ghosts.db と WAL/SHM を fs 削除して 1 回だけ作り直す。`ensure_cache_schema` 自体の失敗も同じ fs 削除リトライを 1 回試行し、2 回目の失敗（disk full・権限等）はログのみで起動を続行する |
+| ghosts.db 破損（起動時 open 不能）   | 起動時 sanitize が ghosts.db と WAL/SHM を fs 削除して 1 回だけ作り直す。`ensure_cache_schema` 自体の失敗も同じ fs 削除リトライを 1 回試行し、2 回目の失敗（disk full・権限等）はアプリ起動自体を中止する（fail-fast、§3.2 参照） |
 
 ---

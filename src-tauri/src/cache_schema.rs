@@ -61,7 +61,7 @@ pub(crate) fn ensure_cache_schema(conn: &mut Connection) -> Result<(), String> {
 /// ghosts.db を開き、PRAGMA 設定とスキーマ確定まで行って返す。失敗時は DB ファイル一式
 /// （本体・-wal・-shm）を削除して 1 回だけ作り直す: sqlx migration 層の撤去で修復経路が
 /// 単一層化したことへの補償（設計書 §4）。起動時・webview ロード前専用（fs 削除が安全）。
-/// 2 回目の失敗（disk full・権限等）は呼び出し側がログのみで続行する。
+/// 2 回目の失敗（disk full・権限等）は呼び出し側（actor::bootstrap）が起動中止に伝播する（fail-fast）。
 pub(crate) fn open_with_recovery(ghosts_path: &std::path::Path) -> Result<Connection, String> {
     match open_and_ensure(ghosts_path) {
         Ok(conn) => Ok(conn),
