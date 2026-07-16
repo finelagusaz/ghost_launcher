@@ -59,24 +59,37 @@
 
 達成可能な「1体変更→再走査」コスト（walk ＋ 変更子だけ parse。現行ベースライン **6.34 s**）:
 
-| 案 | 検知できる変更 | 再走査コスト目安(100k) | fingerprint(F-04) | 妥協 |
+| 案 | 検知できる変更 | 再走査コスト目安(100k・warm) | fingerprint(F-04) | 妥協 |
 |---|---|---|---|---|
-| **full fidelity + file_type（推奨）** | add/del/rename/**同名置換**/descript出現 | **~0.9 s** | **今日ちょうど維持** | **なし** |
-| dir_mtime + file_type | add/del/rename/**同名置換** | ~0.5 s | descript_mtime を落とし微縮小 | descript 出現の即時検知 |
-| name-set | add/del/rename のみ | ~0.08 s | 名前集合派生に縮小 | 同名置換検知 |
+| **full fidelity + file_type（推奨）** | add/del/rename/**同名置換**/descript出現 | **~1.05 s** | **今日ちょうど維持** | **なし** |
+| dir_mtime + file_type | add/del/rename/**同名置換** | ~0.6 s | descript_mtime を落とし微縮小 | descript 出現の即時検知 |
+| name-set | add/del/rename のみ | ~0.22 s | 名前集合派生に縮小 | 同名置換検知 |
+
+（再走査コスト = walk（file_type）＋ **前回トークンマップの O(N) 読み** ≈ store_rescan_nodiff 相当
+142.76 ms/100k ＋ delta write ＋ 変更子の parse。full fidelity 案は 0.92s walk + ~0.14s 読み ≈ **~1.05s**。
+いずれも **warm cache** の見積り——後述の cold 注意を参照。）
 
 ### 決定的な結論（当初推論の訂正）
 
 1. **当初の「walk コスト過半は fingerprint ハッシュ」は誤り**。実測で walk 支配項は**逐次 is_dir stat
    （2.27s・71%）**、token+hash は約 65ms（2%）。判別は `walk_full_fidelity_3stat`（逐次 is_dir）vs
    `walk_full_fidelity_filetype`（file_type・同一 fingerprint）の差で確定。
-2. **推奨: full fidelity のまま逐次 is_dir を file_type 化 ＋ 変更子だけ parse**。これで granular rescan は
-   **~0.9 s**（file_type walk 0.92s + 単体 parse ≈ 誤差）に落ち、現行 6.34s から約 7 倍改善。
-   **同名置換・descript_mtime・exact F-04 をすべて保持**し、fidelity 妥協ゼロ。
+2. **Phase 2 は「delta 機構 ＋ file_type 化」の両方が必須**（どちらか一方では足りない）。二つの支配項を
+   別々に潰す:
+   - **parse-skip（delta 機構）** が節約は大きい（**2.99s**）。そしてこれは設計書 §4 の実装本体——
+     `ghost_scan_entries`（案A）・`store_ghosts_delta`・生キー差分・5レンズが挙げた correctness 規則の
+     すべて。**Phase 2 の作業量の大半はここ**。
+   - **逐次 is_dir → file_type**（節約 **2.27s**・fidelity 無傷・F-04 不変）が walk 側のもう一つの大塊を潰す。
+   - **片方だけでは不十分**: file_type 単独（delta なし）は walk 0.92s + parse 2.99s ≈ **3.9s** で依然多秒
+     フリーズ。delta 単独（逐次 is_dir 残置）は walk 3.19s + 読み ≈ **3.3s** で同様。両方揃って初めて ~1.05s。
 3. **incremental fingerprint は不要**（token+hash が 65ms のため、1体変更で全再計算しても安い）。
    設計書 §4.3（fingerprint は生キートークン集合から算出）はそのまま維持でよい。
-4. **Phase 3（非ブロッキング）は不要の見込み**。~0.9s は sub 秒で、6.34s の多秒フリーズとは体感が別物。
-   最終判断は Phase 2 実装後の再計測で確定する（設計書 §7 の測定条件付きゲートに合致）。
+4. **Phase 3（非ブロッキング）は「不要」でなく「cold-start 挙動の再計測まで保留（deferred）」**。上記
+   ~1.05s は **warm cache** の値。Layer 1 ミスは「ユーザーが外部でゴーストフォルダを追加・削除した直後」に
+   発火し、その初回スキャンは**セッション開始時＝cold cache**であることが多い。cold の 2-stat walk（10万件の
+   実 stat をディスクから）は warm 0.92s の数倍あり得て、多秒フリーズに戻りうる（本 issue の敵対的レビュー
+   前提3/5 が指摘済み）。**Phase 3 の要否は warm ベンチでなく cold-cache／実アプリ観測の Layer1 ミス walk で
+   判定する**。設計書 §7 の測定条件付きゲートに合致。
 5. **副次利得**: full_scan 自体も逐次 is_dir を含むため（6.18s のうち walk 3.19s）、file_type 化で
    初回スキャン・再読込も 6.18s→~3.9s に短縮される（parse 2.99s は残る）。
 
@@ -86,5 +99,7 @@
   `file_type()` が follow しないため、symlink→dir のゴーストを拾うには `file_type().is_dir()` 偽かつ
   symlink のときだけ `fs::metadata` にフォールバックする分岐が要る（正しさ保持）。
 - その上で設計書 §4 の correctness 土台（格納先案A `ghost_scan_entries`・生キー差分・delta 正しさ規則・
-  変更子だけ parse）を実装し、granular rescan 版の `rescan_one_change` を bench で before(6.34s)/after(~0.9s)
-  比較する。fidelity は full を維持するため、同名置換の SPEC 判断は不要になった。
+  変更子だけ parse）を実装し、granular rescan 版の `rescan_one_change` を bench で before(6.34s)/after(~1.05s
+  warm) 比較する。fidelity は full を維持するため、同名置換の SPEC 判断は不要になった。
+- **Phase 3 の判定材料として cold-cache の Layer1 ミス walk を別途計測する**（warm ベンチは ~1.05s を
+  再確認するだけで cold の体感を測れない）。実アプリでの外部フォルダ変更→初回スキャンの体感を観測するのが確実。
