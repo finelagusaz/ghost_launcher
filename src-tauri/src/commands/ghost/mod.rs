@@ -42,8 +42,28 @@ fn backfill_launch_aggregates(app: &tauri::AppHandle, ghosts_conn: &rusqlite::Co
 /// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
 /// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
 #[tauri::command]
-pub fn scan_and_store(
+pub async fn scan_and_store(
     app: tauri::AppHandle,
+    ssp_path: String,
+    additional_folders: Vec<String>,
+    request_key: String,
+    cached_fingerprint: Option<String>,
+    coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
+) -> Result<ScanStoreResult, String> {
+    // State は await をまたげないため Arc を先に取り出す。
+    let lock = coordinator.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // scan-scan 間を直列化（lost update 防止）。poison は into_inner で回復。
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+        scan_and_store_blocking(&app, ssp_path, additional_folders, request_key, cached_fingerprint)
+    })
+    .await
+    .map_err(|e| format!("スキャンタスクの実行に失敗しました: {e}"))?
+}
+
+/// 現行 `scan_and_store` の同期本体（挙動不変）。`spawn_blocking` の別スレッドで実行される。
+fn scan_and_store_blocking(
+    app: &tauri::AppHandle,
     ssp_path: String,
     additional_folders: Vec<String>,
     request_key: String,
@@ -55,7 +75,7 @@ pub fn scan_and_store(
     let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
 
     // DB パスを 1 回だけ解決（reset_ghost_db・sanitize_ghost_db と同一の単一権威を経由）
-    let db_path = crate::db_path::ghost_db_path(&app)?;
+    let db_path = crate::db_path::ghost_db_path(app)?;
 
     // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
     // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
@@ -64,7 +84,7 @@ pub fn scan_and_store(
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             let _ = store::configure_connection(&conn);
             if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
-                backfill_launch_aggregates(&app, &conn);
+                backfill_launch_aggregates(app, &conn);
                 return Ok(ScanStoreResult {
                     cache_hit: true,
                     total: 0,
@@ -95,7 +115,7 @@ pub fn scan_and_store(
                 "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
                 rusqlite::params![current_mtimes, request_key],
             );
-            backfill_launch_aggregates(&app, &conn);
+            backfill_launch_aggregates(app, &conn);
         }
         return Ok(ScanStoreResult {
             cache_hit: true,
@@ -112,7 +132,7 @@ pub fn scan_and_store(
 
     let total = apply_scan_delta(&conn, &request_key, &entries, &fingerprint, &current_mtimes)?;
 
-    backfill_launch_aggregates(&app, &conn);
+    backfill_launch_aggregates(app, &conn);
 
     Ok(ScanStoreResult {
         cache_hit: false,
@@ -808,5 +828,88 @@ mod tests {
             "不変子（token 一致）が再 parse された（parse-skip のリグレッション）"
         );
         Ok(())
+    }
+
+    /// migrations 適用済みのファイル ghosts DB を開く（並行テスト用・接続はスレッド毎に開く）。
+    fn open_file_ghost_db(path: &std::path::Path) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open(path).unwrap();
+        // 新規ファイルなら全 migration を適用、既存なら全 skip（open_bench_db と同方針）。
+        let has_schema: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
+                [],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if !has_schema {
+            let mut sorted = crate::migrations();
+            sorted.sort_by_key(|m| m.version);
+            for m in &sorted {
+                conn.execute_batch(m.sql).unwrap();
+            }
+        }
+        super::store::configure_connection(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn scan_lock配下の並行deltaが整合状態を壊さない() {
+        use crate::scan_coordinator::ScanCoordinator;
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        // 2 つの ssp ツリー（片方は ghost_a、もう片方は ghost_b）を用意する。
+        let tmp = TempDirGuard::new("scan_serialize");
+        let ssp_a = tmp.path().join("ssp_a");
+        let ssp_b = tmp.path().join("ssp_b");
+        fs::create_dir_all(ssp_a.join("ghost")).unwrap();
+        fs::create_dir_all(ssp_b.join("ghost")).unwrap();
+        create_ghost_dir(&ssp_a.join("ghost"), "ghost_a").unwrap();
+        create_ghost_dir(&ssp_b.join("ghost"), "ghost_b").unwrap();
+
+        let db = tmp.path().join("ghosts.db");
+        open_file_ghost_db(&db); // 初期化（テーブル作成）
+
+        let coord = ScanCoordinator::default();
+        let barrier = Arc::new(Barrier::new(2));
+
+        // 同一 request_key "rk" に、異なる entries を並行に delta 適用する。
+        let ssps = [ssp_a, ssp_b];
+        let handles: Vec<_> = ssps
+            .into_iter()
+            .map(|ssp| {
+                let coord = coord.clone();
+                let barrier = barrier.clone();
+                let db = db.clone();
+                thread::spawn(move || {
+                    let ssp_str = ssp.to_string_lossy().to_string();
+                    let (entries, fp) =
+                        super::scan::scan_entries_with_fingerprint(&ssp_str, &[]).unwrap();
+                    let conn = open_file_ghost_db(&db);
+                    barrier.wait(); // 両スレッドを同時に走らせる
+                    let _guard = coord.0.lock().unwrap_or_else(|e| e.into_inner());
+                    super::apply_scan_delta(&conn, "rk", &entries, &fp, "mtimes").unwrap();
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // 直列化されているため、最終状態は「後に走った方の entries」に整合した 1 状態。
+        // ghosts と ghost_scan_entries の件数が一致し（混合・破損なし）、1 件であること。
+        let conn = open_file_ghost_db(&db);
+        let ghosts: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ghosts WHERE request_key='rk'", [], |r| r.get(0))
+            .unwrap();
+        let entries: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ghosts, 1, "直列化後は 1 体（後勝ちの entries）のはず");
+        assert_eq!(ghosts, entries, "ghosts と scan_entries が整合しているはず");
     }
 }

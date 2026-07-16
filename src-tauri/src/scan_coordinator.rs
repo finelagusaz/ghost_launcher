@@ -4,10 +4,7 @@ use std::sync::{Arc, Mutex};
 /// `spawn_blocking` の `'static` クロージャへ move するため `Arc` で包む。
 /// 中身は `()`（状態を持たない）ため poison しても `into_inner` で安全に回復できる。
 #[derive(Default, Clone)]
-pub struct ScanCoordinator(
-    #[allow(dead_code)]
-    pub Arc<Mutex<()>>,
-);
+pub struct ScanCoordinator(pub Arc<Mutex<()>>);
 
 #[cfg(test)]
 mod tests {
