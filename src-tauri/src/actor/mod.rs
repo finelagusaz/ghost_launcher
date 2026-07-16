@@ -18,6 +18,13 @@ pub(crate) enum Job {
         ghost_identity_key: String,
         reply: oneshot::Sender<Result<(), String>>,
     },
+    Scan {
+        ssp_path: String,
+        additional_folders: Vec<String>,
+        request_key: String,
+        cached_fingerprint: Option<String>,
+        reply: oneshot::Sender<Result<crate::commands::ghost::ScanStoreResult, String>>,
+    },
     /// テスト専用: run_guarded の panic 隔離・接続健全性を検証するための故意 panic。
     #[cfg(test)]
     PanicForTest { reply: oneshot::Sender<Result<(), String>> },
@@ -74,6 +81,14 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
                 crate::commands::launch_history::record_launch_inner(user, g, &ghost_identity_key)
             });
             let _ = reply.send(result); // reply drop（呼び出し側キャンセル）は無視。ジョブは完走済み
+        }
+        Job::Scan { ssp_path, additional_folders, request_key, cached_fingerprint, reply } => {
+            let result = run_guarded(ghosts, |g| {
+                crate::commands::ghost::scan_and_store_blocking(
+                    g, user, ssp_path, additional_folders, request_key, cached_fingerprint,
+                )
+            });
+            let _ = reply.send(result);
         }
         #[cfg(test)]
         Job::PanicForTest { reply } => {
@@ -159,6 +174,46 @@ mod tests {
         let user = rusqlite::Connection::open(dir.path().join("user-data.db")).unwrap();
         let n: i64 = user.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 2, "reply drop されたジョブも完走している");
+    }
+
+    /// scan_and_store_blocking 相当の実ジョブを 2 本並行送信しても、単一 writer により
+    /// 最終状態が「後勝ちの 1 状態」に収束する（旧 scan_lock配下の並行delta テストの後継）。
+    #[test]
+    fn 並行scanジョブが直列化され整合状態に収束する() {
+        use std::fs;
+        let dir = TempDirGuard::new("actor_scan_serialize");
+        // 2 つの ssp ツリー（ghost_a / ghost_b）
+        let (ssp_a, ssp_b) = (dir.path().join("ssp_a"), dir.path().join("ssp_b"));
+        for (root, name) in [(&ssp_a, "ghost_a"), (&ssp_b, "ghost_b")] {
+            let base = root.join("ghost").join(name).join("ghost").join("master");
+            fs::create_dir_all(&base).unwrap();
+            fs::write(base.join("descript.txt"), "name,Test\ncharset,UTF-8\n").unwrap();
+        }
+        let handle = spawn_test_actor(&dir);
+        let mut rxs = Vec::new();
+        for ssp in [&ssp_a, &ssp_b] {
+            let (reply, rx) = tokio::sync::oneshot::channel();
+            handle
+                .send(Job::Scan {
+                    ssp_path: ssp.to_string_lossy().to_string(),
+                    additional_folders: Vec::new(),
+                    request_key: "rk".to_string(),
+                    cached_fingerprint: None,
+                    reply,
+                })
+                .unwrap();
+            rxs.push(rx);
+        }
+        for rx in rxs {
+            rx.blocking_recv().unwrap().unwrap();
+        }
+        let conn = rusqlite::Connection::open(dir.path().join("ghosts.db")).unwrap();
+        let ghosts: i64 = conn.query_row("SELECT COUNT(*) FROM ghosts WHERE request_key='rk'", [], |r| r.get(0)).unwrap();
+        let entries: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ghosts, 1, "直列化後は 1 体（後勝ちの entries）のはず");
+        assert_eq!(ghosts, entries, "ghosts と scan_entries が整合しているはず");
     }
 
     #[test]

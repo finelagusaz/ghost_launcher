@@ -8,11 +8,10 @@ pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
 
-// 統合テスト（tests/lock_wiring.rs）から mock_builder でコマンドを直接駆動するための最小公開。
-// 可視性の変更のみで IPC 契約・挙動・ScanStoreResult には影響しない（bench_support と同種のテスト公開）。
-// lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
-#[doc(hidden)]
-pub use commands::ghost::scan_and_store;
+// 統合テスト（tests/lock_wiring.rs）から mock_builder で ScanCoordinator を直接駆動するための最小公開。
+// scan_and_store は Job::Scan（DB アクター）へ移植され ScanCoordinator を経由しなくなったため、
+// scan_and_store 自体の再公開は不要になった（#146 Phase2・lock_wiring.rs の scan テストは削除済み）。
+// ScanCoordinator 側の公開・tests/lock_wiring.rs ごとの撤去は Task 8 で行う。
 #[doc(hidden)]
 pub use scan_coordinator::ScanCoordinator;
 

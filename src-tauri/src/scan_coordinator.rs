@@ -6,6 +6,10 @@ use std::sync::{Arc, Mutex};
 #[derive(Default, Clone)]
 pub struct ScanCoordinator(pub Arc<Mutex<()>>);
 
+// #146 Phase2 の段階配線: scan_and_store が Job::Scan（DB アクター）へ移植され、
+// 本 struct のメソッドを呼ぶ本番コードは無くなった。struct 自体（.manage 対象）と
+// tests/lock_wiring.rs はまだ残っており、ファイルごとの撤去は Task 8 で行う。
+#[allow(dead_code)]
 impl ScanCoordinator {
     /// poison 回復（`into_inner`）込みでロックを取得する唯一の入口。
     /// 回復ポリシーをここに集約し、呼び出し側でのイディオム再実装を避ける。
