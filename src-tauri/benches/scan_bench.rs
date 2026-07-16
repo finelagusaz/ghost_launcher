@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    add_one_ghost, full_scan_count, generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle,
-    store_handle, store_with_real_mtimes,
+    add_one_ghost, fingerprint_only, full_scan_count, generate_ghost_tree, layer1_hit,
+    open_bench_db, scan_to_handle, store_handle, store_with_real_mtimes, walk_dir_mtime, walk_full,
+    walk_nameset,
 };
 
 /// ベンチ用の一時ディレクトリガード（lib 内部 TempDirGuard は非 pub のためローカルに持つ）。
@@ -50,6 +51,20 @@ fn bench_scan(c: &mut Criterion) {
         // フル走査（1 体増減毎に払うコスト）
         group.bench_function("full_scan", |b| {
             b.iter(|| full_scan_count(&ssp_str).unwrap());
+        });
+
+        // walk スペクトラム（parse 抜き・各 fidelity レベル）
+        group.bench_function("walk_full_fidelity_3stat", |b| {
+            b.iter(|| fingerprint_only(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_full_2stat_filetype", |b| {
+            b.iter(|| walk_full(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_dir_mtime_1stat", |b| {
+            b.iter(|| walk_dir_mtime(&ssp_str).unwrap());
+        });
+        group.bench_function("walk_nameset_0stat", |b| {
+            b.iter(|| walk_nameset(&ssp_str).unwrap());
         });
 
         // Layer1 hit（無変更時の高速パス）。実 mtimes を保存して真の hit にする。
