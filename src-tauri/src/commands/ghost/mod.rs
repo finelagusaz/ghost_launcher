@@ -29,7 +29,11 @@ fn ensure_request_key(request_key: &str) -> Result<(), String> {
 
 /// 起動履歴の集計列を user-data.db から ghosts へ再導出する（ベストエフォート）。
 /// user-data.db を開けない場合は何もしない（スキャン結果を阻害しない）。
-fn backfill_launch_aggregates(app: &tauri::AppHandle, ghosts_conn: &rusqlite::Connection) {
+/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
+fn backfill_launch_aggregates<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    ghosts_conn: &rusqlite::Connection,
+) {
     if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(app) {
         let _ = crate::commands::launch_history::backfill_aggregates(ghosts_conn, &user_conn);
     }
@@ -41,9 +45,11 @@ fn backfill_launch_aggregates(app: &tauri::AppHandle, ghosts_conn: &rusqlite::Co
 /// 2 層フィンガープリント:
 /// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
 /// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
+/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
+/// IPC 契約（引数名・戻り値）は不変で、総称パラメータは境界を越えて見えない。
 #[tauri::command]
-pub async fn scan_and_store(
-    app: tauri::AppHandle,
+pub async fn scan_and_store<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     ssp_path: String,
     additional_folders: Vec<String>,
     request_key: String,
@@ -62,8 +68,8 @@ pub async fn scan_and_store(
 }
 
 /// 現行 `scan_and_store` の同期本体（挙動不変）。`spawn_blocking` の別スレッドで実行される。
-fn scan_and_store_blocking(
-    app: &tauri::AppHandle,
+fn scan_and_store_blocking<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     ssp_path: String,
     additional_folders: Vec<String>,
     request_key: String,

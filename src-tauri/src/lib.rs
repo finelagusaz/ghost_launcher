@@ -6,6 +6,16 @@ pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
 
+// 統合テスト（tests/lock_wiring.rs）から mock_builder でコマンドを直接駆動するための最小公開。
+// 可視性の変更のみで IPC 契約・挙動・ScanStoreResult には影響しない（bench_support と同種のテスト公開）。
+// lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
+#[doc(hidden)]
+pub use commands::db::reset_ghost_db;
+#[doc(hidden)]
+pub use commands::ghost::scan_and_store;
+#[doc(hidden)]
+pub use scan_coordinator::ScanCoordinator;
+
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
 //   CURRENT_TIMESTAMP や datetime('now') などの関数は SQLite が拒否する（起動時クラッシュ）。
