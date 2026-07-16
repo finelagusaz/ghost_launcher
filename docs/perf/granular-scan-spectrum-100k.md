@@ -103,3 +103,22 @@
   warm) 比較する。fidelity は full を維持するため、同名置換の SPEC 判断は不要になった。
 - **Phase 3 の判定材料として cold-cache の Layer1 ミス walk を別途計測する**（warm ベンチは ~1.05s を
   再確認するだけで cold の体感を測れない）。実アプリでの外部フォルダ変更→初回スキャンの体感を観測するのが確実。
+
+## Phase 2 実測（delta 実装後・受け入れ根拠）
+
+- 計測日: 2026-07-16（同一環境・warm cache・`cargo bench --features bench --bench scan_bench -- "rescan|full_scan"`）
+- 本実行の `full_scan`（n=100k）は 4.51s で、Phase 1 計測（6.18s）より軽い（実行時コンテンションの差）。判断は絶対値でなく同一実行内の比率で行う。
+
+| 形状 | n=10k | n=100k |
+|---|---|---|
+| full_scan（walk+parse・per-change の床） | — | **4.51 s** |
+| rescan_one_change（**before**・全 walk+parse+store） | 434 ms | **5.59 s** |
+| **rescan_one_change_delta（after・granular・本番 delta 経路）** | **125 ms** | **1.40 s** |
+| store_rescan_nodiff（参考・差分ゼロ再 store の読み） | 72.6 ms | 0.81 s |
+
+- **結論**: 1 体増減の再走査は **n=100k で 5.59s → 1.40s（約 4.0 倍・75% 減）**、n=10k で 434ms → 125ms（約 3.5 倍）。
+  delta（1.40s）は full_scan（4.51s）**より速く**、parse-skip が発生していることを比率が裏づける（parse-skip 自体は
+  ユニットテスト `apply_scan_delta_が不変子を再parseしない` が決定論的に固定）。目標 ~1.05s(warm) に対し 1.40s は
+  本実行の walk 込みの内訳（file_type walk + 前回 scan_entries 読み + 1 体 parse + delta write）で、比率の勝ちは明確。
+- fidelity は full を維持（descript_mtime 込み・同名置換も検知）。副次的に full_scan 自体も逐次 is_dir の file_type 化で
+  6.18s → 4.51s に短縮。

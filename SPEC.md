@@ -72,7 +72,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション定義・起動時 DB 検査 |
 | `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
-| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換（scan）・差分 UPSERT 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
+| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換・差分検知（scan）・差分 delta 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
 | `commands/launch_history.rs` | 起動履歴の記録（record_launch）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
@@ -179,6 +179,21 @@ Rust 専有の別ファイル `user-data.db` に分離されている（§4.4 �
 | `fingerprint`| `TEXT` | ディレクトリ構成のフィンガープリント     |
 | `updated_at` | `TEXT` | 最終更新日時                           |
 | `parent_mtimes` | `TEXT` | 親ディレクトリ mtime のスナップショット（Layer 1 高速差分判定用、§7.4） |
+
+#### ghost_scan_entries テーブル
+
+Layer 2 の差分書込（delta・§7.4）で「前回の走査状態」を担う揮発キャッシュ。`ghosts` と運命共有し、
+`request_key` で一括削除される（§8.1）。1 体増減時に、変化した子だけを再 parse するための土台。
+
+| カラム               | 型     | 説明                                                             |
+| -------------------- | ------ | ---------------------------------------------------------------- |
+| `request_key`        | `TEXT` | スキャン対象を識別するキー（`scan_key` と複合 PRIMARY KEY）        |
+| `scan_key`           | `TEXT` | 生の物理キー（`normalized_parent` + `\x1f` + 生 `directory_name`）。差分の主キー。NFKC 畳み込みを避け、物理的に別ディレクトリを別エントリに保つ |
+| `token`              | `TEXT` | 変更検知シグナル（dir mtime + descript 状態/mtime。§7.1 のエントリトークン） |
+| `ghost_identity_key` | `TEXT` | 畳み込み論理キー（`ghosts` の DELETE・一意性検証に使う）           |
+
+- `WITHOUT ROWID`。`(request_key, scan_key, token, ghost_identity_key)` を単一 B-tree のカバリング構成にする
+- `scan_key`（生キー）で差分し、`ghost_identity_key`（畳み込みキー）で `ghosts` を操作する二層を保つ（§7.4）
 
 #### ghost_launches テーブル（永続・`user-data.db`）
 
@@ -327,8 +342,16 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
   `cache_hit: true` を返す。NTFS では直下のエントリ追加・削除でのみ親 mtime が変化するため、
   ゴーストの増減はこの層で検出できる。既存ゴースト内の descript.txt 編集は検出できない
   （「再読込」の強制フルスキャンで対応）
-- **Layer 2（フル fingerprint）**: §7.1〜7.2 のトークンハッシュ。Layer 1 不一致時に全エントリを
-  走査して計算し、`cached_fingerprint` と一致すれば書込をスキップして `parent_mtimes` のみ更新する
+- **Layer 2（フル fingerprint + 差分書込）**: §7.1〜7.2 のトークンハッシュ。Layer 1 不一致時に
+  全エントリを走査して計算し、`cached_fingerprint` と一致すれば書込をスキップして `parent_mtimes`
+  のみ更新する。不一致なら差分書込（delta）へ進む: 前回の走査エントリ（`ghost_scan_entries`）と
+  トークンを比較し、**変化した子だけを再 parse** して `store_ghosts_delta` で UPSERT/DELETE する
+  （1 体増減で 10 万体を再 parse しない）。fidelity は full を維持する（トークンは §7.1 のまま・
+  descript_mtime 込み）。walk の子ディレクトリ絞り込みは find-data の file_type で行い（reparse point
+  のみ `fs::metadata` へフォールバック）、10 万体規模の逐次 is_dir stat を消す。書込前に走査エントリの
+  `ghost_identity_key` 一意性を検証し、NFKC 畳み込みによる別ディレクトリの衝突を loud に弾く。
+  前回エントリが空の初回/移行時は、既存 ghosts のうち今回の走査に現れない identity を DELETE して
+  取り残しを消す
 
 ---
 
@@ -343,9 +366,10 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
    3. DB が空なら `cachedFingerprint=null` → Rust は必ず全件を返す
 3. **Rust スキャン**: `scan_and_store(requestKey, cachedFingerprint)` を実行。fingerprint 一致なら `cache_hit: true` を返し SQLite 書き込みをスキップ
 4. **キャッシュヒット時**: `cache_hit=true` → 即リターン（`skipped: true`）。SQLite 更新なし
-5. **キャッシュミス時**: Rust 側が走査結果を rusqlite の差分 UPSERT で直接書き込み、
-   fingerprint と parent_mtimes を同時に更新する（JS は Ghost 配列を受け取らない）
-6. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）。`ghosts` と `ghost_fingerprints` の両テーブルから一括削除
+5. **キャッシュミス時**: Rust 側が走査結果を rusqlite の差分書込（delta）で直接書き込み、
+   変化した子だけを再 parse して UPSERT/DELETE し、fingerprint・parent_mtimes・`ghost_scan_entries`
+   を同一トランザクションで更新する（JS は Ghost 配列を受け取らない）
+6. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）。`ghosts`・`ghost_fingerprints`・`ghost_scan_entries` の各テーブルから一括削除
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
