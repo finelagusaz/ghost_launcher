@@ -52,6 +52,11 @@ JS（SQL 文レベルで書込ゼロ）           Rust
    起動ハンドシェイクなしで「webview 前にスキーマ確定」が構造的に成立する）
 5. `ActorHandle(Sender<Job>)` を `.manage()`。直後に `Maintenance` ジョブ（§5.2）を self-enqueue
 
+**bootstrap の失敗は起動中止（fail-fast・裁定済み）**: 旧 setup は DB 初期化失敗でも劣化継続したが、
+アクター不在では全コマンドが State 参照で成立しないため劣化モードは現アーキテクチャで無意味。
+よくある破損クラスは open_with_recovery の fs 削除リトライが回収済みで、ここに到達する失敗は
+disk full・権限等の環境障害のみ。壊れたまま動くより loud に落ちて診断可能にする。
+
 ### 2.2 実行と終了
 
 - チャネルは **unbounded**（送信は非ブロッキング。writer は UI 起点で実質有限のため
