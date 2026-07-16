@@ -38,9 +38,6 @@ bench = []
 [dev-dependencies]
 ts-rs = "12"
 criterion = "0.5"
-# テスト専用: tauri::test（mock_builder / MockRuntime）を使うため test フィーチャを有効化する。
-# dev-dependencies 経由のため本番ビルド（cargo build / release）では test は有効化されない。
-tauri = { version = "2", features = ["test"] }
 
 [[bench]]
 name = "search_bench"

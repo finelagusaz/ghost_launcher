@@ -1,18 +1,10 @@
 mod actor;
 mod commands;
-mod scan_coordinator;
 mod cache_schema;
 #[cfg(test)]
 pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
-
-// 統合テスト（tests/lock_wiring.rs）から mock_builder で ScanCoordinator を直接駆動するための最小公開。
-// scan_and_store は Job::Scan（DB アクター）へ移植され ScanCoordinator を経由しなくなったため、
-// scan_and_store 自体の再公開は不要になった（#146 Phase2・lock_wiring.rs の scan テストは削除済み）。
-// ScanCoordinator 側の公開・tests/lock_wiring.rs ごとの撤去は Task 8 で行う。
-#[doc(hidden)]
-pub use scan_coordinator::ScanCoordinator;
 
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
@@ -237,7 +229,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .manage(scan_coordinator::ScanCoordinator::default())
         .setup(|app| {
             match actor::bootstrap(app) {
                 Ok(handle) => {
