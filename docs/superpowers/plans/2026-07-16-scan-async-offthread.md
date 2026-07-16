@@ -128,21 +128,20 @@ git commit -m "feat: scan 直列化用 ScanCoordinator を新設し managed stat
 /// migrations 適用済みのファイル ghosts DB を開く（並行テスト用・接続はスレッド毎に開く）。
 fn open_file_ghost_db(path: &std::path::Path) -> rusqlite::Connection {
     let conn = rusqlite::Connection::open(path).unwrap();
-    let mut sorted = crate::migrations();
-    sorted.sort_by_key(|m| m.version);
-    for m in &sorted {
-        // 二度目の open では ghosts が既存のため migration をスキップ
-        let already: bool = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
-                [],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if already {
-            break;
+    // 新規ファイルなら全 migration を適用、既存なら全 skip（open_bench_db と同方針）。
+    let has_schema: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if !has_schema {
+        let mut sorted = crate::migrations();
+        sorted.sort_by_key(|m| m.version);
+        for m in &sorted {
+            conn.execute_batch(m.sql).unwrap();
         }
-        conn.execute_batch(m.sql).unwrap();
     }
     super::store::configure_connection(&conn).unwrap();
     conn
