@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{configure_connection, store_ghosts};
@@ -224,6 +225,49 @@ pub fn fingerprint_only(ssp_path: &str) -> Result<String, String> {
     crate::commands::ghost::fingerprint_only_internal(ssp_path, &[])
 }
 
+/// {ssp}/ghost 直下の子ディレクトリパスを列挙する（is_dir 判定はキャッシュ済み
+/// find-data の file_type を使い syscall ゼロ）。本番 walk_parent の is_dir(stat)
+/// を file_type に置換したときの walk を模す計測用ヘルパー。
+fn ghost_children(ssp_path: &str) -> Result<Vec<PathBuf>, String> {
+    let ghost_dir = Path::new(ssp_path).join("ghost");
+    let entries = fs::read_dir(&ghost_dir).map_err(|e| format!("read_dir: {e}"))?;
+    Ok(entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .collect())
+}
+
+/// 名前集合レベル: 子1体あたり stat ゼロ（read_dir + file_type のみ）。
+/// add/del/rename は検知できるが同名置換は検知できない fidelity 下限。
+pub fn walk_nameset(ssp_path: &str) -> Result<usize, String> {
+    Ok(ghost_children(ssp_path)?.len())
+}
+
+/// dir_mtime レベル: 子1体あたり fs::metadata 1 回（dir mtime のみ、descript stat なし）。
+/// 同名置換まで検知できる。
+pub fn walk_dir_mtime(ssp_path: &str) -> Result<usize, String> {
+    let paths = ghost_children(ssp_path)?;
+    let count = paths.par_iter().filter(|p| fs::metadata(p).is_ok()).count();
+    Ok(count)
+}
+
+/// full fidelity レベル（file_type 版）: 子1体あたり 2 stat（dir mtime + descript）。
+/// 本番 walk_parent は is_dir(stat) を足して 3 stat のため、fingerprint_only との差が
+/// is_dir→file_type の無料削減効果。
+pub fn walk_full(ssp_path: &str) -> Result<usize, String> {
+    let paths = ghost_children(ssp_path)?;
+    let count = paths
+        .par_iter()
+        .filter(|p| {
+            let _dir = fs::metadata(p).is_ok(); // stat 1: dir mtime
+            let descript = p.join("ghost").join("master").join("descript.txt");
+            fs::metadata(&descript).is_ok() // stat 2: descript 有無/mtime（結果を使用）
+        })
+        .count();
+    Ok(count)
+}
+
 /// Layer 1 高速パス（親 mtime 一致判定）を測る。事前に store_with_real_mtimes で
 /// 保存していれば true（hit）、store_handle で保存していれば false（miss）を返すが、
 /// 計測対象の「1 行 SELECT + 文字列比較」コストはどちらも同等。
@@ -431,6 +475,20 @@ mod tests {
 
         // parse 抜き walk でも同一トークン集合 → 同一 fingerprint
         assert_eq!(walk_fp, full_fp);
+    }
+
+    #[test]
+    fn walk_モデル3種が全て子ディレクトリ数を返す() {
+        let tmp = TempDirGuard::new("bench_walk_levels");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 50).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        assert_eq!(walk_nameset(&ssp_str).unwrap(), 50);
+        assert_eq!(walk_dir_mtime(&ssp_str).unwrap(), 50);
+        assert_eq!(walk_full(&ssp_str).unwrap(), 50);
+        // 本番フル走査の体数とも一致（全子に descript 有り）
+        assert_eq!(full_scan_count(&ssp_str).unwrap(), 50);
     }
 
     // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
