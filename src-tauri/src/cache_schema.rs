@@ -126,4 +126,76 @@ mod tests {
     fn cache_schema_versionは0を返さない() {
         assert_ne!(cache_schema_version(), 0, "0 は未初期化の予約値");
     }
+
+    /// DDL テキストの正規化: IF NOT EXISTS・引用符・空白差を吸収する。
+    /// COLLATE・CHECK・部分インデックス述語は PRAGMA に現れないため、
+    /// 構造比較（下）とこのテキスト比較の二段構えで一致を検証する（設計書 §8）。
+    fn normalize_ddl(sql: &str) -> String {
+        sql.replace("IF NOT EXISTS ", "")
+            .replace('"', "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+            .replace(" ,", ",")
+            .replace(", ", ",")
+    }
+
+    /// (種別, 名前) → 正規化 DDL。自動生成物（sqlite_% と PK の自動インデックス）は除外。
+    fn schema_objects(conn: &rusqlite::Connection) -> std::collections::BTreeMap<(String, String), String> {
+        let mut stmt = conn
+            .prepare("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL")
+            .unwrap();
+        stmt.query_map([], |r| {
+            Ok(((r.get::<_, String>(0)?, r.get::<_, String>(1)?), r.get::<_, String>(2)?))
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|(k, sql)| (k, normalize_ddl(&sql)))
+        .collect()
+    }
+
+    /// テーブル毎の table_info（cid,name,type,notnull,dflt,pk）の一覧
+    fn table_infos(conn: &rusqlite::Connection, table: &str) -> Vec<(i32, String, String, i32, Option<String>, i32)> {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{table}\")")).unwrap();
+        stmt.query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect()
+    }
+
+    /// 最大リスクの機械検証（設計書 §8）: CACHE_SCHEMA と旧 migration 15 本の合成結果が
+    /// 完全一致すること。このテストの寿命はスキーマを初めて変更するリリースまで
+    /// （その時点で旧 migrations() ごと削除する）。
+    #[test]
+    fn cache_schemaは旧migration合成とスキーマが完全一致する() {
+        // 旧: migration を順番に全適用
+        let legacy = rusqlite::Connection::open_in_memory().unwrap();
+        let mut migs = crate::migrations();
+        migs.sort_by_key(|m| m.version);
+        for m in &migs {
+            legacy.execute_batch(m.sql).unwrap();
+        }
+        // 新: CACHE_SCHEMA を適用
+        let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_cache_schema(&mut fresh).unwrap();
+
+        // 第一段: 正規化 DDL テキストの全オブジェクト比較
+        assert_eq!(
+            schema_objects(&legacy),
+            schema_objects(&fresh),
+            "sqlite_master の DDL（正規化後）が一致しない"
+        );
+        // 第二段: 構造比較（列の型・NOT NULL・DEFAULT・順序）
+        for table in ["ghosts", "ghost_fingerprints", "ghost_scan_entries"] {
+            assert_eq!(
+                table_infos(&legacy, table),
+                table_infos(&fresh, table),
+                "{table} の table_info が一致しない"
+            );
+        }
+    }
 }
