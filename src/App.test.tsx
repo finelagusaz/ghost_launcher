@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, screen } from "@testing-library/react";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -192,5 +192,41 @@ describe("App - ランダム起動のフィードバック（トースト・一�
 
     expect(mocks.launcherToasts.notifyWarning).toHaveBeenCalledWith("header.randomLaunch.empty");
     expect(mocks.launchGhostSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("App - スキャン中インジケータ（再スキャン時のみ）", () => {
+  it("再スキャン中（loading かつ 一覧あり）は 300ms 後に scan バーを表示する", () => {
+    vi.useFakeTimers();
+    try {
+      mocks.ghostsState = { loading: true, error: null, refresh: () => {} };
+      mocks.searchState = {
+        ghosts: [makeGhost("Reimu")],
+        total: 1,
+        loadedStart: 0,
+        loading: false,
+        dbError: null,
+      };
+      render(<App />);
+      // 300ms 未満は出ない（ちらつき防止）
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(screen.getByRole("progressbar")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("初回スキャン（一覧なし）では scan バーを出さない（全画面スピナーに委ねる）", () => {
+    vi.useFakeTimers();
+    try {
+      mocks.ghostsState = { loading: true, error: null, refresh: () => {} };
+      mocks.searchState = { ghosts: [], total: 0, loadedStart: 0, loading: false, dbError: null };
+      render(<App />);
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(screen.queryByRole("progressbar")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -29,6 +29,7 @@
   "content.noSspPath": "Please select an SSP folder",
   "content.openSettings": "Open settings",
   "list.loading": "Loading...",
+  "list.scanning": "Scanning...",
   "list.empty": "No ghosts found",
   "list.emptySearch": "No ghosts match \"{{query}}\"",
   "list.clearSearch": "Clear search",

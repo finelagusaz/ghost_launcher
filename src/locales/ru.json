@@ -29,6 +29,7 @@
   "content.noSspPath": "Пожалуйста, выберите папку SSP",
   "content.openSettings": "Открыть настройки",
   "list.loading": "Загрузка...",
+  "list.scanning": "Сканирование...",
   "list.empty": "Духи не найдены",
   "list.emptySearch": "Нет духов по запросу «{{query}}»",
   "list.clearSearch": "Очистить поиск",

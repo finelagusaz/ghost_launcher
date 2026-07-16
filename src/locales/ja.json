@@ -29,6 +29,7 @@
   "content.noSspPath": "SSPフォルダを選択してください",
   "content.openSettings": "設定を開く",
   "list.loading": "読み込み中...",
+  "list.scanning": "スキャン中...",
   "list.empty": "ゴーストが見つかりません",
   "list.emptySearch": "「{{query}}」に一致するゴーストがありません",
   "list.clearSearch": "検索をクリア",

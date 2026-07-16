@@ -18,8 +18,10 @@ import { useSearch } from "./hooks/useSearch";
 import { useAppShellState } from "./hooks/useAppShellState";
 import { useLauncherToasts } from "./hooks/useLauncherToasts";
 import { useGhostLauncher } from "./hooks/useGhostLauncher";
+import { useScanIndicator } from "./hooks/useScanIndicator";
 import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
+import { ScanProgressBar } from "./components/ScanProgressBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
 import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
@@ -162,6 +164,10 @@ function App() {
   const hasCachedDisplay = searchResultGhosts.length > 0 || searchTotal > 0;
   const scanError = hasCachedDisplay ? null : error;
 
+  // 再スキャン中（既に一覧が見えている状態）のみ非確定バーを出す。初回（一覧なし）は
+  // 全画面スピナー（GhostList）に委ねるため hasCachedDisplay で排他にする。
+  const showScanBar = useScanIndicator(ghostsLoading && hasCachedDisplay);
+
   if (settingsLoading) {
     return (
       <div className={styles.loading}>
@@ -179,6 +185,7 @@ function App() {
           onRefresh={handleRefresh}
           onOpenSettings={handleOpenSettings}
         />
+        <ScanProgressBar visible={showScanBar} />
         <GhostContent
           ghosts={searchResultGhosts}
           total={searchTotal}

@@ -80,6 +80,7 @@ locales/
 | `content.noSspPath` | SSP 未設定時のメッセージ | — |
 | `content.openSettings` | 設定を開くリンク | — |
 | `list.loading` | ゴーストリスト読み込み中 | — |
+| `list.scanning` | スキャン中インジケータの aria-label | — |
 | `list.empty` | ゴーストが 0 件のときの表示 | — |
 | `list.emptySearch` | 検索で 0 件のときの表示 | `{{query}}` |
 | `list.clearSearch` | 検索0件表示の「検索をクリア」ボタン | — |
@@ -188,6 +189,7 @@ locales/
 | `content.noSspPath` | Message shown when SSP path is not set | — |
 | `content.openSettings` | Open settings link | — |
 | `list.loading` | Ghost list loading state | — |
+| `list.scanning` | Aria-label for scanning indicator | — |
 | `list.empty` | Shown when no ghosts are found | — |
 | `list.emptySearch` | Shown when a search returns no matches | `{{query}}` |
 | `list.clearSearch` | "Clear search" button in the no-match state | — |
