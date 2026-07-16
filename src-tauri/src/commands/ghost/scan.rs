@@ -233,3 +233,51 @@ pub(crate) fn fingerprint_only_internal(
 
     Ok(compute_fingerprint_hash(&tokens))
 }
+
+/// `fingerprint_only_internal`（ssp のみ）と同一トークン・同一 fingerprint を生成するが、
+/// 逐次 is_dir 判定（walk_parent の `.filter(|p| p.is_dir())`・100k 逐次 stat）を
+/// キャッシュ済み find-data の `file_type()`（syscall ゼロ）に置換した版。
+/// 両者の差 = 逐次 is_dir pass 単独のコスト（is_dir→file_type の無料削減効果を、
+/// token 生成・ハッシュコストと分離して計測する判別用）。ベンチ専用・本番非呼出。
+#[cfg(feature = "bench")]
+pub(crate) fn fingerprint_only_filetype_internal(ssp_path: &str) -> Result<String, String> {
+    let ghost_dir = Path::new(ssp_path).join("ghost");
+    let normalized_parent = normalize_path(&ghost_dir);
+    let mut tokens = vec!["fingerprint-version|1".to_string()];
+
+    // 親トークン（walk_parent と同一形式）
+    let parent_modified = fs::metadata(&ghost_dir)
+        .as_ref()
+        .map(metadata_modified_string)
+        .unwrap_or_else(|_| "unreadable".to_string());
+    tokens.push(format!("parent|ssp|{}|{}", normalized_parent, parent_modified));
+
+    // is_dir(stat) の代わりに file_type()（find-data 参照・syscall ゼロ）で子を絞る
+    let entries = fs::read_dir(&ghost_dir).map_err(|e| format!("read_dir: {e}"))?;
+    let paths: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .collect();
+
+    // 以降は walk_parent と同一（par_iter で fs::metadata + descript stat + build_entry_token）
+    let mut entry_tokens: Vec<String> = paths
+        .par_iter()
+        .filter_map(|path| {
+            let entry_meta = fs::metadata(path).ok()?;
+            let directory_name = path.file_name()?.to_str()?.to_string();
+            let descript_path = path.join("ghost").join("master").join("descript.txt");
+            let (token, _state) = build_entry_token(
+                "ssp",
+                &normalized_parent,
+                &directory_name,
+                &entry_meta,
+                &descript_path,
+            );
+            Some(token)
+        })
+        .collect();
+    tokens.append(&mut entry_tokens);
+
+    Ok(compute_fingerprint_hash(&tokens))
+}

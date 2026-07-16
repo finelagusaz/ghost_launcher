@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    add_one_ghost, fingerprint_only, full_scan_count, generate_ghost_tree, layer1_hit,
-    open_bench_db, scan_to_handle, store_handle, store_with_real_mtimes, walk_dir_mtime, walk_full,
-    walk_nameset,
+    add_one_ghost, fingerprint_only, fingerprint_only_filetype, full_scan_count,
+    generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle, store_handle,
+    store_with_real_mtimes, walk_dir_mtime, walk_full, walk_nameset,
 };
 
 /// ベンチ用の一時ディレクトリガード（lib 内部 TempDirGuard は非 pub のためローカルに持つ）。
@@ -56,6 +56,11 @@ fn bench_scan(c: &mut Criterion) {
         // walk スペクトラム（parse 抜き・各 fidelity レベル）
         group.bench_function("walk_full_fidelity_3stat", |b| {
             b.iter(|| fingerprint_only(&ssp_str).unwrap());
+        });
+        // full fidelity のまま逐次 is_dir を file_type に置換（同一 fingerprint・F-04 不変）。
+        // walk_full_fidelity_3stat との差 = 逐次 is_dir pass 単独のコスト。
+        group.bench_function("walk_full_fidelity_filetype", |b| {
+            b.iter(|| fingerprint_only_filetype(&ssp_str).unwrap());
         });
         group.bench_function("walk_full_2stat_filetype", |b| {
             b.iter(|| walk_full(&ssp_str).unwrap());

@@ -241,6 +241,12 @@ pub fn fingerprint_only(ssp_path: &str) -> Result<String, String> {
     crate::commands::ghost::fingerprint_only_internal(ssp_path, &[])
 }
 
+/// fingerprint_only と同一 fingerprint を返すが、逐次 is_dir を file_type に置換した版。
+/// fingerprint_only との差 = 逐次 is_dir pass 単独のコスト（token/hash と分離）。
+pub fn fingerprint_only_filetype(ssp_path: &str) -> Result<String, String> {
+    crate::commands::ghost::fingerprint_only_filetype_internal(ssp_path)
+}
+
 /// {ssp}/ghost 直下の子ディレクトリパスを列挙する（is_dir 判定はキャッシュ済み
 /// find-data の file_type を使い syscall ゼロ）。本番 walk_parent の is_dir(stat)
 /// を file_type に置換したときの walk を模す計測用ヘルパー。
@@ -491,6 +497,69 @@ mod tests {
 
         // parse 抜き walk でも同一トークン集合 → 同一 fingerprint
         assert_eq!(walk_fp, full_fp);
+    }
+
+    #[test]
+    fn fingerprint_only_filetype_が同一fingerprintを返す() {
+        let tmp = TempDirGuard::new("bench_fp_filetype");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 30).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // 逐次 is_dir を file_type に置換しても同一トークン集合 → 同一 fingerprint
+        assert_eq!(
+            fingerprint_only_filetype(&ssp_str).unwrap(),
+            fingerprint_only(&ssp_str).unwrap()
+        );
+    }
+
+    // 判別計測（Task 6 追補）: fingerprint_only（逐次 is_dir 込み）と
+    // fingerprint_only_filetype（file_type・逐次 is_dir なし）を同一ツリーで時間比較する。
+    // 両者の差 = 逐次 is_dir pass 単独のコスト。これで「walk コストの過半が逐次 is_dir か
+    // token/hash か」を切り分ける。#[ignore]（診断・手動実行）。
+    // 実行: cargo test --features bench -- --ignored --nocapture 逐次is_dir
+    #[test]
+    #[ignore = "診断: 逐次 is_dir vs token/hash の切り分け計測（手動・--nocapture）"]
+    fn 逐次is_dirとfiletypeの時間差を計測する() {
+        use std::time::Instant;
+        const N: usize = 30_000;
+        const ITERS: u32 = 5;
+
+        let tmp = TempDirGuard::new("bench_isdir_discriminate");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, N).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // warm up（OS キャッシュ）
+        let _ = fingerprint_only(&ssp_str).unwrap();
+        let _ = fingerprint_only_filetype(&ssp_str).unwrap();
+
+        let mut best_seq = f64::MAX;
+        let mut best_ft = f64::MAX;
+        for _ in 0..ITERS {
+            let t0 = Instant::now();
+            let _ = fingerprint_only(&ssp_str).unwrap();
+            best_seq = best_seq.min(t0.elapsed().as_secs_f64());
+
+            let t1 = Instant::now();
+            let _ = fingerprint_only_filetype(&ssp_str).unwrap();
+            best_ft = best_ft.min(t1.elapsed().as_secs_f64());
+        }
+
+        println!(
+            "\n[判別計測 N={N}] fingerprint_only(逐次is_dir込み)={:.1}ms  \
+             fingerprint_only_filetype(is_dirなし)={:.1}ms  \
+             逐次is_dir単独≈{:.1}ms（差 {:.0}%）",
+            best_seq * 1000.0,
+            best_ft * 1000.0,
+            (best_seq - best_ft) * 1000.0,
+            (best_seq - best_ft) / best_seq * 100.0,
+        );
+        // 同値であることも確認
+        assert_eq!(
+            fingerprint_only_filetype(&ssp_str).unwrap(),
+            fingerprint_only(&ssp_str).unwrap()
+        );
     }
 
     #[test]
