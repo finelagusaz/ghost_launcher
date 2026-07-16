@@ -526,6 +526,59 @@ mod tests {
         assert!(!layer1_hit(&conn, "rk", &ssp_str), "追加で親 mtime が変わり miss のはず");
     }
 
+    // キャッシュ mtime 信頼性テスト（Task 5）: entry.metadata()（find-data 由来・syscall
+    // ゼロ）の mtime が、ツリー変更後の「新しい read_dir 列挙」で fs::metadata と一致するか。
+    //
+    // 所見（2026-07-16 実測・Windows 11 / NTFS）: FAIL。新しい read_dir 列挙でも
+    // entry.metadata() の mtime は fs::metadata と不一致（実測差 ~63ms、find-data
+    // キャッシュが陳腐化）。→ dir_mtime レベルは find-data mtime を無料利用できず、
+    // fs::metadata で 1 実 stat/子 が必須。真に安価な walk は name-set（0 stat）のみで、
+    // それは同名置換検知を失う。コードベースが fs::metadata を全面採用している判断
+    // （scan.rs の NTFS 陳腐化回避コメント）が実測で裏付けられた。
+    //
+    // #[ignore]: 上記所見を記録した回帰ガードとして残す。プラットフォーム挙動が変われば
+    // 手動実行（cargo test --features bench -- --ignored キャッシュmtime）で再検証する。
+    #[test]
+    #[ignore = "所見: Windows では find-data mtime が新しい列挙でも陳腐化する（dir_mtime は fs::metadata 必須）"]
+    fn キャッシュmtimeが新しい列挙で更新を反映する() {
+        use std::time::Duration;
+        let tmp = TempDirGuard::new("bench_mtime_reliability");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 5).unwrap();
+        let ghost_dir = ssp.join("ghost");
+
+        // 対象の子ディレクトリを1つ選ぶ
+        let target = ghost_dir.join("dir_000000");
+
+        // mtime を確実に前進させるため、少し待ってから中身を更新する
+        std::thread::sleep(Duration::from_millis(50));
+        fs::write(
+            target.join("ghost").join("master").join("descript.txt"),
+            "charset,UTF-8\nname,更新後\n",
+        )
+        .unwrap();
+        // ディレクトリ自身の mtime を bump するためファイルを1つ足す
+        fs::write(target.join("touch.tmp"), b"x").unwrap();
+
+        // 変更後に「新しい read_dir 列挙」で entry.metadata() と fs::metadata を比較
+        let mut cached = None;
+        for entry in fs::read_dir(&ghost_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path() == target {
+                cached = entry.metadata().ok().and_then(|m| m.modified().ok());
+            }
+        }
+        let fresh = fs::metadata(&target).ok().and_then(|m| m.modified().ok());
+
+        // 新しい列挙のキャッシュ mtime が fs::metadata と一致するか（所見）。
+        // 一致するなら dir_mtime レベルは find-data mtime で 0 syscall 化できる。
+        assert_eq!(
+            cached, fresh,
+            "新しい read_dir 列挙の entry.metadata() mtime が fs::metadata と不一致。\
+             dir_mtime レベルは find-data mtime を使えない（fs::metadata で 1 stat 必要）。"
+        );
+    }
+
     // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
     // ここで cargo test（debug-assertions 有効）による回帰ガードを置く）。
     #[test]
