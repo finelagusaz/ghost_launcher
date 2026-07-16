@@ -27,6 +27,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Install dependencies
         run: npm ci
@@ -54,3 +56,6 @@ jobs:
 
       - name: Test ghost-meta with optional features
         run: cargo test -p ghost-meta --features thumbnail,serde
+
+      - name: Clippy (writer 混入ガード)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -A clippy::all -D clippy::disallowed-methods

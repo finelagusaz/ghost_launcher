@@ -114,7 +114,9 @@ pub async fn record_launch(
         .map_err(|_| "DB アクターから応答がありません".to_string())?
 }
 
+// テストは旧世代 DB 再現・検証用に ghosts.db/user-data.db を直接開く（actor 経由と別の検証用接続）。
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

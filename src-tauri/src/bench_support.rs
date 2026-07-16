@@ -32,6 +32,8 @@ pub const Q_COMMON: &str = "さくら";
 /// 本番読み取り接続（loadDb, ghostDatabase.ts）と同じ PRAGMA で一時 DB を開く。
 /// ensure_cache_schema は version 一致なら no-op のため、同一ファイルへの二度目の open でも安全。
 /// 書き込み用 configure_connection の大 cache は引かない。
+// bench feature 専用の計測用ヘルパー。actor の外だが本番非コンパイル（設計書 §2.3 のガード対象外）。
+#[allow(clippy::disallowed_methods)]
 pub fn open_bench_db(path: &Path) -> Result<Connection, String> {
     let mut conn = Connection::open(path).map_err(|e| format!("DB open: {e}"))?;
     crate::cache_schema::ensure_cache_schema(&mut conn)?;

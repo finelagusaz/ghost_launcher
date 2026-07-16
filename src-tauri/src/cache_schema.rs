@@ -74,6 +74,8 @@ pub(crate) fn open_with_recovery(ghosts_path: &std::path::Path) -> Result<Connec
 }
 
 /// open → PRAGMA → ensure_cache_schema の一連（リトライの単位）。
+// open_with_recovery からのみ呼ばれる bootstrap 専用ヘルパー。ghosts.db を直接開く正当な入口（設計書 §2.3）。
+#[allow(clippy::disallowed_methods)]
 fn open_and_ensure(ghosts_path: &std::path::Path) -> Result<Connection, String> {
     let mut conn = Connection::open(ghosts_path)
         .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;

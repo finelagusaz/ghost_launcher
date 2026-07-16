@@ -15,6 +15,8 @@ use tokio::sync::{mpsc, oneshot};
 /// 順序は不変条件: sanitize → user-data 初期化＋legacy 移送 → スキーマ確定 → スレッド起動。
 /// 特に「移送 → ensure_cache_schema」の順序を破ると、旧世代 DB の永続履歴が
 /// リビルドの全 DROP に巻き込まれて失われる（issue #93/#146）。
+// bootstrap は actor 起動配線として ghosts.db/user-data.db を直接開く正当な唯一の入口（設計書 §2.3）。
+#[allow(clippy::disallowed_methods)]
 pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
     // (1) パス解決（単一権威・ここ以外に ghosts.db のパスを知るコードは存在しない）と最小 sanitize
     let db_dir = db_path::ghost_db_dir(app)?;
@@ -43,6 +45,8 @@ pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
 }
 
 /// ghosts.db が破損して open 不能なら関連ファイルごと削除する（webview ロード前なので競合なし）。
+// bootstrap 内の破損検知専用の正当な open（設計書 §2.3）。
+#[allow(clippy::disallowed_methods)]
 fn sanitize(db_dir: &std::path::Path, ghosts_path: &std::path::Path) {
     if !ghosts_path.exists() {
         return;
@@ -158,7 +162,9 @@ fn run_guarded<T>(
     result
 }
 
+// テストは検証用に別接続で ghosts.db/user-data.db を直接開く（actor 経由の書込との整合を確認するため）。
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::testutil::TempDirGuard;
