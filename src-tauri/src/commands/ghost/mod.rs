@@ -27,46 +27,51 @@ fn ensure_request_key(request_key: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 起動履歴の集計列を user-data.db から ghosts へ再導出する（ベストエフォート）。
-/// user-data.db を開けない場合は何もしない（スキャン結果を阻害しない）。
-/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
-fn backfill_launch_aggregates<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    ghosts_conn: &rusqlite::Connection,
-) {
-    if let Ok(user_conn) = crate::commands::launch_history::open_user_data_db(app) {
-        let _ = crate::commands::launch_history::backfill_aggregates(ghosts_conn, &user_conn);
-    }
-}
-
-/// ゴーストをスキャンし、結果を rusqlite で直接 SQLite に書き込むコマンド。
-/// IPC で Ghost 配列を転送しないため、10 万体規模でも高速。
-///
-/// 2 層フィンガープリント:
-/// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
-/// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
-/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
-/// IPC 契約（引数名・戻り値）は不変で、総称パラメータは境界を越えて見えない。
+/// ゴーストをスキャンし SQLite へ直接書き込むコマンド。実体は DB アクターの Scan ジョブ。
+/// walk＋parse＋DB 適用の全体がアクター上で直列化される（設計書 §3。2 scan が同じ prev から
+/// 差分計算する lost update を構造的に防ぐ）。IPC 契約（引数名・戻り値）は不変。
 #[tauri::command]
-pub async fn scan_and_store<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+pub async fn scan_and_store(
     ssp_path: String,
     additional_folders: Vec<String>,
     request_key: String,
     cached_fingerprint: Option<String>,
-    coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
+    actor: tauri::State<'_, crate::actor::ActorHandle>,
 ) -> Result<ScanStoreResult, String> {
-    // scan/reset/record_launch を直列化（lost update 防止）。
-    coordinator
-        .run_serialized("スキャンタスク", move || {
-            scan_and_store_blocking(&app, ssp_path, additional_folders, request_key, cached_fingerprint)
-        })
-        .await
+    let (reply, rx) = tokio::sync::oneshot::channel();
+    actor.send(crate::actor::Job::Scan {
+        ssp_path,
+        additional_folders,
+        request_key,
+        cached_fingerprint,
+        reply,
+    })?;
+    rx.await
+        .map_err(|_| "DB アクターから応答がありません".to_string())?
 }
 
-/// 現行 `scan_and_store` の同期本体（挙動不変）。`spawn_blocking` の別スレッドで実行される。
-fn scan_and_store_blocking<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
+/// 古い request_key 世代のキャッシュを削除するコマンド（設計書 §5.1 の契約）。
+/// 戻り値は削除した request_key 数（JS はログにのみ使用）。
+#[tauri::command]
+pub async fn cleanup_ghost_caches(
+    current_request_key: String,
+    actor: tauri::State<'_, crate::actor::ActorHandle>,
+) -> Result<u32, String> {
+    let (reply, rx) = tokio::sync::oneshot::channel();
+    actor.send(crate::actor::Job::CleanupCaches { current_request_key, reply })?;
+    rx.await
+        .map_err(|_| "DB アクターから応答がありません".to_string())?
+}
+
+/// `scan_and_store` の同期本体。DB アクタースレッド上で `run_guarded` 経由に呼ばれる
+/// （接続はアクターが所有し、常にスキーマ確定済みであることが呼び出し側の不変条件）。
+///
+/// 2 層フィンガープリント:
+/// - Layer 1: 親ディレクトリ mtime チェック（< 1ms）。ゴーストフォルダの追加・削除を検出
+/// - Layer 2: 従来のフル fingerprint。全エントリの mtime + descript.txt 有無を走査
+pub(crate) fn scan_and_store_blocking(
+    conn: &rusqlite::Connection,
+    user_conn: &rusqlite::Connection,
     ssp_path: String,
     additional_folders: Vec<String>,
     request_key: String,
@@ -77,25 +82,19 @@ fn scan_and_store_blocking<R: tauri::Runtime>(
     // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）
     let current_mtimes = fingerprint::collect_parent_mtimes(&ssp_path, &additional_folders);
 
-    // DB パスを 1 回だけ解決（reset_ghost_db・sanitize_ghost_db と同一の単一権威を経由）
-    let db_path = crate::db_path::ghost_db_path(app)?;
-
     // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
     // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
     // 既存ゴースト内の descript.txt 編集は検出できない（「再読込」で対応）。
-    if cached_fingerprint.is_some() && db_path.exists() {
-        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-            let _ = store::configure_connection(&conn);
-            if fingerprint::check_parent_mtimes_match(&conn, &request_key, &current_mtimes) {
-                backfill_launch_aggregates(app, &conn);
-                return Ok(ScanStoreResult {
-                    cache_hit: true,
-                    total: 0,
-                    fingerprint: cached_fingerprint.unwrap_or_default(),
-                    request_key,
-                });
-            }
-        }
+    if cached_fingerprint.is_some()
+        && fingerprint::check_parent_mtimes_match(conn, &request_key, &current_mtimes)
+    {
+        let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
+        return Ok(ScanStoreResult {
+            cache_hit: true,
+            total: 0,
+            fingerprint: cached_fingerprint.unwrap_or_default(),
+            request_key,
+        });
     }
 
     // Layer 2: 走査（parse なし）で ScanEntry 群 + fingerprint を得る。
@@ -112,14 +111,11 @@ fn scan_and_store_blocking<R: tauri::Runtime>(
     if cache_hit {
         // Layer 2 hit: 親 mtime は変わったがゴースト構成は同じ
         // parent_mtimes を更新して次回 Layer 1 で hit するようにする
-        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-            let _ = store::configure_connection(&conn);
-            let _ = conn.execute(
-                "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
-                rusqlite::params![current_mtimes, request_key],
-            );
-            backfill_launch_aggregates(app, &conn);
-        }
+        let _ = conn.execute(
+            "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
+            rusqlite::params![current_mtimes, request_key],
+        );
+        let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
         return Ok(ScanStoreResult {
             cache_hit: true,
             total: 0,
@@ -129,13 +125,9 @@ fn scan_and_store_blocking<R: tauri::Runtime>(
     }
 
     // Cache miss → delta 差分書き込み（前回 scan_entries と差分を取り、変更子だけ parse）
-    let conn = rusqlite::Connection::open(&db_path)
-        .map_err(|e| format!("DB オープンエラー: {e}"))?;
-    store::configure_connection(&conn)?;
+    let total = apply_scan_delta(conn, &request_key, &entries, &fingerprint, &current_mtimes)?;
 
-    let total = apply_scan_delta(&conn, &request_key, &entries, &fingerprint, &current_mtimes)?;
-
-    backfill_launch_aggregates(app, &conn);
+    let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
 
     Ok(ScanStoreResult {
         cache_hit: false,
@@ -290,7 +282,7 @@ mod tests {
     /// マイグレーション適用済みのインメモリ ghosts DB（apply_scan_delta の直接テスト用）。
     fn in_memory_ghost_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        crate::testutil::apply_cache_schema(&conn);
         conn
     }
 
@@ -827,84 +819,5 @@ mod tests {
             "不変子（token 一致）が再 parse された（parse-skip のリグレッション）"
         );
         Ok(())
-    }
-
-    /// migrations 適用済みのファイル ghosts DB を開く（並行テスト用・接続はスレッド毎に開く）。
-    fn open_file_ghost_db(path: &std::path::Path) -> rusqlite::Connection {
-        let conn = rusqlite::Connection::open(path).unwrap();
-        // 新規ファイルなら全 migration を適用、既存なら全 skip（open_bench_db と同方針）。
-        let has_schema: bool = conn
-            .query_row(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
-                [],
-                |_| Ok(true),
-            )
-            .unwrap_or(false);
-        if !has_schema {
-            crate::testutil::apply_all_migrations(&conn);
-        }
-        super::store::configure_connection(&conn).unwrap();
-        conn
-    }
-
-    #[test]
-    fn scan_lock配下の並行deltaが整合状態を壊さない() {
-        use crate::scan_coordinator::ScanCoordinator;
-        use std::sync::{Arc, Barrier};
-        use std::thread;
-
-        // 2 つの ssp ツリー（片方は ghost_a、もう片方は ghost_b）を用意する。
-        let tmp = TempDirGuard::new("scan_serialize");
-        let ssp_a = tmp.path().join("ssp_a");
-        let ssp_b = tmp.path().join("ssp_b");
-        fs::create_dir_all(ssp_a.join("ghost")).unwrap();
-        fs::create_dir_all(ssp_b.join("ghost")).unwrap();
-        create_ghost_dir(&ssp_a.join("ghost"), "ghost_a").unwrap();
-        create_ghost_dir(&ssp_b.join("ghost"), "ghost_b").unwrap();
-
-        let db = tmp.path().join("ghosts.db");
-        open_file_ghost_db(&db); // 初期化（テーブル作成）
-
-        let coord = ScanCoordinator::default();
-        let barrier = Arc::new(Barrier::new(2));
-
-        // 同一 request_key "rk" に、異なる entries を並行に delta 適用する。
-        let ssps = [ssp_a, ssp_b];
-        let handles: Vec<_> = ssps
-            .into_iter()
-            .map(|ssp| {
-                let coord = coord.clone();
-                let barrier = barrier.clone();
-                let db = db.clone();
-                thread::spawn(move || {
-                    let ssp_str = ssp.to_string_lossy().to_string();
-                    let (entries, fp) =
-                        super::scan::scan_entries_with_fingerprint(&ssp_str, &[]).unwrap();
-                    let conn = open_file_ghost_db(&db);
-                    barrier.wait(); // 両スレッドを同時に走らせる
-                    let _guard = coord.lock();
-                    super::apply_scan_delta(&conn, "rk", &entries, &fp, "mtimes").unwrap();
-                })
-            })
-            .collect();
-        for h in handles {
-            h.join().unwrap();
-        }
-
-        // 直列化されているため、最終状態は「後に走った方の entries」に整合した 1 状態。
-        // ghosts と ghost_scan_entries の件数が一致し（混合・破損なし）、1 件であること。
-        let conn = open_file_ghost_db(&db);
-        let ghosts: i64 = conn
-            .query_row("SELECT COUNT(*) FROM ghosts WHERE request_key='rk'", [], |r| r.get(0))
-            .unwrap();
-        let entries: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(ghosts, 1, "直列化後は 1 体（後勝ちの entries）のはず");
-        assert_eq!(ghosts, entries, "ghosts と scan_entries が整合しているはず");
     }
 }

@@ -5,42 +5,12 @@ import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
 
-const VACUUM_FREE_RATIO = 0.25;
-const VACUUM_FREE_BYTES = 1_048_576;
-
-async function vacuumIfNeeded(db: Database): Promise<void> {
-  try {
-    const pageCountRows = await db.select<{ page_count: number }[]>("PRAGMA page_count");
-    const pageCount = pageCountRows[0]?.page_count ?? 0;
-    if (pageCount === 0) return;
-
-    const freelistRows = await db.select<{ freelist_count: number }[]>("PRAGMA freelist_count");
-    const freelistCount = freelistRows[0]?.freelist_count ?? 0;
-    const pageSizeRows = await db.select<{ page_size: number }[]>("PRAGMA page_size");
-    const pageSize = pageSizeRows[0]?.page_size ?? 4096;
-    const freeBytes = freelistCount * pageSize;
-    const freeRatio = freelistCount / pageCount;
-
-    if (freeRatio >= VACUUM_FREE_RATIO && freeBytes >= VACUUM_FREE_BYTES) {
-      console.log(
-        `[ghostDatabase] VACUUM 実行: 未使用率=${(freeRatio * 100).toFixed(1)}%, 未使用=${(freeBytes / 1024 / 1024).toFixed(1)}MB`
-      );
-      await db.execute("VACUUM");
-    }
-  } catch (e) {
-    console.warn("[ghostDatabase] VACUUM をスキップしました", e);
-  }
-}
-
 async function loadDb(): Promise<Database> {
   const db = await Database.load("sqlite:ghosts.db");
-  await db.execute("PRAGMA journal_mode=WAL");
+  // 読者に必要な PRAGMA のみ。journal_mode=WAL はファイル永続属性で Rust 側が設定済み。
+  // sqlx-sqlite は接続確立毎にデフォルト 5 秒の busy_timeout を全プール接続へ適用するため
+  // この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤）。
   await db.execute("PRAGMA busy_timeout=5000");
-  await db.execute("PRAGMA journal_size_limit=4194304");
-  // 0x10002: 全テーブル対象（0x10000）+ ANALYZE 実行（0x02）。
-  // 長命な接続では接続直後にクエリ履歴がないため、全テーブル対象が必要。
-  await db.execute("PRAGMA optimize=0x10002");
-  await vacuumIfNeeded(db);
   return db;
 }
 
@@ -51,15 +21,9 @@ async function initializeDb(): Promise<Database> {
     void reportDbSize(db, "startup").catch(() => {});
     return db;
   } catch (e) {
-    const msg = String(e);
-    if (msg.includes("migration") || msg.includes("duplicate column")) {
-      console.warn("[ghostDatabase] マイグレーション競合を検出。DB をリセットします...", e);
-      await invoke("reset_ghost_db");
-      const db = await loadDb();
-      console.log("[ghostDatabase] DB をリセットして再接続しました");
-      return db;
-    }
-    // リカバリ不能: Promise をリセットして次回再試行可能にする
+    // リカバリ不能: Promise をリセットして次回再試行可能にする。
+    // 旧「マイグレーション競合 → reset」の回復パスは、使い捨てスキーマ化（Rust 側
+    // ensure_cache_schema が起動時に自動リビルド）でエラークラスごと消滅した。
     dbInitPromise = null;
     throw e;
   }
@@ -83,51 +47,12 @@ export function normalizeForKey(value: string): string {
   return value.normalize("NFKC").toLowerCase();
 }
 
-interface RequestKeyRow {
-  request_key: string;
-  last_updated: string;
-}
-
-function buildInClausePlaceholders(length: number): string {
-  return new Array(length).fill("?").join(", ");
-}
-
-export async function cleanupOldGhostCaches(
-  currentRequestKey: string,
-  maxGenerations = 5,
-  ttlDays = 30,
-): Promise<void> {
-  const db = await getDb();
-
-  const rows = await db.select<RequestKeyRow[]>(
-    "SELECT request_key, MAX(updated_at) AS last_updated FROM ghosts GROUP BY request_key ORDER BY last_updated DESC"
-  );
-
-  const ttlCutoff = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
-  const keepByGeneration = new Set<string>(rows.slice(0, Math.max(0, maxGenerations)).map((r) => r.request_key));
-  keepByGeneration.add(currentRequestKey);
-
-  const deleteRequestKeys: string[] = [];
-
-  for (const row of rows) {
-    const lastUpdated = Date.parse(row.last_updated);
-    const ttlExpired = Number.isNaN(lastUpdated) ? false : lastUpdated < ttlCutoff;
-    const keep =
-      (keepByGeneration.has(row.request_key) && !ttlExpired) ||
-      row.request_key === currentRequestKey;
-    if (!keep) {
-      deleteRequestKeys.push(row.request_key);
-    }
-  }
-
-  if (deleteRequestKeys.length > 0) {
-    const placeholders = buildInClausePlaceholders(deleteRequestKeys.length);
-    await db.execute(`DELETE FROM ghosts WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    await db.execute(`DELETE FROM ghost_fingerprints WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    // ghost_scan_entries は走査差分の前回状態（ghosts と運命共有の揮発キャッシュ）。
-    // 同一 request_key で一括削除し、古い世代の scan_entries が残留しないようにする。
-    await db.execute(`DELETE FROM ghost_scan_entries WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    console.log(`[ghostDatabase] Cleaned ${deleteRequestKeys.length} stale request_key caches`);
+/// 古い request_key 世代のキャッシュ削除。実体は Rust の CleanupCaches ジョブ
+/// （ポリシー: 世代 5・TTL 30 日は Rust 側 const）。戻り値は削除世代数。
+export async function cleanupOldGhostCaches(currentRequestKey: string): Promise<void> {
+  const deleted = await invoke<number>("cleanup_ghost_caches", { currentRequestKey });
+  if (deleted > 0) {
+    console.log(`[ghostDatabase] Cleaned ${deleted} stale request_key caches`);
   }
 }
 

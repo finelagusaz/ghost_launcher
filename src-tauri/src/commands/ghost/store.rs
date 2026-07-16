@@ -34,6 +34,7 @@ pub(crate) fn configure_connection(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;\
          PRAGMA busy_timeout=5000;\
+         PRAGMA journal_size_limit=4194304;\
          PRAGMA synchronous=NORMAL;\
          PRAGMA cache_size=-65536;\
          PRAGMA temp_store=MEMORY;\
@@ -249,19 +250,59 @@ pub(crate) fn store_ghosts_delta(
     Ok(total as usize)
 }
 
+/// 古い request_key 世代のキャッシュを削除する（JS cleanupOldGhostCaches の移植・設計書 §5.1）。
+/// 保持規則: 更新降順の上位 max_generations（TTL 未超過のもの）+ current は無条件。
+/// ghosts / ghost_fingerprints / ghost_scan_entries は運命共有のため同一トランザクションで消す。
+pub(crate) fn cleanup_old_ghost_caches(
+    conn: &Connection,
+    current_request_key: &str,
+    max_generations: usize,
+    ttl_days: i64,
+) -> Result<u32, String> {
+    let rows: Vec<(String, bool)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT request_key, MAX(updated_at) < datetime('now', ?1) FROM ghosts GROUP BY request_key ORDER BY MAX(updated_at) DESC",
+            )
+            .map_err(|e| format!("世代 SELECT 準備エラー: {e}"))?;
+        stmt.query_map([format!("-{ttl_days} days")], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| format!("世代 SELECT エラー: {e}"))?
+            .filter_map(Result::ok)
+            .collect()
+    };
+    let keep_by_generation: std::collections::HashSet<&str> =
+        rows.iter().take(max_generations).map(|(k, _)| k.as_str()).collect();
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("cleanup 開始エラー: {e}"))?;
+    let mut deleted: u32 = 0;
+    for (key, ttl_expired) in &rows {
+        let keep = (keep_by_generation.contains(key.as_str()) && !ttl_expired)
+            || key == current_request_key;
+        if keep {
+            continue;
+        }
+        for sql in [
+            "DELETE FROM ghosts WHERE request_key = ?1",
+            "DELETE FROM ghost_fingerprints WHERE request_key = ?1",
+            "DELETE FROM ghost_scan_entries WHERE request_key = ?1",
+        ] {
+            tx.execute(sql, [key]).map_err(|e| format!("cleanup DELETE エラー: {e}"))?;
+        }
+        deleted += 1;
+    }
+    tx.commit().map_err(|e| format!("cleanup commit エラー: {e}"))?;
+    Ok(deleted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// テスト用にマイグレーション適用済みの in-memory DB を作成する
+    /// テスト用に cache schema 適用済みの in-memory DB を作成する
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
-        // ghost_fingerprints テーブルも作成されていることを確認
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS _sqlx_migrations (version BIGINT PRIMARY KEY)",
-        )
-        .unwrap();
+        crate::testutil::apply_cache_schema(&conn);
         conn
     }
 
@@ -586,6 +627,88 @@ mod tests {
             .unwrap();
         assert_eq!(fp, "fp-only");
         assert_eq!(mt, "mt-only");
+    }
+
+    // --- cleanup_old_ghost_caches ---
+
+    fn seed_generation(conn: &Connection, request_key: &str, updated_at: &str) {
+        conn.execute(
+            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES (?1, ?1 || 'g', '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', ?2)",
+            rusqlite::params![request_key, updated_at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES (?1, 'fp', ?2)",
+            rusqlite::params![request_key, updated_at],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ghost_scan_entries (request_key, scan_key, token, ghost_identity_key) VALUES (?1, 'sk', 't', ?1 || 'g')",
+            rusqlite::params![request_key],
+        )
+        .unwrap();
+    }
+
+    fn remaining_keys(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("SELECT DISTINCT request_key FROM ghosts ORDER BY request_key")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect()
+    }
+
+    /// SQLite の実クロックから相対日数を引いた日時文字列を得る（cleanup 実装と同じ
+    /// `datetime('now', ...)` を使うことで、絶対日付を直書きした場合のテスト日付ドリフト
+    /// （brief 記載の 2026-06/07 の固定値は実行日が進むと TTL 判定を誤って越えて赤化した）を避ける。
+    fn days_ago(conn: &Connection, days: i64) -> String {
+        conn.query_row("SELECT datetime('now', ?1)", [format!("-{days} days")], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn cleanupは世代上限を超えた古いキャッシュを3テーブルとも削除する() {
+        let conn = setup_db();
+        seed_generation(&conn, "rk-old", &days_ago(&conn, 200));
+        seed_generation(&conn, "rk-mid", &days_ago(&conn, 5));
+        seed_generation(&conn, "rk-new", &days_ago(&conn, 1));
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-new", 2, 30).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(remaining_keys(&conn), vec!["rk-mid".to_string(), "rk-new".to_string()]);
+        let fp: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ghost_fingerprints WHERE request_key='rk-old'", [], |r| r.get(0))
+            .unwrap();
+        let se: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk-old'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!((fp, se), (0, 0), "fingerprints/scan_entries も同時削除される");
+    }
+
+    #[test]
+    fn cleanupはttl超過の世代を上限内でも削除するがcurrentは保護する() {
+        let conn = setup_db();
+        seed_generation(&conn, "rk-expired", "2020-01-01 00:00:00"); // TTL 超過
+        seed_generation(&conn, "rk-current", "2020-01-02 00:00:00"); // TTL 超過だが current
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(remaining_keys(&conn), vec!["rk-current".to_string()]);
+    }
+
+    #[test]
+    fn cleanupは対象なしなら0を返し何も消さない() {
+        let conn = setup_db();
+        seed_generation(&conn, "rk-current", "2099-01-01 00:00:00");
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
+        assert_eq!(deleted, 0);
+        assert_eq!(remaining_keys(&conn), vec!["rk-current".to_string()]);
+    }
+
+    #[test]
+    fn cleanupは世代0でもcurrentだけは残す() {
+        let conn = setup_db();
+        seed_generation(&conn, "rk-a", "2099-01-01 00:00:00");
+        seed_generation(&conn, "rk-current", "2099-01-02 00:00:00");
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 0, 30).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(remaining_keys(&conn), vec!["rk-current".to_string()]);
     }
 
     #[test]

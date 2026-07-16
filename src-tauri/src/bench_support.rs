@@ -30,26 +30,13 @@ pub const Q_RARE: &str = "作者777";
 pub const Q_COMMON: &str = "さくら";
 
 /// 本番読み取り接続（loadDb, ghostDatabase.ts）と同じ PRAGMA で一時 DB を開く。
-/// ghosts テーブルが未作成のときだけ migrations を適用する（同一ファイルへの
-/// 二度目の open で ALTER TABLE ADD COLUMN が "duplicate column" で落ちるのを防ぐ）。
+/// ensure_cache_schema は version 一致なら no-op のため、同一ファイルへの二度目の open でも安全。
 /// 書き込み用 configure_connection の大 cache は引かない。
+// bench feature 専用の計測用ヘルパー。actor の外だが本番非コンパイル（設計書 §2.3 のガード対象外）。
+#[allow(clippy::disallowed_methods)]
 pub fn open_bench_db(path: &Path) -> Result<Connection, String> {
-    let conn = Connection::open(path).map_err(|e| format!("DB open: {e}"))?;
-    let has_schema: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-    if !has_schema {
-        let mut ms = crate::migrations();
-        ms.sort_by_key(|m| m.version);
-        for m in &ms {
-            conn.execute_batch(m.sql)
-                .map_err(|e| format!("migration {}: {e}", m.version))?;
-        }
-    }
+    let mut conn = Connection::open(path).map_err(|e| format!("DB open: {e}"))?;
+    crate::cache_schema::ensure_cache_schema(&mut conn)?;
     // 本番読み取り接続の PRAGMA（loadDb と同順）。大 cache/mmap は意図的に引かない。
     // データ投入後の再 open では optimize=0x10002 の ANALYZE が本番同様に統計を作る。
     conn.execute_batch(

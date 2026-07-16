@@ -77,9 +77,9 @@ ghost_launcher/
 │       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
 │       │   ├── ssp.rs          # ゴースト起動・SSP パス検証コマンド
 │       │   ├── launch_history.rs # 起動履歴記録（record_launch）・user-data.db 管理
-│       │   ├── db.rs           # DB リセット（マイグレーション失敗時の自動回復）
 │       │   └── locale.rs       # ユーザー言語ファイル読込
-│       ├── db_path.rs          # ghosts.db パス解決の単一権威
+│       ├── actor/              # ghosts.db/user-data.db への全書込を直列化する単一 writer アクター（mod.rs: Job enum、db_path.rs: パス解決の単一権威）
+│       ├── cache_schema.rs     # ghosts.db の使い捨てスキーマ（CACHE_SCHEMA が単一権威・ハッシュ user_version で自動リビルド）
 │       └── lib.rs              # Tauri アプリビルダー
 ├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
 │   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
@@ -104,7 +104,7 @@ ghost_launcher/
 
 ### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
 
-- `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション
+- `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録。setup 内で DB アクター起動配線（`actor::bootstrap`）
 - `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 差分 UPSERT）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
 - `commands/ssp.rs` — `launch_ghost`（`ssp.exe /g {ghost}` 起動）・`validate_ssp_path` コマンド
 - `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決

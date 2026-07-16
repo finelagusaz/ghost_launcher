@@ -1,28 +1,19 @@
+mod actor;
 mod commands;
-mod db_path;
-mod scan_coordinator;
+mod cache_schema;
 #[cfg(test)]
 pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
-
-// 統合テスト（tests/lock_wiring.rs）から mock_builder でコマンドを直接駆動するための最小公開。
-// 可視性の変更のみで IPC 契約・挙動・ScanStoreResult には影響しない（bench_support と同種のテスト公開）。
-// lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
-#[doc(hidden)]
-pub use commands::db::reset_ghost_db;
-#[doc(hidden)]
-pub use commands::ghost::scan_and_store;
-#[doc(hidden)]
-pub use commands::launch_history::record_launch;
-#[doc(hidden)]
-pub use scan_coordinator::ScanCoordinator;
 
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
 //   CURRENT_TIMESTAMP や datetime('now') などの関数は SQLite が拒否する（起動時クラッシュ）。
 //   正しい例: DEFAULT ''   誤った例: DEFAULT CURRENT_TIMESTAMP
 //   実際の時刻は INSERT 時の VALUES 句で CURRENT_TIMESTAMP を使って設定すること。
+// parity テスト専用。スキーマ初変更時に cache_schema のテストごと削除する
+// （本番配線では使われない。単一権威は cache_schema::CACHE_SCHEMA）。
+#[cfg(test)]
 pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
     vec![
         tauri_plugin_sql::Migration {
@@ -127,21 +118,32 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_migration_conflict, migrations};
+    use super::migrations;
     use rusqlite::Connection;
+
+    /// version 昇順で migrations() を適用する（parity テスト入力の健全性検査専用のローカルヘルパー）。
+    fn apply_migrations_sorted(conn: &Connection) {
+        let mut sorted = migrations();
+        sorted.sort_by_key(|m| m.version);
+        for m in &sorted {
+            conn.execute_batch(m.sql).unwrap_or_else(|e| {
+                panic!("migration {} ({}) failed: {}", m.version, m.description, e)
+            });
+        }
+    }
 
     // マイグレーション SQL が SQLite で実際に実行できることを検証する。
     // DEFAULT に CURRENT_TIMESTAMP のような関数を使った場合もここで検知できる。
     #[test]
     fn マイグレーションが順番にインメモリdbへ適用できる() {
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        apply_migrations_sorted(&conn);
     }
 
     #[test]
     fn migration12と13で集計列追加と旧履歴テーブル除去が行われる() {
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        apply_migrations_sorted(&conn);
         // ghosts に集計列が存在する
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
@@ -172,7 +174,7 @@ mod tests {
         assert!(!expected_columns.is_empty(), "fixture が空でないこと");
 
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        crate::testutil::apply_cache_schema(&conn);
         let schema_columns: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
             .unwrap()
@@ -217,178 +219,28 @@ mod tests {
         conn.execute_batch(sorted[7].sql)
             .unwrap_or_else(|e| panic!("migration 8 failed: {}", e));
     }
-
-    #[test]
-    fn 全マイグレーション適用済みなら競合なし() {
-        let conn = Connection::open_in_memory().unwrap();
-        // _sqlx_migrations テーブルを作成し全バージョンを登録
-        conn.execute_batch(
-            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
-        )
-        .unwrap();
-        for m in migrations() {
-            conn.execute_batch(m.sql).unwrap();
-            conn.execute(
-                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
-                [m.version as i64],
-            )
-            .unwrap();
-        }
-        assert!(!has_migration_conflict(&conn));
-    }
-
-    #[test]
-    fn 未適用マイグレーションのカラムが既に存在すれば競合検出() {
-        let conn = Connection::open_in_memory().unwrap();
-        // migration 1-3 を適用し記録
-        conn.execute_batch(
-            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
-        )
-        .unwrap();
-        let mut sorted = migrations();
-        sorted.sort_by_key(|m| m.version);
-        for m in sorted.iter().take(3) {
-            conn.execute_batch(m.sql).unwrap();
-            conn.execute(
-                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
-                [m.version as i64],
-            )
-            .unwrap();
-        }
-        // migration 4 の内容（craftman）をマイグレーション外で追加
-        conn.execute_batch("ALTER TABLE ghosts ADD COLUMN craftman TEXT NOT NULL DEFAULT ''")
-            .unwrap();
-        assert!(has_migration_conflict(&conn));
-    }
-
-    #[test]
-    fn 未適用マイグレーションのカラムが存在しなければ競合なし() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE _sqlx_migrations (version BIGINT PRIMARY KEY);",
-        )
-        .unwrap();
-        let mut sorted = migrations();
-        sorted.sort_by_key(|m| m.version);
-        for m in sorted.iter().take(3) {
-            conn.execute_batch(m.sql).unwrap();
-            conn.execute(
-                "INSERT INTO _sqlx_migrations (version) VALUES (?1)",
-                [m.version as i64],
-            )
-            .unwrap();
-        }
-        // craftman を追加せず、migration 4 が未適用 → カラムがないので競合なし
-        assert!(!has_migration_conflict(&conn));
-    }
-}
-
-/// マイグレーション適用前に ghosts.db の整合性を検証する。
-/// 未適用マイグレーションが ADD COLUMN しようとするカラムが既に存在する場合、
-/// DB ファイルを削除して再作成を促す。ghosts.db は揮発キャッシュ（再スキャンで復旧）であり、
-/// 永続的な起動履歴は user-data.db へ分離済みのため、削除しても失われない。
-fn sanitize_ghost_db(app: &tauri::App) {
-    let Ok(db_dir) = db_path::ghost_db_dir(app) else {
-        return;
-    };
-    let db_path = db_dir.join(db_path::GHOST_DB_FILES[0]);
-    if !db_path.exists() {
-        return;
-    }
-
-    let should_delete = match rusqlite::Connection::open(&db_path) {
-        Ok(conn) => has_migration_conflict(&conn),
-        Err(_) => true, // DB を開けない場合は削除して再作成
-    };
-
-    if should_delete {
-        for filename in db_path::GHOST_DB_FILES {
-            let _ = std::fs::remove_file(db_dir.join(filename));
-        }
-    }
-}
-
-/// 未適用マイグレーションの ADD COLUMN が既存カラムと競合するか判定する。
-fn has_migration_conflict(conn: &rusqlite::Connection) -> bool {
-    let max_version: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
-    let pending: Vec<_> = migrations()
-        .into_iter()
-        .filter(|m| m.version as i64 > max_version)
-        .collect();
-    if pending.is_empty() {
-        return false;
-    }
-
-    let columns: Vec<String> = conn
-        .prepare("PRAGMA table_info(ghosts)")
-        .and_then(|mut stmt| {
-            stmt.query_map([], |row| row.get::<_, String>(1))
-                .map(|rows| rows.filter_map(|r| r.ok()).collect())
-        })
-        .unwrap_or_default();
-    if columns.is_empty() {
-        return false;
-    }
-
-    // 未適用マイグレーションが追加しようとするカラムが既に存在するか
-    for m in &pending {
-        for fragment in m.sql.split("ADD COLUMN ").skip(1) {
-            if let Some(col_name) = fragment.split_whitespace().next() {
-                if columns.iter().any(|c| c == col_name) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// user-data.db を初期化し、旧 ghosts.db.ghost_launches の履歴を一度だけ移送する。
-/// Rust setup（JS の Database.load によるマイグレーションより先に走る）で呼ぶことで、
-/// migration 13 の旧テーブル DROP より前に移送を完了させる。
-fn init_user_data(app: &tauri::App) {
-    let Ok(user_conn) = commands::launch_history::open_user_data_db(app) else {
-        eprintln!("[user-data] user-data.db を初期化できませんでした");
-        return;
-    };
-    let Ok(ghosts_path) = db_path::ghost_db_path(app) else {
-        return;
-    };
-    // ghosts.db が存在するときだけ legacy 移送を試みる（空ファイルの事前生成を避ける）
-    if ghosts_path.exists() {
-        if let Ok(ghosts_conn) = rusqlite::Connection::open(&ghosts_path) {
-            let _ = commands::launch_history::migrate_legacy_launch_history(&ghosts_conn, &user_conn);
-        }
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:ghosts.db", migrations())
-                .build(),
-        )
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .manage(scan_coordinator::ScanCoordinator::default())
         .setup(|app| {
-            sanitize_ghost_db(app);
-            init_user_data(app);
+            match actor::bootstrap(app) {
+                Ok(handle) => {
+                    app.manage(handle);
+                }
+                Err(e) => return Err(format!("DB アクターの起動に失敗しました: {e}").into()),
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::db::reset_ghost_db,
             commands::ghost::scan_and_store,
+            commands::ghost::cleanup_ghost_caches,
             commands::launch_history::record_launch,
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,
