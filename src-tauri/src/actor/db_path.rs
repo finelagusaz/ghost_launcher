@@ -3,7 +3,7 @@
 // 同じディレクトリを参照するための単一権威である。
 // app_config_dir と app_data_dir は Windows では同一パスに収束するが、
 // それはプラットフォームの偶然であり、別 API での解決を混在させてはならない。
-// reset は撤去済み（#134 で削除。DB リビルドは cache_schema::ensure_cache_schema が自動で行う）。
+// reset は撤去済み（#146 で削除。DB リビルドは cache_schema::ensure_cache_schema が自動で行う）。
 //
 // actor モジュール専有（可視性封鎖・設計書 §2.3）。コマンド層から ghosts.db のパス解決はできない。
 

@@ -117,7 +117,7 @@ impl ActorHandle {
 /// スキーマ確定済みの Connection を渡すこと。
 pub(crate) fn spawn_actor(ghosts_conn: Connection, user_conn: Connection) -> ActorHandle {
     let (tx, rx) = mpsc::unbounded_channel();
-    // Task 7 配線までは非テストビルドで JoinHandle を保持しない（detach）ため _ 接頭辞。
+    // 本番は detach（スレッド終了時のチャネルクローズで自然終了・設計書 §2.2）。テストは JoinHandle で制御可能にするため保持。
     let _thread = std::thread::Builder::new()
         .name("ghost-db-actor".to_string())
         .spawn(move || run_loop(ghosts_conn, user_conn, rx))
