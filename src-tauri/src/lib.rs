@@ -1,9 +1,22 @@
 mod commands;
 mod db_path;
+mod scan_coordinator;
 #[cfg(test)]
 pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
+
+// 統合テスト（tests/lock_wiring.rs）から mock_builder でコマンドを直接駆動するための最小公開。
+// 可視性の変更のみで IPC 契約・挙動・ScanStoreResult には影響しない（bench_support と同種のテスト公開）。
+// lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
+#[doc(hidden)]
+pub use commands::db::reset_ghost_db;
+#[doc(hidden)]
+pub use commands::ghost::scan_and_store;
+#[doc(hidden)]
+pub use commands::launch_history::record_launch;
+#[doc(hidden)]
+pub use scan_coordinator::ScanCoordinator;
 
 // マイグレーション追加時の注意:
 //   ALTER TABLE ... ADD COLUMN ... DEFAULT <値> の <値> はリテラルのみ許容される。
@@ -122,22 +135,13 @@ mod tests {
     #[test]
     fn マイグレーションが順番にインメモリdbへ適用できる() {
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql)
-                .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
-        }
+        crate::testutil::apply_all_migrations(&conn);
     }
 
     #[test]
     fn migration12と13で集計列追加と旧履歴テーブル除去が行われる() {
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         // ghosts に集計列が存在する
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
@@ -168,11 +172,7 @@ mod tests {
         assert!(!expected_columns.is_empty(), "fixture が空でないこと");
 
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         let schema_columns: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
             .unwrap()
@@ -380,6 +380,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(scan_coordinator::ScanCoordinator::default())
         .setup(|app| {
             sanitize_ghost_db(app);
             init_user_data(app);

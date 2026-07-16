@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  テストバイナリ専用の common-controls v6 マニフェスト。
+  tauri の `test` フィーチャ（mock_builder / MockRuntime）を有効にすると、mock_runtime 経由で
+  comctl32 v6 専用の entrypoint（TaskDialogIndirect / SetWindowSubclass 等）が静的インポートされる。
+  マニフェストが無いと comctl32 v5.82 に束縛され STATUS_ENTRYPOINT_NOT_FOUND でロードに失敗する。
+  本番バイナリは tauri_build が別途マニフェストを埋め込むため、これはテストバイナリ限定（build.rs 参照）。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>

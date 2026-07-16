@@ -301,7 +301,7 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 | ------ | ----------------------------------------------------------------------------------------- |
 | 引数   | `ghost_identity_key: String`                                                              |
 | 戻り値 | `()`                                                                                      |
-| 処理   | 起動履歴を記録する。`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する |
+| 処理   | 起動履歴を記録する。`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する。scan/reset と同一の直列化ロック（`ScanCoordinator`）配下で別スレッド実行され、スキャン終了時のバックフィル（SELECT→絶対値 UPDATE）と相互排他される（集計列の巻き戻り防止） |
 | エラー | いずれかの DB への書込失敗時にエラーを返す（フロントエンドはログのみで UI をブロックしない） |
 
 ---
