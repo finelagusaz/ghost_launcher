@@ -29,6 +29,7 @@
   "content.noSspPath": "請選擇SSP資料夾",
   "content.openSettings": "開啟設定",
   "list.loading": "載入中...",
+  "list.scanning": "掃描中...",
   "list.empty": "找不到幽靈",
   "list.emptySearch": "找不到與「{{query}}」相符的幽靈",
   "list.clearSearch": "清除搜尋",

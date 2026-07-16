@@ -29,6 +29,7 @@
   "content.noSspPath": "请选择SSP文件夹",
   "content.openSettings": "打开设置",
   "list.loading": "加载中...",
+  "list.scanning": "扫描中...",
   "list.empty": "未找到幽灵",
   "list.emptySearch": "未找到与「{{query}}」匹配的幽灵",
   "list.clearSearch": "清除搜索",

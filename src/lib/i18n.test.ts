@@ -53,6 +53,18 @@ describe("i18n", () => {
     expect(i18n.t("list.count", { count: 5 })).toBe("5 ghosts");
   });
 
+  it.each([
+    ["ja",    "スキャン中..."],
+    ["en",    "Scanning..."],
+    ["zh-CN", "扫描中..."],
+    ["zh-TW", "掃描中..."],
+    ["ko",    "스캔 중..."],
+    ["ru",    "Сканирование..."],
+  ])("%s で list.scanning が返る", async (lang, expected) => {
+    await i18n.changeLanguage(lang);
+    expect(i18n.t("list.scanning")).toBe(expected);
+  });
+
   it("card.launchError の補間が正しく動作する", async () => {
     await i18n.changeLanguage("ja");
     const msg = i18n.t("card.launchError", { detail: " (error)" });
