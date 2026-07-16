@@ -1,3 +1,4 @@
+mod actor;
 mod commands;
 mod db_path;
 mod scan_coordinator;
@@ -12,8 +13,6 @@ pub mod bench_support;
 // lock 配線テストが lib ユニットテストではなく統合テストに置かれる理由は tests/lock_wiring.rs 冒頭を参照。
 #[doc(hidden)]
 pub use commands::ghost::scan_and_store;
-#[doc(hidden)]
-pub use commands::launch_history::record_launch;
 #[doc(hidden)]
 pub use scan_coordinator::ScanCoordinator;
 

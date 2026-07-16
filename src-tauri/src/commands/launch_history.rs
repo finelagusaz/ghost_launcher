@@ -23,6 +23,8 @@ pub(crate) fn open_user_data_db<R: tauri::Runtime>(
 
 /// 起動履歴を記録する。user-data.db へ INSERT（権威）し、ghosts.db の集計列を bump（導出）する。
 /// user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回バックフィルで整合する。
+/// 呼び出し元は actor::handle_job（Task 7 で spawn_actor が配線されるまで本番到達不能・dead_code 許可）。
+#[allow(dead_code)]
 pub(crate) fn record_launch_inner(
     user_conn: &Connection,
     ghosts_conn: &Connection,
@@ -113,28 +115,16 @@ pub(crate) fn migrate_legacy_launch_history(
     Ok(())
 }
 
-/// 起動履歴を記録する Tauri コマンド。user-data.db へ INSERT し ghosts.db の集計列を bump する。
-/// scan/reset と同一の ScanCoordinator ロックで直列化する: backfill は「user-data SELECT →
-/// ghosts へ絶対値 UPDATE」の read-modify-write であり、その間に本コマンドの相対 bump（+1）が
-/// 割り込むと集計列が古い絶対値で巻き戻る（lost update）。SQLite WAL の文単位直列化では防げない。
-/// 別スレッド実行のためメインスレッドはロック待ちで固まらない。
-/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
+/// 起動履歴を記録する Tauri コマンド。実体は DB アクターの RecordLaunch ジョブ（設計書 §3）。
 #[tauri::command]
-pub async fn record_launch<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+pub async fn record_launch(
     ghost_identity_key: String,
-    coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
+    actor: tauri::State<'_, crate::actor::ActorHandle>,
 ) -> Result<(), String> {
-    coordinator
-        .run_serialized("起動履歴タスク", move || {
-            let user_conn = open_user_data_db(&app)?;
-            let ghosts_path = crate::db_path::ghost_db_path(&app)?;
-            let ghosts_conn = Connection::open(&ghosts_path)
-                .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
-            crate::commands::ghost::store::configure_connection(&ghosts_conn)?;
-            record_launch_inner(&user_conn, &ghosts_conn, &ghost_identity_key)
-        })
-        .await
+    let (reply, rx) = tokio::sync::oneshot::channel();
+    actor.send(crate::actor::Job::RecordLaunch { ghost_identity_key, reply })?;
+    rx.await
+        .map_err(|_| "DB アクターから応答がありません".to_string())?
 }
 
 #[cfg(test)]

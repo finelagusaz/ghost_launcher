@@ -1,6 +1,7 @@
-//! `scan_and_store` / `record_launch` の直列化ロック配線の回帰ガード（統合テスト）。
+//! `scan_and_store` の直列化ロック配線の回帰ガード（統合テスト）。
+//! `record_launch` は DB アクター経由になりこのロックの配線対象外になった（#146 Phase2）。
 //!
-//! 両コマンドを `mock_builder` で実際に呼び、外部から `ScanCoordinator` のロックを保持している間は
+//! `mock_builder` で実際に呼び、外部から `ScanCoordinator` のロックを保持している間は
 //! コマンドが完了しない（`spawn_blocking` 内の `lock.lock()` 待ちでブロックする）ことを確認する。
 //! 本番の `let _guard = lock.lock()...` 行を消すと、コマンドはロックを取らずに即完了して赤くなる。
 //! これは `ScanCoordinator` の素の Mutex を 2 スレッドで叩くだけの合成テストでは捕捉できない、
@@ -13,7 +14,7 @@
 //! のみ埋め込める（lib ユニットテストハーネスにはこのスコープが届かず、埋め込むと本番 bin と競合する）。
 //! このためロック配線テストは lib 内ではなくここに置く。
 
-use ghost_launcher_lib::{record_launch, scan_and_store, ScanCoordinator};
+use ghost_launcher_lib::{scan_and_store, ScanCoordinator};
 use std::sync::mpsc;
 use std::time::Duration;
 use tauri::test::MockRuntime;
@@ -83,19 +84,6 @@ fn scan_and_storeは外部ロック保持中は完了せずロック解放後に
                 coordinator,
             )
             .await;
-        });
-    });
-}
-
-/// record_launch がロック対象外だと、scan の backfill（user-data SELECT → ghosts UPDATE）の間に
-/// 割り込んで集計列を古い絶対値で巻き戻す lost update が成立する（Codex レビュー指摘）。
-#[test]
-fn record_launchは外部ロック保持中は完了せずロック解放後に完了する() {
-    let app = build_mock_app("com.ghostlauncher.record-launch-lock-test");
-    assert_serialized_by_lock(&app, |handle| {
-        tauri::async_runtime::block_on(async {
-            let coordinator = handle.state::<ScanCoordinator>();
-            let _ = record_launch(handle.clone(), "sspg".to_string(), coordinator).await;
         });
     });
 }
