@@ -46,7 +46,8 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 │  │     scan.rs          │  │   lib/                 │ │
 │  │     fingerprint.rs   │  │   components/          │ │
 │  │   ssp.rs             │  │                        │ │
-│  │   db.rs / locale.rs  │  │  Fluent UI v9          │ │
+│  │   locale.rs          │  │  Fluent UI v9          │ │
+│  │  actor/ (DB writer)  │  │                        │ │
 │  │                      │  │  @tauri-apps/api       │ │
 │  └──────────┬───────────┘  └────────────────────────┘ │
 │             │                                         │
@@ -70,12 +71,12 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 | モジュール          | 責務                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録・SQLite マイグレーション定義・起動時 DB 検査 |
-| `db_path.rs`        | ghosts.db パス解決の単一権威（全経路が app_config_dir 基準を共有）                        |
-| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換・差分検知（scan）・差分 delta 書込（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
+| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録。setup 内で DB アクター起動配線（`actor::bootstrap`）を実行し、失敗時は起動中止（fail-fast） |
+| `actor/`            | ghosts.db/user-data.db への全書き込みを直列化する単一 writer アクター。`mod.rs`: `Job` enum（Scan/RecordLaunch/CleanupCaches/Maintenance）と受信ループ、`db_path.rs`: ghosts.db パス解決の単一権威（アクター専有可視性） |
+| `cache_schema.rs`   | ghosts.db の使い捨てスキーマ管理。`CACHE_SCHEMA` が単一権威で、そのハッシュを `PRAGMA user_version` に刻み、不一致時は起動時に単一トランザクションで自動リビルドする |
+| `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換・差分検知（scan）・差分 delta 書込とキャッシュ寿命管理（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
-| `commands/launch_history.rs` | 起動履歴の記録（record_launch）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
-| `commands/db.rs`    | キャッシュ DB リセット（マイグレーション競合からの自動回復）                              |
+| `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 
 **`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
@@ -87,7 +88,7 @@ descript.txt のパース（文字コード判定含む）・単体ゴースト�
 
 | レイヤー      | 責務                                                                                       |
 | ------------- | ------------------------------------------------------------------------------------------ |
-| `lib/`        | Tauri IPC ラッパー（スキャン・起動・検証）・SQLite 読み書き・キャッシュ判定と寿命管理・設定ストア・i18n 初期化・DB 監視ログ |
+| `lib/`        | Tauri IPC ラッパー（スキャン・起動・検証・cleanup）・SQLite 読み取り専用アクセス（SQL 書込は行わず、書込は全て IPC 経由で Rust の DB アクターへ委譲）・キャッシュ判定と寿命管理・設定ストア・i18n 初期化・DB 監視ログ |
 | `hooks/`      | React 状態と lib の橋渡し（設定・スキャン・検索・仮想スクロール・テーマ・シェル状態）        |
 | `components/` | 表示のみ。IPC を直接呼ばず、lib / hooks 経由でデータを受け取る                              |
 | `types/`      | TS 専用型（GhostView・SortOrder 等）と ts-rs 生成型（types/generated/、手書き禁止）         |
@@ -158,7 +159,7 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `launch_count`           | `INTEGER` | 起動回数（非正規化集計列。同上）                          |
 
 - `ghosts` テーブルはファイルシステム索引の揮発キャッシュであり、スキャンで完全再投入可能
-- スキーマ変更時は `DELETE FROM ghosts` を migration に含め、次回起動時のフルスキャンで再投入させる
+- スキーマは `CACHE_SCHEMA`（使い捨てスキーマ、`src-tauri/src/cache_schema.rs`）が単一権威。スキーマ本文を変更すると、次回起動時に `ensure_cache_schema` が `PRAGMA user_version` の不一致を検知して全テーブルを自動的に作り直し、フルスキャンで再投入させる（手動でのバージョン番号管理は不要。§13 参照）
 - `last_launched`/`launch_count` は `user-data.db`（永続）が権威を持つ起動履歴の導出キャッシュ。`record_launch` コマンドが起動の都度即時更新し、スキャンでのキャッシュ再構築後にバックフィルで再導出する（§4.4 参照）。`ghosts` の行削除・再投入があっても `ghost_identity_key` で再結合されるため値は失われない
 
 ### 4.4 設定ストア（settings.json）
@@ -199,7 +200,8 @@ Layer 2 の差分書込（delta・§7.4）で「前回の走査状態」を担�
 
 ゴースト起動履歴の永続記録・権威データ。`ghosts.db` とは別ファイルの `user-data.db`
 （Rust 専有、rusqlite 直接アクセス、`tauri-plugin-sql`/sqlx を経由しない）に住み、
-マイグレーションシステム・自動リセット（`reset_ghost_db` / §13）の対象外である。
+ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対象外である
+（`ensure_schema` の追加式のみで運用し、自動リビルドの DROP 対象にならない）。
 `ghosts` テーブルの非正規化集計列 `last_launched`/`launch_count`（§4.3）は本テーブルからの
 導出キャッシュであり、`recent`/`frequency` ソート（§8.6）はその集計列を直接参照する
 （cross-DB の JOIN は行わない）。
@@ -216,7 +218,7 @@ Layer 2 の差分書込（delta・§7.4）で「前回の走査状態」を担�
 
 ### 4.5 永続テーブルのキー設計ルール
 
-`ghosts` はファイルシステム索引の**揮発キャッシュ**で、スキーマ変更時に `DELETE FROM ghosts` で全件削除・再投入される（§4.3）。一方 `ghost_launches` や将来の `favorites` 等は**永続テーブル**であり、ユーザーの蓄積データを保持する。`ghost_launches` は `ghosts.db` とは別ファイルの `user-data.db`（Rust 専有）に置かれ、`ghosts` 側は `last_launched`/`launch_count` という導出集計列（§4.3）だけを持つ。両者をまたぐ参照は以下のルールに従う。
+`ghosts` はファイルシステム索引の**揮発キャッシュ**で、スキーマ変更時に自動リビルド（§4.3）で全件削除・再投入される。一方 `ghost_launches` や将来の `favorites` 等は**永続テーブル**であり、ユーザーの蓄積データを保持する。`ghost_launches` は `ghosts.db` とは別ファイルの `user-data.db`（Rust 専有）に置かれ、`ghosts` 側は `last_launched`/`launch_count` という導出集計列（§4.3）だけを持つ。両者をまたぐ参照は以下のルールに従う。
 
 - **`ghosts.id`（AUTOINCREMENT）を永続テーブルの外部参照に使わない**。`DELETE`/再 `INSERT` で値が変わり、参照が孤立する。10 万件規模では再投入のたびに大量の蓄積データが一瞬で無効化されうる
 - **外部参照には `ghost_identity_key` を使う**。`NFKC(source) + \x1f + NFKC(directory_name)`（`source` は `"ssp"` または追加フォルダのフルパス）で構成され、`ssp_path`（`request_key`）を含まない。このため SSP パス変更やキャッシュ再投入後も参照が自動的に再結合する
@@ -286,23 +288,27 @@ Layer 2 の差分書込（delta・§7.4）で「前回の走査状態」を担�
 | 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
 | エラー | `ssp.exe` 不在時にエラーメッセージを返す                     |
 
-### 6.4 `reset_ghost_db`
-
-ghosts.db と WAL/SHM を削除してマイグレーション競合を解消する（§13 の自動回復経路）。
-パス解決は書込側と同一の単一権威（`db_path.rs`）を経由する。
-
-### 6.5 `read_user_locale`
+### 6.4 `read_user_locale`
 
 実行ファイル横の `locales/{lang}.json` を読み込む（docs/locale-customization.md 参照）。
 
-### 6.6 `record_launch`
+### 6.5 `record_launch`
 
 | 項目   | 内容                                                                                     |
 | ------ | ----------------------------------------------------------------------------------------- |
 | 引数   | `ghost_identity_key: String`                                                              |
 | 戻り値 | `()`                                                                                      |
-| 処理   | 起動履歴を記録する。`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する。scan/reset と同一の直列化ロック（`ScanCoordinator`）配下で別スレッド実行され、スキャン終了時のバックフィル（SELECT→絶対値 UPDATE）と相互排他される（集計列の巻き戻り防止） |
+| 処理   | 起動履歴を記録する。DB アクターの `RecordLaunch` ジョブとして実行され、`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する。ghosts.db への全書き込み（scan・cleanup を含む）は単一 writer アクターが直列実行するため、スキャン終了時のバックフィル（SELECT→絶対値 UPDATE）と自動的に相互排他される（集計列の巻き戻り防止） |
 | エラー | いずれかの DB への書込失敗時にエラーを返す（フロントエンドはログのみで UI をブロックしない） |
+
+### 6.6 `cleanup_ghost_caches`
+
+| 項目   | 内容                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------- |
+| 引数   | `currentRequestKey: string`（→ `current_request_key`）                                    |
+| 戻り値 | `number`（削除した `request_key` の世代数。JS はログにのみ使用）                          |
+| 処理   | 世代超過・TTL 超過の `request_key` を `ghosts`・`ghost_fingerprints`・`ghost_scan_entries` から一括削除する寿命管理（§8.5 のポリシー）。DB アクターの `CleanupCaches` ジョブとして実行される |
+| エラー | 呼び出し元（`ghostCatalogService.ts`）は fire-and-forget + catch でログのみ、UI をブロックしない |
 
 ---
 
@@ -369,7 +375,7 @@ ghosts.db と WAL/SHM を削除してマイグレーション競合を解消す�
 5. **キャッシュミス時**: Rust 側が走査結果を rusqlite の差分書込（delta）で直接書き込み、
    変化した子だけを再 parse して UPSERT/DELETE し、fingerprint・parent_mtimes・`ghost_scan_entries`
    を同一トランザクションで更新する（JS は Ghost 配列を受け取らない）
-6. **寿命管理**: 世代超過・TTL 超過の `request_key` を SQLite から削除（`cleanupOldGhostCaches`）。`ghosts`・`ghost_fingerprints`・`ghost_scan_entries` の各テーブルから一括削除
+6. **寿命管理**: 世代超過・TTL 超過の `request_key` を `cleanup_ghost_caches` コマンド（§6.6）の invoke で削除。`ghosts`・`ghost_fingerprints`・`ghost_scan_entries` の各テーブルから一括削除
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
@@ -432,7 +438,7 @@ JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以�
 起動回数順（いずれも `ghosts` の非正規化集計列 `last_launched`/`launch_count` を単一 DB で
 `ORDER BY` する。cross-DB JOIN は行わない）・ランダム順を提供する。集計列は `record_launch`
 コマンドの即時更新と、スキャンでのキャッシュ再構築後のバックフィルで `user-data.db` の
-`ghost_launches`（権威）と整合を保つ（§4.4・§6.6）。
+`ghost_launches`（権威）と整合を保つ（§4.4・§6.5）。
 ランダム順はセッション毎のシードで `ORDER BY (id * seed) % 素数` を固定し、仮想スクロールの
 ページングとバッファマージに対して順序整合を保つ。「ランダム」再選択でシードを引き直す
 （シード変更は sortEpoch として検索フックのリセット判定に配線され、全置換再取得を強制する）。
@@ -698,6 +704,7 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 | スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |
 | 設定保存失敗                         | コンソールエラー + UI ロールバック                       |
 | キャッシュ書き込み失敗               | コンソールエラーのみ（UI 影響なし）                      |
-| マイグレーション競合（起動時）       | DB 読み込みエラーを検出し `reset_ghost_db` で ghosts.db を自動削除 → 再接続。リセット対象は揮発キャッシュの ghosts.db のみで、永続データ（`user-data.db` の `ghost_launches`）は対象外のため失われない。ゴースト一覧・集計列は再スキャンで復元される（バックフィルで `last_launched`/`launch_count` を再導出） |
+| スキーマ世代不一致（起動時）         | `ensure_cache_schema` が `PRAGMA user_version` の不一致を検知し、単一トランザクションで ghosts.db を自動リビルド（DROP+CREATE）してから続行。対象は揮発キャッシュの ghosts.db のみで、永続データ（`user-data.db` の `ghost_launches`）は対象外のため失われない。ゴースト一覧・集計列は再スキャンで復元される（バックフィルで `last_launched`/`launch_count` を再導出） |
+| ghosts.db 破損（起動時 open 不能）   | 起動時 sanitize が ghosts.db と WAL/SHM を fs 削除して 1 回だけ作り直す。`ensure_cache_schema` 自体の失敗も同じ fs 削除リトライを 1 回試行し、2 回目の失敗（disk full・権限等）はログのみで起動を続行する |
 
 ---
