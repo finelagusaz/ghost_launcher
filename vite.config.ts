@@ -25,8 +25,9 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri` and the workspace-root `target`
+      //    (Cargo workspace の target はルート直下にあり、ビルド中の .dll を watch すると EBUSY になる)
+      ignored: ["**/src-tauri/**", "**/target/**"],
     },
   },
   // 4. Tauri アプリはローカル配信のためチャンクサイズ警告を緩和
