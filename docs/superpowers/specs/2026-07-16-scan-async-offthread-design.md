@@ -103,9 +103,10 @@ UI が固まる——アプローチ2 の受け入れ基準「**走査中に UI 
 - `spawn_blocking` の `JoinError`（内部 panic 等）→ `"スキャンタスクの実行に失敗しました: {e}"` の `Err(String)`。
   既存の scan エラーも `Err(String)` ゆえフロントの `buildScanErrorMessage` はコード変更なく扱えるが、これは
   **新しいエラー発生源**であり観測可能な変化として扱う（§7 の並行テストで固定）。
-- **Mutex poison**: `Mutex<()>` は状態を持たないため `into_inner` で回復する。ただし panic は**構造化ログに記録**し、
-  次 scan が ghosts.db を再オープンして正常実行できることをテストで固定する（`store_ghosts_delta` はトランザクション化
-  ゆえ中途書込は残らない: `store.rs`）。
+- **Mutex poison**: `Mutex<()>` は状態を持たないため `into_inner` で回復する（silent 回復）。走査 panic 自体は
+  `JoinError`→`Err(String)` として frontend に surface されるため無音ではない。コードベースに構造化ログ基盤が無い
+  （`lib.rs` に ad-hoc `eprintln!` が 1 箇所のみ）ため、回復経路のサーバ側記録は設けない。`store_ghosts_delta` は
+  トランザクション化ゆえ panic 時も中途書込は残らず、次 scan は ghosts.db を再オープンして正常実行できる。
 - **reset との競合**: async 化後、scan（別スレッド）実行中に `reset_ghost_db`（メインスレッド同期コマンド）が走りうる。
   reset は稀（`getDb` のマイグレーション失敗自動回復時: `src/CLAUDE.md`）だが、scan の DB open/write を失敗させうる。
   方針: **reset も `ScanCoordinator` の lock を取り** scan と直列化する（実装計画で確定）。最低限、scan 側の DB エラーは
