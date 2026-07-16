@@ -212,3 +212,24 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
 
     Ok((ghosts, compute_fingerprint_hash(&tokens)))
 }
+
+/// フル走査と同じトークンを生成するが Ghost を収集しない（parse を行わない）。
+/// walk 単独コスト（read_dir + stat + トークン生成 + ハッシュ）を parse 抜きで
+/// 計測するためのベンチ専用経路。本番からは呼ばれない。
+#[cfg(feature = "bench")]
+pub(crate) fn fingerprint_only_internal(
+    ssp_path: &str,
+    additional_folders: &[String],
+) -> Result<String, String> {
+    let ghost_dir = Path::new(ssp_path).join("ghost");
+    let mut tokens = vec!["fingerprint-version|1".to_string()];
+
+    walk_parent(&ghost_dir, "ssp", true, &mut tokens, None)?;
+    for (_source, folder_path, normalized_folder) in
+        unique_sorted_additional_folders(additional_folders)
+    {
+        walk_parent(&folder_path, &normalized_folder, false, &mut tokens, None)?;
+    }
+
+    Ok(compute_fingerprint_hash(&tokens))
+}

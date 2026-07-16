@@ -9,7 +9,7 @@ mod types;
 #[cfg(feature = "bench")]
 pub(crate) use fingerprint::{check_parent_mtimes_match, collect_parent_mtimes};
 #[cfg(feature = "bench")]
-pub(crate) use scan::scan_ghosts_with_fingerprint_internal;
+pub(crate) use scan::{fingerprint_only_internal, scan_ghosts_with_fingerprint_internal};
 #[cfg(feature = "bench")]
 pub(crate) use types::Ghost;
 

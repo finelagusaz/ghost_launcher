@@ -218,6 +218,12 @@ pub fn full_scan_count(ssp_path: &str) -> Result<usize, String> {
     Ok(ghosts.len())
 }
 
+/// フル fidelity walk を parse 抜きで実行し fingerprint を返す（walk_only 計測）。
+/// full_scan_count との差が parse コスト。
+pub fn fingerprint_only(ssp_path: &str) -> Result<String, String> {
+    crate::commands::ghost::fingerprint_only_internal(ssp_path, &[])
+}
+
 /// Layer 1 高速パス（親 mtime 一致判定）を測る。事前に store_with_real_mtimes で
 /// 保存していれば true（hit）、store_handle で保存していれば false（miss）を返すが、
 /// 計測対象の「1 行 SELECT + 文字列比較」コストはどちらも同等。
@@ -410,6 +416,21 @@ mod tests {
         let ssp = tmp.path().join("ssp");
         generate_ghost_tree(&ssp, 25).unwrap();
         assert_eq!(full_scan_count(&ssp.to_string_lossy()).unwrap(), 25);
+    }
+
+    #[test]
+    fn fingerprint_only_がフルスキャンと同じfingerprintを返す() {
+        let tmp = TempDirGuard::new("bench_fp_only");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 30).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        let (_ghosts, full_fp) =
+            crate::commands::ghost::scan_ghosts_with_fingerprint_internal(&ssp_str, &[]).unwrap();
+        let walk_fp = fingerprint_only(&ssp_str).unwrap();
+
+        // parse 抜き walk でも同一トークン集合 → 同一 fingerprint
+        assert_eq!(walk_fp, full_fp);
     }
 
     // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
