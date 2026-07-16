@@ -750,4 +750,63 @@ mod tests {
         assert_eq!(name, "Fullwidth");
         Ok(())
     }
+
+    /// parse-skip（本 issue の性能の要）を CI で決定論的に固定する。descript の内容だけ書き換えて
+    /// mtime を元に戻すと token（親 dir mtime + descript 状態/mtime）が不変になり、delta は当該子を
+    /// 不変とみなして再 parse しない → DB は旧内容のまま。もし不変子まで再 parse するリグレッションが
+    /// 入れば新内容が反映されて赤くなる。結果の正しさテスト群は全 parse でも緑になるため、parse-skip
+    /// の発生を縛る唯一のユニットテスト（bench は CI 非対象）。
+    #[test]
+    fn apply_scan_delta_が不変子を再parseしない() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_delta_skip_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
+        create_ghost_dir_with_descript(&ssp_ghost, "alpha", "name,Original\ncharset,UTF-8\n")?;
+
+        let descript = ssp_ghost
+            .join("alpha")
+            .join("ghost")
+            .join("master")
+            .join("descript.txt");
+        let orig_mtime = fs::metadata(&descript)
+            .map_err(|e| format!("meta: {e}"))?
+            .modified()
+            .map_err(|e| format!("mtime: {e}"))?;
+
+        let conn = in_memory_ghost_db();
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+
+        // 初回シード → DB name="Original"
+        let (e1, fp1) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
+        super::apply_scan_delta(&conn, "rk1", &e1, &fp1, "mt-1")?;
+
+        // 内容だけ書き換え、descript の mtime を元に戻して token を不変に保つ
+        // （親 dir mtime は深い書込では変化しない・descript mtime のみ復元すれば token 不変）
+        fs::write(&descript, "name,Modified\ncharset,UTF-8\n").map_err(|e| format!("rewrite: {e}"))?;
+        let f = fs::OpenOptions::new()
+            .write(true)
+            .open(&descript)
+            .map_err(|e| format!("reopen: {e}"))?;
+        f.set_modified(orig_mtime)
+            .map_err(|e| format!("set_modified: {e}"))?;
+        drop(f);
+
+        // 再スキャン → token 不変 → delta は alpha を再 parse しない
+        let (e2, fp2) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
+        super::apply_scan_delta(&conn, "rk1", &e2, &fp2, "mt-2")?;
+
+        let name: String = conn
+            .query_row(
+                "SELECT name FROM ghosts WHERE request_key = ?1",
+                ["rk1"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            name, "Original",
+            "不変子（token 一致）が再 parse された（parse-skip のリグレッション）"
+        );
+        Ok(())
+    }
 }
