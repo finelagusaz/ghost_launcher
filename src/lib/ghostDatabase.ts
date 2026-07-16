@@ -77,51 +77,12 @@ export function normalizeForKey(value: string): string {
   return value.normalize("NFKC").toLowerCase();
 }
 
-interface RequestKeyRow {
-  request_key: string;
-  last_updated: string;
-}
-
-function buildInClausePlaceholders(length: number): string {
-  return new Array(length).fill("?").join(", ");
-}
-
-export async function cleanupOldGhostCaches(
-  currentRequestKey: string,
-  maxGenerations = 5,
-  ttlDays = 30,
-): Promise<void> {
-  const db = await getDb();
-
-  const rows = await db.select<RequestKeyRow[]>(
-    "SELECT request_key, MAX(updated_at) AS last_updated FROM ghosts GROUP BY request_key ORDER BY last_updated DESC"
-  );
-
-  const ttlCutoff = Date.now() - ttlDays * 24 * 60 * 60 * 1000;
-  const keepByGeneration = new Set<string>(rows.slice(0, Math.max(0, maxGenerations)).map((r) => r.request_key));
-  keepByGeneration.add(currentRequestKey);
-
-  const deleteRequestKeys: string[] = [];
-
-  for (const row of rows) {
-    const lastUpdated = Date.parse(row.last_updated);
-    const ttlExpired = Number.isNaN(lastUpdated) ? false : lastUpdated < ttlCutoff;
-    const keep =
-      (keepByGeneration.has(row.request_key) && !ttlExpired) ||
-      row.request_key === currentRequestKey;
-    if (!keep) {
-      deleteRequestKeys.push(row.request_key);
-    }
-  }
-
-  if (deleteRequestKeys.length > 0) {
-    const placeholders = buildInClausePlaceholders(deleteRequestKeys.length);
-    await db.execute(`DELETE FROM ghosts WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    await db.execute(`DELETE FROM ghost_fingerprints WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    // ghost_scan_entries は走査差分の前回状態（ghosts と運命共有の揮発キャッシュ）。
-    // 同一 request_key で一括削除し、古い世代の scan_entries が残留しないようにする。
-    await db.execute(`DELETE FROM ghost_scan_entries WHERE request_key IN (${placeholders})`, deleteRequestKeys);
-    console.log(`[ghostDatabase] Cleaned ${deleteRequestKeys.length} stale request_key caches`);
+/// 古い request_key 世代のキャッシュ削除。実体は Rust の CleanupCaches ジョブ
+/// （ポリシー: 世代 5・TTL 30 日は Rust 側 const）。戻り値は削除世代数。
+export async function cleanupOldGhostCaches(currentRequestKey: string): Promise<void> {
+  const deleted = await invoke<number>("cleanup_ghost_caches", { currentRequestKey });
+  if (deleted > 0) {
+    console.log(`[ghostDatabase] Cleaned ${deleted} stale request_key caches`);
   }
 }
 

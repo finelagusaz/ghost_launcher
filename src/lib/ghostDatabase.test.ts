@@ -346,86 +346,13 @@ describe("ghostDatabase - getCachedFingerprint", () => {
   });
 });
 
-describe("ghostDatabase - cleanupOldGhostCaches", () => {
-  it("世代上限とTTLに基づき古い request_key を削除する", async () => {
-    const now = new Date();
-    const iso = (daysAgo: number) => new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-    mockSelect.mockResolvedValue([
-      { request_key: "rk-current", last_updated: iso(0) },
-      { request_key: "rk-recent", last_updated: iso(1) },
-      { request_key: "rk-old", last_updated: iso(40) },
-    ]);
-
+describe("cleanupOldGhostCaches", () => {
+  it("cleanup_ghost_caches IPC を camelCase 引数で呼ぶ", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    vi.mocked(invoke).mockResolvedValue(1);
     const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    await cleanupOldGhostCaches("rk-current", 2, 30);
-
-    const ghostsDeleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
-    );
-    expect(ghostsDeleteCall).toBeDefined();
-    expect(ghostsDeleteCall![1]).toEqual(["rk-old"]);
-
-    const fpDeleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghost_fingerprints WHERE request_key IN")
-    );
-    expect(fpDeleteCall).toBeDefined();
-    expect(fpDeleteCall![1]).toEqual(["rk-old"]);
-
-    // ghost_scan_entries も同一 request_key で一括削除される（走査差分キャッシュの運命共有）
-    const scanEntriesDeleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghost_scan_entries WHERE request_key IN")
-    );
-    expect(scanEntriesDeleteCall).toBeDefined();
-    expect(scanEntriesDeleteCall![1]).toEqual(["rk-old"]);
-  });
-
-  it("currentRequestKey が DB に存在しない場合でも戻り値に含まれる", async () => {
-    mockSelect.mockResolvedValue([
-      { request_key: "rk-other", last_updated: new Date().toISOString() },
-    ]);
-
-    const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    await cleanupOldGhostCaches("rk-new", 5, 30);
-
-    // rk-other は世代内なので DELETE されない
-    const deleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
-    );
-    expect(deleteCall).toBeUndefined();
-  });
-
-  it("全エントリが TTL 切れでも currentRequestKey のみ保持される（バグ修正リグレッション）", async () => {
-    const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-    mockSelect.mockResolvedValue([
-      { request_key: "rk-current", last_updated: iso(40) },
-      { request_key: "rk-stale", last_updated: iso(40) },
-    ]);
-
-    const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    await cleanupOldGhostCaches("rk-current", 5, 30);
-
-    const deleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
-    );
-    expect(deleteCall).toBeDefined();
-    expect(deleteCall![1]).toEqual(["rk-stale"]);
-  });
-
-  it("maxGenerations=0 のとき currentRequestKey のみ保持される", async () => {
-    const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-    mockSelect.mockResolvedValue([
-      { request_key: "rk-current", last_updated: iso(0) },
-      { request_key: "rk-other", last_updated: iso(1) },
-    ]);
-
-    const { cleanupOldGhostCaches } = await import("./ghostDatabase");
-    await cleanupOldGhostCaches("rk-current", 0, 30);
-
-    const deleteCall = mockExecute.mock.calls.find((c) =>
-      (c[0] as string).startsWith("DELETE FROM ghosts WHERE request_key IN")
-    );
-    expect(deleteCall).toBeDefined();
-    expect(deleteCall![1]).toEqual(["rk-other"]);
+    await cleanupOldGhostCaches("c:/ssp::");
+    expect(invoke).toHaveBeenCalledWith("cleanup_ghost_caches", { currentRequestKey: "c:/ssp::" });
   });
 });
 
