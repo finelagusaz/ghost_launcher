@@ -7,9 +7,12 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 use rusqlite::Connection;
 
-use crate::commands::ghost::store::{configure_connection, store_ghosts};
+use crate::commands::ghost::store::{
+    configure_connection, ghost_identity_key, store_ghosts_delta, ScanEntryRow,
+};
 use crate::commands::ghost::{
-    check_parent_mtimes_match, collect_parent_mtimes, scan_ghosts_with_fingerprint_internal, Ghost,
+    apply_scan_delta, check_parent_mtimes_match, collect_parent_mtimes,
+    scan_entries_with_fingerprint, scan_ghosts_with_fingerprint_internal, Ghost, ScanEntry,
 };
 
 /// クレートルートから内部経路へ到達できることを確認するプレースホルダ。
@@ -88,11 +91,46 @@ fn synth_ghost(i: usize) -> Ghost {
     }
 }
 
-/// N 行を本番の store_ghosts 経由で投入し、起動集計列を一部にばらけさせる。
+/// 合成 Ghost 群を本番 store_ghosts_delta で全 upsert する（初回 seed 相当・parse 抜き）。
+/// 各 ghost へ一意な scan_key（identity 流用）を割り当て、scan_entries も seed する。
+/// store-only 計測（store_initial / store_rescan_nodiff / seed）のセットアップ用。
+fn delta_store_ghosts(
+    conn: &Connection,
+    request_key: &str,
+    ghosts: &[Ghost],
+    fingerprint: &str,
+    parent_mtimes: &str,
+) -> Result<usize, String> {
+    let identities: Vec<String> = ghosts
+        .iter()
+        .map(|g| ghost_identity_key(&g.source, &g.directory_name))
+        .collect();
+    let scan_rows: Vec<ScanEntryRow> = ghosts
+        .iter()
+        .zip(&identities)
+        .map(|(g, id)| ScanEntryRow {
+            scan_key: id.as_str(),
+            token: g.diff_fingerprint.as_str(),
+            identity_key: id.as_str(),
+        })
+        .collect();
+    store_ghosts_delta(
+        conn,
+        request_key,
+        ghosts,
+        &[],
+        &scan_rows,
+        &[],
+        fingerprint,
+        parent_mtimes,
+    )
+}
+
+/// N 行を本番 store_ghosts_delta 経由で投入し、起動集計列を一部にばらけさせる。
 pub fn seed_ghosts_db(conn: &Connection, request_key: &str, n: usize) -> Result<(), String> {
     configure_connection(conn)?; // 書き込みは本番と同じ PRAGMA で高速化（読み取り計測とは別接続想定）
     let ghosts: Vec<Ghost> = (0..n).map(synth_ghost).collect();
-    store_ghosts(conn, request_key, &ghosts, "bench-fp", "bench-mtimes")?;
+    delta_store_ghosts(conn, request_key, &ghosts, "bench-fp", "bench-mtimes")?;
 
     // recent/frequency ソートの現実性: 25% に last_launched、一部に launch_count を付与
     conn.execute(
@@ -206,14 +244,14 @@ pub fn scan_to_handle(ssp_path: &str) -> Result<(ScannedGhosts, String), String>
     Ok((ScannedGhosts { ghosts }, fp))
 }
 
-/// ハンドルの Ghost 群を本番 store_ghosts で書き込む（差分 UPSERT）。
+/// ハンドルの Ghost 群を本番 store_ghosts_delta で書き込む（store-only 計測用・parse 抜き）。
 pub fn store_handle(
     conn: &Connection,
     request_key: &str,
     h: &ScannedGhosts,
     fp: &str,
 ) -> Result<usize, String> {
-    store_ghosts(conn, request_key, &h.ghosts, fp, "bench-mtimes")
+    delta_store_ghosts(conn, request_key, &h.ghosts, fp, "bench-mtimes")
 }
 
 /// ハンドルを実際の親 mtime 付きで書き込む。これを使うと後続の layer1_hit が真に成立する
@@ -226,7 +264,31 @@ pub fn store_with_real_mtimes(
     ssp_path: &str,
 ) -> Result<usize, String> {
     let mtimes = collect_parent_mtimes(ssp_path, &[]);
-    store_ghosts(conn, request_key, &h.ghosts, fp, &mtimes)
+    delta_store_ghosts(conn, request_key, &h.ghosts, fp, &mtimes)
+}
+
+/// 走査差分の ScanEntry 群を外部ベンチに対して opaque に保持する（granular rescan 計測用）。
+pub struct ScannedEntries {
+    entries: Vec<ScanEntry>,
+}
+
+/// 差分走査（parse なし）を 1 回行い、ScanEntry ハンドルと fingerprint を返す。
+pub fn scan_entries_to_handle(ssp_path: &str) -> Result<(ScannedEntries, String), String> {
+    let (entries, fp) = scan_entries_with_fingerprint(ssp_path, &[])?;
+    Ok((ScannedEntries { entries }, fp))
+}
+
+/// 本番の delta 経路（前回 scan_entries 読み → 差分 → 変更子だけ parse → store_ghosts_delta）を
+/// end-to-end で駆動する。granular rescan の before/after を実経路で計測する（再実装でない）。
+pub fn store_delta_entries(
+    conn: &Connection,
+    request_key: &str,
+    h: &ScannedEntries,
+    fp: &str,
+    ssp_path: &str,
+) -> Result<usize, String> {
+    let mtimes = collect_parent_mtimes(ssp_path, &[]);
+    apply_scan_delta(conn, request_key, &h.entries, fp, &mtimes)
 }
 
 /// フル走査を行い体数だけ返す（walk+parse コスト計測用）。
@@ -239,12 +301,6 @@ pub fn full_scan_count(ssp_path: &str) -> Result<usize, String> {
 /// full_scan_count との差が parse コスト。
 pub fn fingerprint_only(ssp_path: &str) -> Result<String, String> {
     crate::commands::ghost::fingerprint_only_internal(ssp_path, &[])
-}
-
-/// fingerprint_only と同一 fingerprint を返すが、逐次 is_dir を file_type に置換した版。
-/// fingerprint_only との差 = 逐次 is_dir pass 単独のコスト（token/hash と分離）。
-pub fn fingerprint_only_filetype(ssp_path: &str) -> Result<String, String> {
-    crate::commands::ghost::fingerprint_only_filetype_internal(ssp_path)
 }
 
 /// {ssp}/ghost 直下の子ディレクトリパスを列挙する（is_dir 判定はキャッシュ済み
@@ -497,69 +553,6 @@ mod tests {
 
         // parse 抜き walk でも同一トークン集合 → 同一 fingerprint
         assert_eq!(walk_fp, full_fp);
-    }
-
-    #[test]
-    fn fingerprint_only_filetype_が同一fingerprintを返す() {
-        let tmp = TempDirGuard::new("bench_fp_filetype");
-        let ssp = tmp.path().join("ssp");
-        generate_ghost_tree(&ssp, 30).unwrap();
-        let ssp_str = ssp.to_string_lossy().to_string();
-
-        // 逐次 is_dir を file_type に置換しても同一トークン集合 → 同一 fingerprint
-        assert_eq!(
-            fingerprint_only_filetype(&ssp_str).unwrap(),
-            fingerprint_only(&ssp_str).unwrap()
-        );
-    }
-
-    // 判別計測（Task 6 追補）: fingerprint_only（逐次 is_dir 込み）と
-    // fingerprint_only_filetype（file_type・逐次 is_dir なし）を同一ツリーで時間比較する。
-    // 両者の差 = 逐次 is_dir pass 単独のコスト。これで「walk コストの過半が逐次 is_dir か
-    // token/hash か」を切り分ける。#[ignore]（診断・手動実行）。
-    // 実行: cargo test --features bench -- --ignored --nocapture 逐次is_dir
-    #[test]
-    #[ignore = "診断: 逐次 is_dir vs token/hash の切り分け計測（手動・--nocapture）"]
-    fn 逐次is_dirとfiletypeの時間差を計測する() {
-        use std::time::Instant;
-        const N: usize = 30_000;
-        const ITERS: u32 = 5;
-
-        let tmp = TempDirGuard::new("bench_isdir_discriminate");
-        let ssp = tmp.path().join("ssp");
-        generate_ghost_tree(&ssp, N).unwrap();
-        let ssp_str = ssp.to_string_lossy().to_string();
-
-        // warm up（OS キャッシュ）
-        let _ = fingerprint_only(&ssp_str).unwrap();
-        let _ = fingerprint_only_filetype(&ssp_str).unwrap();
-
-        let mut best_seq = f64::MAX;
-        let mut best_ft = f64::MAX;
-        for _ in 0..ITERS {
-            let t0 = Instant::now();
-            let _ = fingerprint_only(&ssp_str).unwrap();
-            best_seq = best_seq.min(t0.elapsed().as_secs_f64());
-
-            let t1 = Instant::now();
-            let _ = fingerprint_only_filetype(&ssp_str).unwrap();
-            best_ft = best_ft.min(t1.elapsed().as_secs_f64());
-        }
-
-        println!(
-            "\n[判別計測 N={N}] fingerprint_only(逐次is_dir込み)={:.1}ms  \
-             fingerprint_only_filetype(is_dirなし)={:.1}ms  \
-             逐次is_dir単独≈{:.1}ms（差 {:.0}%）",
-            best_seq * 1000.0,
-            best_ft * 1000.0,
-            (best_seq - best_ft) * 1000.0,
-            (best_seq - best_ft) / best_seq * 100.0,
-        );
-        // 同値であることも確認
-        assert_eq!(
-            fingerprint_only_filetype(&ssp_str).unwrap(),
-            fingerprint_only(&ssp_str).unwrap()
-        );
     }
 
     #[test]

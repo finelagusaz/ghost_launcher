@@ -43,6 +43,21 @@ pub(crate) fn push_absent_parent_token(
     ));
 }
 
+/// 存在する親ディレクトリの親エントリトークンを生成する。
+/// production walk（walk_parent）と delta walk（walk_parent_entries）が同一の親トークンを
+/// 生成することを保証し、fingerprint のバイト一致（drift 防止）を構造的に担保する。
+pub(crate) fn push_present_parent_token(
+    tokens: &mut Vec<String>,
+    parent_label: &str,
+    normalized_parent: &str,
+    modified: &str,
+) {
+    tokens.push(format!(
+        "parent|{}|{}|{}",
+        parent_label, normalized_parent, modified
+    ));
+}
+
 /// ゴーストエントリ1件分のフィンガープリントトークンを生成する（pure function）。
 /// 戻り値: (token_string, descript_state)
 /// descript_state は "missing" / "present" / "unreadable" のいずれか。

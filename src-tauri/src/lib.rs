@@ -98,6 +98,17 @@ pub(crate) fn migrations() -> Vec<tauri_plugin_sql::Migration> {
             sql: "DROP TABLE IF EXISTS ghost_launches;",
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 14,
+            description: "create_ghost_scan_entries_table",
+            // 走査差分（delta）用の per-row テーブル。scan_key（生の物理キー）→ token を保持し、
+            // Layer 2 ミス時に変更子だけ再 parse するための前回状態を担う。ghost_identity_key は
+            // 削除子の ghosts 操作・一意性ガードに使う畳み込みキー。WITHOUT ROWID で
+            // (request_key, scan_key, token, ghost_identity_key) を単一 B-tree のカバリング構成にする。
+            // 揮発キャッシュ（ghosts と運命共有・request_key で一括削除）。
+            sql: "CREATE TABLE IF NOT EXISTS ghost_scan_entries (\n  request_key TEXT NOT NULL,\n  scan_key TEXT NOT NULL,\n  token TEXT NOT NULL,\n  ghost_identity_key TEXT NOT NULL,\n  PRIMARY KEY (request_key, scan_key)\n) WITHOUT ROWID;",
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ]
 }
 

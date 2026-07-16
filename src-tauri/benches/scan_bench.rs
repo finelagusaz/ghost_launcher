@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    add_one_ghost, fingerprint_only, fingerprint_only_filetype, full_scan_count,
-    generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle, store_handle,
+    add_one_ghost, fingerprint_only, full_scan_count, generate_ghost_tree, layer1_hit,
+    open_bench_db, scan_entries_to_handle, scan_to_handle, store_delta_entries, store_handle,
     store_with_real_mtimes, walk_dir_mtime, walk_full, walk_nameset,
 };
 
@@ -54,13 +54,10 @@ fn bench_scan(c: &mut Criterion) {
         });
 
         // walk スペクトラム（parse 抜き・各 fidelity レベル）
-        group.bench_function("walk_full_fidelity_3stat", |b| {
+        // 本番 walk（file_type・token+hash 込み）。full_scan との差が parse コスト。
+        // Phase 2 で本番の逐次 is_dir は file_type 化済みのため、これが本番の walk 実体。
+        group.bench_function("walk_full_fidelity", |b| {
             b.iter(|| fingerprint_only(&ssp_str).unwrap());
-        });
-        // full fidelity のまま逐次 is_dir を file_type に置換（同一 fingerprint・F-04 不変）。
-        // walk_full_fidelity_3stat との差 = 逐次 is_dir pass 単独のコスト。
-        group.bench_function("walk_full_fidelity_filetype", |b| {
-            b.iter(|| fingerprint_only_filetype(&ssp_str).unwrap());
         });
         group.bench_function("walk_full_2stat_filetype", |b| {
             b.iter(|| walk_full(&ssp_str).unwrap());
@@ -106,8 +103,9 @@ fn bench_scan(c: &mut Criterion) {
             });
         }
 
-        // 1体変更→再走査（現行ベースライン）: setup で 1 体追加し Layer1 ミス+差分1を強制、
-        // routine でフル walk+parse + store 差分（現行の miss 経路）を測る。
+        // 1体変更→再走査（before・全 parse）: setup で 1 体追加し Layer1 ミス+差分1を強制、
+        // routine でフル walk+parse（scan_ghosts_with_fingerprint_internal 相当）+ store を測る。
+        // Phase 2 の delta 導入前に相当する上限コスト（full_scan と同オーダー）。
         {
             let conn = open_bench_db(&guard.path().join("rescan.db")).unwrap();
             store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
@@ -120,6 +118,29 @@ fn bench_scan(c: &mut Criterion) {
                     |_| {
                         let (h, f) = scan_to_handle(&ssp_str).unwrap();
                         store_handle(&conn, "rk", &h, &f).unwrap();
+                    },
+                    criterion::BatchSize::PerIteration,
+                );
+            });
+        }
+
+        // 1体変更→再走査（after・granular delta）: 本番の delta 経路を end-to-end で駆動する。
+        // 差分走査（file_type walk・parse 抜き）+ apply_scan_delta（前回 scan_entries 読み → 差分 →
+        // 変更子だけ parse → store_ghosts_delta）。Phase 2 の目標値（~1.05s warm）を実測する。
+        {
+            let conn = open_bench_db(&guard.path().join("rescan_delta.db")).unwrap();
+            // 事前に現ツリーで seed（scan_entries も作り、以降の delta 差分を成立させる）
+            let (h0, f0) = scan_entries_to_handle(&ssp_str).unwrap();
+            store_delta_entries(&conn, "rk", &h0, &f0, &ssp_str).unwrap();
+            group.bench_function("rescan_one_change_delta", |b| {
+                b.iter_batched(
+                    || {
+                        let tag = fastrand_like() as usize;
+                        add_one_ghost(&ssp_str, tag).unwrap();
+                    },
+                    |_| {
+                        let (h, f) = scan_entries_to_handle(&ssp_str).unwrap();
+                        store_delta_entries(&conn, "rk", &h, &f, &ssp_str).unwrap();
                     },
                     criterion::BatchSize::PerIteration,
                 );

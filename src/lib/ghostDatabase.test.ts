@@ -395,6 +395,13 @@ describe("ghostDatabase - cleanupOldGhostCaches", () => {
     );
     expect(fpDeleteCall).toBeDefined();
     expect(fpDeleteCall![1]).toEqual(["rk-old"]);
+
+    // ghost_scan_entries も同一 request_key で一括削除される（走査差分キャッシュの運命共有）
+    const scanEntriesDeleteCall = mockExecute.mock.calls.find((c) =>
+      (c[0] as string).startsWith("DELETE FROM ghost_scan_entries WHERE request_key IN")
+    );
+    expect(scanEntriesDeleteCall).toBeDefined();
+    expect(scanEntriesDeleteCall![1]).toEqual(["rk-old"]);
   });
 
   it("currentRequestKey が DB に存在しない場合でも戻り値に含まれる", async () => {

@@ -124,6 +124,9 @@ export async function cleanupOldGhostCaches(
     const placeholders = buildInClausePlaceholders(deleteRequestKeys.length);
     await db.execute(`DELETE FROM ghosts WHERE request_key IN (${placeholders})`, deleteRequestKeys);
     await db.execute(`DELETE FROM ghost_fingerprints WHERE request_key IN (${placeholders})`, deleteRequestKeys);
+    // ghost_scan_entries は走査差分の前回状態（ghosts と運命共有の揮発キャッシュ）。
+    // 同一 request_key で一括削除し、古い世代の scan_entries が残留しないようにする。
+    await db.execute(`DELETE FROM ghost_scan_entries WHERE request_key IN (${placeholders})`, deleteRequestKeys);
     console.log(`[ghostDatabase] Cleaned ${deleteRequestKeys.length} stale request_key caches`);
   }
 }
