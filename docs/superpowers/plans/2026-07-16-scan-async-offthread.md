@@ -11,11 +11,13 @@
 ## Global Constraints
 
 - IPC の**引数・成功戻り値の型**（`ScanStoreResult`）は不変。フロントの**コード**変更なし。
-- ロックは **scan-scan 間 ＋ reset** を直列化。**順序（要求順=反映順）は保証しない**。走査は**キャンセルしない**。
+- ロックは **scan-scan 間 ＋ reset ＋ record_launch** を直列化。**順序（要求順=反映順）は保証しない**。走査は**キャンセルしない**。
 - `ScanCoordinator = Arc<Mutex<()>>`。poison は `lock().unwrap_or_else(|e| e.into_inner())` で回復。
 - 既存 scan/delta の**結果 payload は不変**（現行本体を内部 `fn` へ移すだけ）。
-- ロックの保護範囲は scan/reset のみ。`record_launch`（集計列/backfill）・`cleanupOldGhostCaches`（別 request_key）は
+- ロックの保護範囲は scan/reset/record_launch。`cleanupOldGhostCaches`（別 request_key）は
   SQLite WAL の writer 直列化＋`busy_timeout` に委ね、ロック対象にしない。
+  （record_launch は当初ロック対象外としたが、backfill の SELECT→絶対値 UPDATE との lost update が
+  レビューで判明しロック対象へ変更。設計書 §4 参照）
 - 設計書: `docs/superpowers/specs/2026-07-16-scan-async-offthread-design.md`。
 
 ---

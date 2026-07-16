@@ -9,20 +9,19 @@ pub async fn reset_ghost_db<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
     coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
 ) -> Result<(), String> {
-    let lock = coordinator.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-        let db_dir = db_path::ghost_db_dir(&app_handle)?;
-        for filename in db_path::GHOST_DB_FILES {
-            let path = db_dir.join(filename);
-            if path.exists() {
-                std::fs::remove_file(&path).map_err(|e| format!("{filename} の削除に失敗: {e}"))?;
+    coordinator
+        .run_serialized("DB リセットタスク", move || {
+            let db_dir = db_path::ghost_db_dir(&app_handle)?;
+            for filename in db_path::GHOST_DB_FILES {
+                let path = db_dir.join(filename);
+                if path.exists() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("{filename} の削除に失敗: {e}"))?;
+                }
             }
-        }
-        Ok::<(), String>(())
-    })
-    .await
-    .map_err(|e| format!("DB リセットタスクの実行に失敗しました: {e}"))?
+            Ok(())
+        })
+        .await
 }
 
 // lock 配線の回帰ガードは統合テスト（tests/lock_wiring.rs）に置く。

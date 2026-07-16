@@ -114,14 +114,27 @@ pub(crate) fn migrate_legacy_launch_history(
 }
 
 /// 起動履歴を記録する Tauri コマンド。user-data.db へ INSERT し ghosts.db の集計列を bump する。
+/// scan/reset と同一の ScanCoordinator ロックで直列化する: backfill は「user-data SELECT →
+/// ghosts へ絶対値 UPDATE」の read-modify-write であり、その間に本コマンドの相対 bump（+1）が
+/// 割り込むと集計列が古い絶対値で巻き戻る（lost update）。SQLite WAL の文単位直列化では防げない。
+/// 別スレッド実行のためメインスレッドはロック待ちで固まらない。
+/// `<R>` はテストで `MockRuntime` を渡せるようにするためのランタイム総称化（本番は `Wry` に推論）。
 #[tauri::command]
-pub fn record_launch(app: tauri::AppHandle, ghost_identity_key: String) -> Result<(), String> {
-    let user_conn = open_user_data_db(&app)?;
-    let ghosts_path = crate::db_path::ghost_db_path(&app)?;
-    let ghosts_conn =
-        Connection::open(&ghosts_path).map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
-    crate::commands::ghost::store::configure_connection(&ghosts_conn)?;
-    record_launch_inner(&user_conn, &ghosts_conn, &ghost_identity_key)
+pub async fn record_launch<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    ghost_identity_key: String,
+    coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
+) -> Result<(), String> {
+    coordinator
+        .run_serialized("起動履歴タスク", move || {
+            let user_conn = open_user_data_db(&app)?;
+            let ghosts_path = crate::db_path::ghost_db_path(&app)?;
+            let ghosts_conn = Connection::open(&ghosts_path)
+                .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
+            crate::commands::ghost::store::configure_connection(&ghosts_conn)?;
+            record_launch_inner(&user_conn, &ghosts_conn, &ghost_identity_key)
+        })
+        .await
 }
 
 #[cfg(test)]

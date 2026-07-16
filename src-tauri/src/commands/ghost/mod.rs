@@ -56,15 +56,12 @@ pub async fn scan_and_store<R: tauri::Runtime>(
     cached_fingerprint: Option<String>,
     coordinator: tauri::State<'_, crate::scan_coordinator::ScanCoordinator>,
 ) -> Result<ScanStoreResult, String> {
-    // State は await をまたげないため Arc を先に取り出す。
-    let lock = coordinator.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        // scan-scan 間を直列化（lost update 防止）。poison は into_inner で回復。
-        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-        scan_and_store_blocking(&app, ssp_path, additional_folders, request_key, cached_fingerprint)
-    })
-    .await
-    .map_err(|e| format!("スキャンタスクの実行に失敗しました: {e}"))?
+    // scan/reset/record_launch を直列化（lost update 防止）。
+    coordinator
+        .run_serialized("スキャンタスク", move || {
+            scan_and_store_blocking(&app, ssp_path, additional_folders, request_key, cached_fingerprint)
+        })
+        .await
 }
 
 /// 現行 `scan_and_store` の同期本体（挙動不変）。`spawn_blocking` の別スレッドで実行される。

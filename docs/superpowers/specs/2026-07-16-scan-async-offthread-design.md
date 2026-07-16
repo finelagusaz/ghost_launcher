@@ -76,9 +76,13 @@ UI が固まる——アプローチ2 の受け入れ基準「**走査中に UI 
     ただし各 scan はロック取得後に**現在の FS**を読むため、最終 DB 状態はどの scan が最後でも「現在の FS の反映」に
     収束し、順序非依存で実害はない（2 scan 間で FS が変わる稀なケースの一過性のみ）。順序保証が要件化したら
     dedicated scan queue / 世代番号 coordinator を別途検討（現状 YAGNI）。
-- **ロックの保護範囲は scan-scan 間に限定**する。同じ ghosts.db の他 writer との関係:
-  - `record_launch`（`launch_history.rs:118-124`）は同一行の**集計列**（`last_launched`/`launch_count`）のみ更新し、
-    `store_ghosts_delta` は集計列不可侵＋commit 後 backfill 再導出ゆえ**論理的に独立**。
+- **ロックの保護範囲は scan-scan 間 ＋ reset（§6）＋ record_launch**（後二者は実装で確定・当初設計の訂正）。
+  同じ ghosts.db の他 writer との関係:
+  - `record_launch`（`launch_history.rs`）は**同一ロックで直列化**する（レビュー指摘による訂正）。当初は
+    「集計列のみ更新＋`store_ghosts_delta` は集計列不可侵ゆえ論理的に独立」と判断したが、scan 側の backfill は
+    「user-data SELECT → ghosts へ**絶対値** UPDATE」の read-modify-write であり、その間に record_launch の
+    **相対** bump（+1）が割り込むと集計が古い絶対値で巻き戻る lost update が成立する（WAL の文単位直列化では
+    防げない）。record_launch も async + `spawn_blocking` 化してロックを取る。
   - `cleanupOldGhostCaches`（`ghostDatabase.ts:123-129`）は**別 request_key** を削除（現 request_key は keep）ゆえ
     scan 対象行と**非交差**。
   - いずれも物理的には SQLite WAL の writer 直列化＋`busy_timeout` で守られる（破損しない）。

@@ -14,6 +14,8 @@ pub use commands::db::reset_ghost_db;
 #[doc(hidden)]
 pub use commands::ghost::scan_and_store;
 #[doc(hidden)]
+pub use commands::launch_history::record_launch;
+#[doc(hidden)]
 pub use scan_coordinator::ScanCoordinator;
 
 // マイグレーション追加時の注意:
