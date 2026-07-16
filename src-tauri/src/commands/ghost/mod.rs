@@ -50,6 +50,19 @@ pub async fn scan_and_store(
         .map_err(|_| "DB アクターから応答がありません".to_string())?
 }
 
+/// 古い request_key 世代のキャッシュを削除するコマンド（設計書 §5.1 の契約）。
+/// 戻り値は削除した request_key 数（JS はログにのみ使用）。
+#[tauri::command]
+pub async fn cleanup_ghost_caches(
+    current_request_key: String,
+    actor: tauri::State<'_, crate::actor::ActorHandle>,
+) -> Result<u32, String> {
+    let (reply, rx) = tokio::sync::oneshot::channel();
+    actor.send(crate::actor::Job::CleanupCaches { current_request_key, reply })?;
+    rx.await
+        .map_err(|_| "DB アクターから応答がありません".to_string())?
+}
+
 /// `scan_and_store` の同期本体。DB アクタースレッド上で `run_guarded` 経由に呼ばれる
 /// （接続はアクターが所有し、常にスキーマ確定済みであることが呼び出し側の不変条件）。
 ///

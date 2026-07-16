@@ -240,6 +240,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::ghost::scan_and_store,
+            commands::ghost::cleanup_ghost_caches,
             commands::launch_history::record_launch,
             commands::ssp::launch_ghost,
             commands::ssp::validate_ssp_path,

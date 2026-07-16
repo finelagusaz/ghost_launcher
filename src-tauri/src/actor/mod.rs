@@ -61,6 +61,10 @@ fn sanitize(db_dir: &std::path::Path, ghosts_path: &std::path::Path) {
     }
 }
 
+/// cleanup ポリシー（設計書 §5.1。JS 時代の既定値を Rust 定数化）
+const CLEANUP_MAX_GENERATIONS: usize = 5;
+const CLEANUP_TTL_DAYS: i64 = 30;
+
 /// ghosts.db への書き込みの全種類（設計書 §3）。新しい writer は必ずここに variant を足す。
 pub(crate) enum Job {
     RecordLaunch {
@@ -73,6 +77,10 @@ pub(crate) enum Job {
         request_key: String,
         cached_fingerprint: Option<String>,
         reply: oneshot::Sender<Result<crate::commands::ghost::ScanStoreResult, String>>,
+    },
+    CleanupCaches {
+        current_request_key: String,
+        reply: oneshot::Sender<Result<u32, String>>,
     },
     /// テスト専用: run_guarded の panic 隔離・接続健全性を検証するための故意 panic。
     #[cfg(test)]
@@ -135,6 +143,14 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
             let result = run_guarded(ghosts, |g| {
                 crate::commands::ghost::scan_and_store_blocking(
                     g, user, ssp_path, additional_folders, request_key, cached_fingerprint,
+                )
+            });
+            let _ = reply.send(result);
+        }
+        Job::CleanupCaches { current_request_key, reply } => {
+            let result = run_guarded(ghosts, |g| {
+                crate::commands::ghost::store::cleanup_old_ghost_caches(
+                    g, &current_request_key, CLEANUP_MAX_GENERATIONS, CLEANUP_TTL_DAYS,
                 )
             });
             let _ = reply.send(result);
