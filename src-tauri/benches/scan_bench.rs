@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    full_scan_count, generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle, store_handle,
-    store_with_real_mtimes,
+    add_one_ghost, full_scan_count, generate_ghost_tree, layer1_hit, open_bench_db, scan_to_handle,
+    store_handle, store_with_real_mtimes,
 };
 
 /// ベンチ用の一時ディレクトリガード（lib 内部 TempDirGuard は非 pub のためローカルに持つ）。
@@ -83,6 +83,26 @@ fn bench_scan(c: &mut Criterion) {
             store_handle(&conn, "rk", &handle, &fp).unwrap();
             group.bench_function("store_rescan_nodiff", |b| {
                 b.iter(|| store_handle(&conn, "rk", &handle, &fp).unwrap());
+            });
+        }
+
+        // 1体変更→再走査（現行ベースライン）: setup で 1 体追加し Layer1 ミス+差分1を強制、
+        // routine でフル walk+parse + store 差分（現行の miss 経路）を測る。
+        {
+            let conn = open_bench_db(&guard.path().join("rescan.db")).unwrap();
+            store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
+            group.bench_function("rescan_one_change", |b| {
+                b.iter_batched(
+                    || {
+                        let tag = fastrand_like() as usize;
+                        add_one_ghost(&ssp_str, tag).unwrap();
+                    },
+                    |_| {
+                        let (h, f) = scan_to_handle(&ssp_str).unwrap();
+                        store_handle(&conn, "rk", &h, &f).unwrap();
+                    },
+                    criterion::BatchSize::PerIteration,
+                );
             });
         }
 

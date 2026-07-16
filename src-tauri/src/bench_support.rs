@@ -179,6 +179,22 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
     Ok(ssp_root.to_path_buf())
 }
 
+/// 既存ツリーに一意名（dir_added_{tag}）のゴースト1体を追加する。
+/// 親 {ssp}/ghost の mtime を bump するため、以後の layer1 判定はミスする。
+pub fn add_one_ghost(ssp_path: &str, tag: usize) -> Result<(), String> {
+    let master = Path::new(ssp_path)
+        .join("ghost")
+        .join(format!("dir_added_{tag:09}"))
+        .join("ghost")
+        .join("master");
+    fs::create_dir_all(&master).map_err(|e| format!("mkdir added: {e}"))?;
+    fs::write(
+        master.join("descript.txt"),
+        format!("charset,UTF-8\nname,追加{tag}\n"),
+    )
+    .map_err(|e| format!("write added: {e}"))
+}
+
 /// スキャン結果の Ghost 群を外部ベンチに対して opaque に保持する。
 pub struct ScannedGhosts {
     ghosts: Vec<Ghost>,
@@ -489,6 +505,25 @@ mod tests {
         assert_eq!(walk_full(&ssp_str).unwrap(), 50);
         // 本番フル走査の体数とも一致（全子に descript 有り）
         assert_eq!(full_scan_count(&ssp_str).unwrap(), 50);
+    }
+
+    #[test]
+    fn add_one_ghost_が体数を1増やしlayer1をミスさせる() {
+        let tmp = TempDirGuard::new("bench_add_one");
+        let ssp = tmp.path().join("ssp");
+        generate_ghost_tree(&ssp, 20).unwrap();
+        let ssp_str = ssp.to_string_lossy().to_string();
+
+        // 初期状態を real mtimes で保存 → layer1 hit する
+        let (handle, fp) = scan_to_handle(&ssp_str).unwrap();
+        let conn = open_bench_db(&tmp.path().join("ghosts.db")).unwrap();
+        store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
+        assert!(layer1_hit(&conn, "rk", &ssp_str));
+
+        // 1 体追加 → 体数 +1、layer1 ミス
+        add_one_ghost(&ssp_str, 1).unwrap();
+        assert_eq!(full_scan_count(&ssp_str).unwrap(), 21);
+        assert!(!layer1_hit(&conn, "rk", &ssp_str), "追加で親 mtime が変わり miss のはず");
     }
 
     // ハーネス核心の不変条件を縛る（scan_bench の debug_assert! は bench プロファイルで no-op のため
