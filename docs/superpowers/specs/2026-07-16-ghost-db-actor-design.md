@@ -143,9 +143,14 @@ fn ensure_cache_schema(conn: &rusqlite::Connection) -> Result<(), String> {
 - 既存ユーザーは `user_version=0`（sqlx は設定しない）→ 初回起動で自動リビルド＝移行完了。
   **前提として §2.1 の順序（legacy 移送が先）を厳守**
 - **user-data.db は現行のまま**（`ensure_schema` の追加式・絶対に DROP しない）
+- **起動時の ensure_cache_schema 失敗は fs 削除リトライ 1 回で回収する**（レビュー指摘の裁定）:
+  sqlx migration 層の撤去でスキーマ修復経路が単一層化するため、起動時（webview 前・fs 削除が
+  安全な唯一のタイミング）に失敗したら GHOST_DB_FILES を削除して作り直しを 1 回だけ試行する。
+  2 回目の失敗（disk full・権限等）は eprintln のみで起動を続行する（キャッシュ不能でも
+  アプリは動かす）。この回復は Phase 1 の `init_cache_schema` と Phase 2 の `bootstrap` の両方に置く
 - **実行時破損の回復は次回起動へ委ねる**（受容宣言）: 稼働中に SQLITE_CORRUPT 級の破損が
   起きた場合、本設計にはランタイム回復手段がない（旧方式は JS 回復パス→fs 削除が効いた）。
-  次回起動の最小 sanitize（open 不能→fs 削除）が回収する。頻度極小のため許容する
+  次回起動の sanitize＋上記リトライが回収する。頻度極小のため許容する
 - **ダウングレード**: リビルド済み DB（`_sqlx_migrations` 不在）を旧バージョンで開くと、
   旧 `Database.load` が migration エラー→旧 `reset_ghost_db`（fs 削除）→再スキャンで復旧する
   見込み（低頻度のため実装では検証しない。ここに挙動想定を記録するに留める）

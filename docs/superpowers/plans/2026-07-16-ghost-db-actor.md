@@ -845,11 +845,10 @@ pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
         }
     }
 
-    // (3) ghosts を開きスキーマ確定（webview ロード前なので初回 SELECT は必ず確定後）
-    let mut ghosts_conn = rusqlite::Connection::open(&ghosts_path)
-        .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
-    crate::commands::ghost::store::configure_connection(&ghosts_conn)?;
-    crate::cache_schema::ensure_cache_schema(&mut ghosts_conn)?;
+    // (3) ghosts を開きスキーマ確定（webview ロード前なので初回 SELECT は必ず確定後）。
+    //     失敗時は fs 削除リトライ 1 回（Task 3 の init_cache_schema_at と同一の回復。
+    //     設計書 §4 の裁定 — Phase 1 で導入済みのヘルパーを流用する）
+    let ghosts_conn = crate::cache_schema::open_with_recovery(&ghosts_path)?;
 
     // (4) 所有権 move でスレッド起動
     Ok(spawn_actor(ghosts_conn, user_conn))
