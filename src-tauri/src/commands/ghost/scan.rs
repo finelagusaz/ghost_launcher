@@ -133,11 +133,20 @@ pub(crate) fn walk_parent(
     };
 
     // エントリを Vec に収集（par_iter の前提）
-    // is_dir() のフィルタは逐次で行い、OS ディレクトリハンドルを早期に解放する
+    // 子の絞り込みは逐次で行い、OS ディレクトリハンドルを早期に解放する。
+    // 通常のディレクトリ／ファイルは read_dir がキャッシュした find-data の file_type() で
+    // 判定し（syscall ゼロ）、100k 規模の逐次 is_dir(stat) を消す。ただし file_type() は
+    // symlink/junction（reparse point）の実体を辿らず dir を false と返すため、reparse point
+    // または file_type 取得失敗のときだけ fs::metadata で実体解決する（従来 is_dir() が
+    // reparse point を辿ってゴーストを拾っていた挙動を保存する）。
     let paths: Vec<PathBuf> = entries
         .filter_map(|e| e.ok())
+        .filter(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => true,
+            Ok(t) if t.is_file() => false,
+            _ => fs::metadata(e.path()).map(|m| m.is_dir()).unwrap_or(false),
+        })
         .map(|e| e.path())
-        .filter(|p| p.is_dir())
         .collect();
 
     // 並列処理: 各エントリのトークン生成 + Ghost 読み取り

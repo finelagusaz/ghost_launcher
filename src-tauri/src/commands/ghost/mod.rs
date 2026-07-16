@@ -374,4 +374,52 @@ mod tests {
         assert_eq!(standalone, integrated);
         Ok(())
     }
+
+    /// 回帰: 子ディレクトリが junction（reparse point）でも、その先が実体ディレクトリなら
+    /// ゴーストとして収集されること。`Path::is_dir()` は junction を辿るため現状も拾える。
+    /// walk_parent の子絞り込みを `file_type()`（reparse point を false と返す）へ置換する際、
+    /// symlink/junction を取りこぼさないフォールバックが要ることを縛る。
+    /// junction は特権不要のため CI(windows-latest) でも実行できる（symlink は Developer Mode 必須）。
+    #[cfg(windows)]
+    #[test]
+    fn scan_ghosts_internal_collects_junction_linked_ghost() -> Result<(), String> {
+        use std::process::Command;
+
+        let workspace = TempDirGuard::new("ghost_launcher_junction_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        // 通常の実体ゴースト（回帰の基準・junction が通常収集を壊さないこと）
+        create_ghost_dir_with_descript(&ssp_ghost, "normal_ghost", "name,Normal\ncharset,UTF-8\n")?;
+
+        // junction の実体をツリー外に作る（ssp/ghost の直下ではない）
+        let external = workspace.path().join("external");
+        create_ghost_dir_with_descript(&external, "real_target", "name,Linked\ncharset,UTF-8\n")?;
+        let target = external.join("real_target");
+        let link = ssp_ghost.join("linked_ghost");
+
+        // mklink /J は特権不要の directory junction を作る（cmd の内部コマンド）
+        let status = Command::new("cmd")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&link)
+            .arg(&target)
+            .status()
+            .map_err(|error| format!("mklink 起動に失敗: {}", error))?;
+        assert!(status.success(), "mklink /J が失敗した: {:?}", status);
+
+        let (ghosts, _) = scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[])?;
+
+        assert!(
+            ghosts.iter().any(|g| g.name == "Normal"),
+            "通常ゴーストが収集されていない"
+        );
+        assert!(
+            ghosts.iter().any(|g| g.name == "Linked"),
+            "junction 越しのゴーストが取りこぼされた"
+        );
+        Ok(())
+    }
 }
