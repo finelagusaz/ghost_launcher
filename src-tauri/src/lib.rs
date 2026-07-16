@@ -1,5 +1,6 @@
 mod commands;
 mod db_path;
+mod scan_coordinator;
 #[cfg(test)]
 pub(crate) mod testutil;
 #[cfg(feature = "bench")]
@@ -380,6 +381,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(scan_coordinator::ScanCoordinator::default())
         .setup(|app| {
             sanitize_ghost_db(app);
             init_user_data(app);
