@@ -143,7 +143,7 @@ mod tests {
 
     fn ghosts_conn_with_row(identity_key: &str) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        crate::testutil::apply_cache_schema(&conn);
         conn.execute(
             "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
             rusqlite::params![identity_key],
@@ -270,12 +270,12 @@ mod tests {
         .unwrap();
     }
 
-    // アップグレード（旧 ghosts.db に同居した履歴）とリセット（ghosts.db 削除）を
-    // 実ファイル DB で通し、issue #93 の不変条件「キャッシュのリセットは永続履歴を失わせない」を
-    // end-to-end で検証する。setup 移送 → migration 12/13 → スキャン backfill → リセット → 再スキャンの順。
+    // 旧世代（migration 1..=11 の ghosts.db・履歴同居）からのアップグレードで、
+    // legacy 移送 → ensure_cache_schema（全 DROP リビルド）の順序により
+    // 永続履歴が保持され集計へ再導出されることを検証する（設計書 §2.1/§9・issue #93/#146）。
     #[test]
-    fn アップグレードとリセットを通じて起動履歴が保持され集計へ再導出される() {
-        let dir = crate::testutil::TempDirGuard::new("ghost_launcher_upgrade_reset_test");
+    fn アップグレードのリビルドを通じて起動履歴が保持され集計へ再導出される() {
+        let dir = crate::testutil::TempDirGuard::new("ghost_launcher_upgrade_rebuild_test");
         let ghosts_path = dir.path().join("ghosts.db");
         let user_path = dir.path().join("user-data.db");
 
@@ -297,7 +297,7 @@ mod tests {
             }
         }
 
-        // アップグレード setup 相当: user-data 初期化 + legacy 移送（JS の migration DROP より前に走る）
+        // 起動シーケンス（設計書 §2.1 の順序）: (2) legacy 移送 → (3) リビルド
         {
             let user_conn = Connection::open(&user_path).unwrap();
             ensure_schema(&user_conn).unwrap();
@@ -308,60 +308,34 @@ mod tests {
                 .unwrap();
             assert_eq!(n, 2, "旧履歴が user-data.db へ移送される");
         }
-
-        // JS の Database.load 相当: migration 12/13（集計列追加 + 旧テーブル DROP）
         {
-            let conn = Connection::open(&ghosts_path).unwrap();
-            let mut migs = crate::migrations();
-            migs.sort_by_key(|m| m.version);
-            for m in migs.iter().filter(|m| m.version >= 12) {
-                conn.execute_batch(m.sql).unwrap();
-            }
-            let has: i64 = conn
+            let mut conn = Connection::open(&ghosts_path).unwrap();
+            crate::cache_schema::ensure_cache_schema(&mut conn).unwrap(); // user_version=0 → 全 DROP リビルド
+            let has_legacy: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ghost_launches'",
                     [],
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert_eq!(has, 0, "旧 ghost_launches は ghosts.db から除去される");
+            assert_eq!(has_legacy, 0, "リビルドで旧テーブルは消える（移送済みなので安全）");
         }
 
-        // スキャン相当: backfill で集計列へ再導出（アップグレード後の recent/frequency 復元）
+        // 再スキャン相当: 行再投入 + backfill → 集計が移送済み履歴から復元される
         {
-            let ghosts_conn = Connection::open(&ghosts_path).unwrap();
+            let conn = Connection::open(&ghosts_path).unwrap();
+            insert_ghost_row(&conn, "sspg");
             let user_conn = Connection::open(&user_path).unwrap();
-            backfill_aggregates(&ghosts_conn, &user_conn).unwrap();
-            let (c, last): (i64, Option<String>) = ghosts_conn
+            backfill_aggregates(&conn, &user_conn).unwrap();
+            let (c, last): (i64, Option<String>) = conn
                 .query_row(
                     "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key='sspg'",
                     [],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .unwrap();
-            assert_eq!(c, 2, "アップグレード後、集計列が移送済み履歴から復元される");
+            assert_eq!(c, 2, "リビルド後も user-data.db の履歴から集計が復元される");
             assert_eq!(last.as_deref(), Some("2026-01-02 00:00:00"));
-        }
-
-        // リセット相当: ghosts.db を削除、user-data.db は残す
-        std::fs::remove_file(&ghosts_path).unwrap();
-        assert!(user_path.exists(), "user-data.db はリセット対象外で残存する");
-
-        // リセット後の再スキャン: ghosts.db を全 migration で再作成 + 行再投入 + backfill
-        {
-            let conn = Connection::open(&ghosts_path).unwrap();
-            crate::testutil::apply_all_migrations(&conn);
-            insert_ghost_row(&conn, "sspg");
-            let user_conn = Connection::open(&user_path).unwrap();
-            backfill_aggregates(&conn, &user_conn).unwrap();
-            let c: i64 = conn
-                .query_row(
-                    "SELECT launch_count FROM ghosts WHERE ghost_identity_key='sspg'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap();
-            assert_eq!(c, 2, "リセット後も user-data.db の履歴から集計が復元される（#93 の核心）");
         }
     }
 }

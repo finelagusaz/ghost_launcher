@@ -1,13 +1,8 @@
-/// 全マイグレーションを version 昇順で適用する（テスト用 DB 初期化の単一ヘルパー）。
-/// 部分適用（`take(n)`・version フィルタ）が要るテストは対象外で、各自ループを書く。
-pub(crate) fn apply_all_migrations(conn: &rusqlite::Connection) {
-    let mut sorted = crate::migrations();
-    sorted.sort_by_key(|m| m.version);
-    for m in &sorted {
-        conn.execute_batch(m.sql).unwrap_or_else(|e| {
-            panic!("migration {} ({}) failed: {}", m.version, m.description, e)
-        });
-    }
+/// 現行キャッシュスキーマを適用する（テスト用 DB 初期化の単一ヘルパー）。
+/// 旧 apply_all_migrations の後継。migration 由来ではなく CACHE_SCHEMA が単一権威。
+pub(crate) fn apply_cache_schema(conn: &rusqlite::Connection) {
+    conn.execute_batch(crate::cache_schema::CACHE_SCHEMA)
+        .unwrap_or_else(|e| panic!("cache schema の適用に失敗: {e}"));
 }
 
 /// テスト用の一時ディレクトリ。Drop 時に自動削除される。

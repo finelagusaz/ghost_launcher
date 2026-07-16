@@ -290,7 +290,7 @@ mod tests {
     /// マイグレーション適用済みのインメモリ ghosts DB（apply_scan_delta の直接テスト用）。
     fn in_memory_ghost_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
+        crate::testutil::apply_cache_schema(&conn);
         conn
     }
 
@@ -829,10 +829,10 @@ mod tests {
         Ok(())
     }
 
-    /// migrations 適用済みのファイル ghosts DB を開く（並行テスト用・接続はスレッド毎に開く）。
+    /// cache schema 適用済みのファイル ghosts DB を開く（並行テスト用・接続はスレッド毎に開く）。
     fn open_file_ghost_db(path: &std::path::Path) -> rusqlite::Connection {
         let conn = rusqlite::Connection::open(path).unwrap();
-        // 新規ファイルなら全 migration を適用、既存なら全 skip（open_bench_db と同方針）。
+        // 新規ファイルなら cache schema を適用、既存なら全 skip（open_bench_db と同方針）。
         let has_schema: bool = conn
             .query_row(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ghosts'",
@@ -841,7 +841,7 @@ mod tests {
             )
             .unwrap_or(false);
         if !has_schema {
-            crate::testutil::apply_all_migrations(&conn);
+            crate::testutil::apply_cache_schema(&conn);
         }
         super::store::configure_connection(&conn).unwrap();
         conn

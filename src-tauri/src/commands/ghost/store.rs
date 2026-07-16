@@ -253,15 +253,10 @@ pub(crate) fn store_ghosts_delta(
 mod tests {
     use super::*;
 
-    /// テスト用にマイグレーション適用済みの in-memory DB を作成する
+    /// テスト用に cache schema 適用済みの in-memory DB を作成する
     fn setup_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        crate::testutil::apply_all_migrations(&conn);
-        // ghost_fingerprints テーブルも作成されていることを確認
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS _sqlx_migrations (version BIGINT PRIMARY KEY)",
-        )
-        .unwrap();
+        crate::testutil::apply_cache_schema(&conn);
         conn
     }
 
