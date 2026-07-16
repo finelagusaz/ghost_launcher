@@ -24,6 +24,4 @@ pub async fn reset_ghost_db<R: tauri::Runtime>(
         .await
 }
 
-// lock 配線の回帰ガードは統合テスト（tests/lock_wiring.rs）に置く。
-// mock_builder が要求する common-controls v6 マニフェストは build.rs の rustc-link-arg-tests で
-// 統合テストバイナリにのみ埋め込めるため（lib ユニットテストハーネスにはスコープが届かない）。
+// lock 配線の回帰ガードは tests/lock_wiring.rs（統合テストに置く理由も同ファイル冒頭を参照）。

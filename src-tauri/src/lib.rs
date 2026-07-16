@@ -135,22 +135,13 @@ mod tests {
     #[test]
     fn マイグレーションが順番にインメモリdbへ適用できる() {
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql)
-                .unwrap_or_else(|e| panic!("migration {} ({}) failed: {}", m.version, m.description, e));
-        }
+        crate::testutil::apply_all_migrations(&conn);
     }
 
     #[test]
     fn migration12と13で集計列追加と旧履歴テーブル除去が行われる() {
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         // ghosts に集計列が存在する
         let cols: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
@@ -181,11 +172,7 @@ mod tests {
         assert!(!expected_columns.is_empty(), "fixture が空でないこと");
 
         let conn = Connection::open_in_memory().unwrap();
-        let mut applied = migrations();
-        applied.sort_by_key(|m| m.version);
-        for m in applied {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         let schema_columns: Vec<String> = conn
             .prepare("PRAGMA table_info(ghosts)")
             .unwrap()

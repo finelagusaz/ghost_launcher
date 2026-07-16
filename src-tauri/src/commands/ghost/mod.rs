@@ -290,11 +290,7 @@ mod tests {
     /// マイグレーション適用済みのインメモリ ghosts DB（apply_scan_delta の直接テスト用）。
     fn in_memory_ghost_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let mut sorted = crate::migrations();
-        sorted.sort_by_key(|m| m.version);
-        for m in &sorted {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         conn
     }
 
@@ -845,11 +841,7 @@ mod tests {
             )
             .unwrap_or(false);
         if !has_schema {
-            let mut sorted = crate::migrations();
-            sorted.sort_by_key(|m| m.version);
-            for m in &sorted {
-                conn.execute_batch(m.sql).unwrap();
-            }
+            crate::testutil::apply_all_migrations(&conn);
         }
         super::store::configure_connection(&conn).unwrap();
         conn
@@ -890,7 +882,7 @@ mod tests {
                         super::scan::scan_entries_with_fingerprint(&ssp_str, &[]).unwrap();
                     let conn = open_file_ghost_db(&db);
                     barrier.wait(); // 両スレッドを同時に走らせる
-                    let _guard = coord.0.lock().unwrap_or_else(|e| e.into_inner());
+                    let _guard = coord.lock();
                     super::apply_scan_delta(&conn, "rk", &entries, &fp, "mtimes").unwrap();
                 })
             })

@@ -143,11 +143,7 @@ mod tests {
 
     fn ghosts_conn_with_row(identity_key: &str) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        let mut migs = crate::migrations();
-        migs.sort_by_key(|m| m.version);
-        for m in migs {
-            conn.execute_batch(m.sql).unwrap();
-        }
+        crate::testutil::apply_all_migrations(&conn);
         conn.execute(
             "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
             rusqlite::params![identity_key],
@@ -354,11 +350,7 @@ mod tests {
         // リセット後の再スキャン: ghosts.db を全 migration で再作成 + 行再投入 + backfill
         {
             let conn = Connection::open(&ghosts_path).unwrap();
-            let mut migs = crate::migrations();
-            migs.sort_by_key(|m| m.version);
-            for m in migs {
-                conn.execute_batch(m.sql).unwrap();
-            }
+            crate::testutil::apply_all_migrations(&conn);
             insert_ghost_row(&conn, "sspg");
             let user_conn = Connection::open(&user_path).unwrap();
             backfill_aggregates(&conn, &user_conn).unwrap();
