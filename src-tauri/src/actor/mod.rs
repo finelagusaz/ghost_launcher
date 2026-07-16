@@ -25,7 +25,8 @@ pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
     let user_path = db_path::user_data_db_path(app)?;
     let user_conn = rusqlite::Connection::open(&user_path)
         .map_err(|e| format!("user-data.db オープンエラー: {e}"))?;
-    crate::commands::ghost::store::configure_connection(&user_conn)?;
+    crate::commands::ghost::store::configure_connection(&user_conn)
+        .map_err(|e| format!("user-data.db の{e}"))?;
     crate::commands::launch_history::ensure_schema(&user_conn)?;
     if ghosts_path.exists() {
         if let Ok(g) = rusqlite::Connection::open(&ghosts_path) {

@@ -1,7 +1,6 @@
-// ghosts.db パス解決の単一権威。
-// tauri-plugin-sql は "sqlite:ghosts.db" を app_config_dir 基準で解決するため、
-// 書込（scan_and_store）・起動時 sanitize（actor::bootstrap 内）も
-// 必ずここを経由して同じディレクトリを参照する。
+// ghosts.db のパス解決の単一権威。起動時の bootstrap（sanitize・user-data 初期化・ghosts.db open）
+// で参照される。tauri-plugin-sql の "sqlite:ghosts.db"（app_config_dir 基準）と
+// 同じディレクトリを参照するための単一権威である。
 // app_config_dir と app_data_dir は Windows では同一パスに収束するが、
 // それはプラットフォームの偶然であり、別 API での解決を混在させてはならない。
 // reset は撤去済み（#134 で削除。DB リビルドは cache_schema::ensure_cache_schema が自動で行う）。
