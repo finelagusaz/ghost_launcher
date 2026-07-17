@@ -38,6 +38,8 @@ cargo update        # Cargo.lock の更新
 
 `/commit` のコミット前チェックリストを全実行する。UI に波及しうる更新（React・Fluent UI・i18next・tauri 系）の場合は `/e2e` の手動実行を推奨する。
 
+> **toolchain 更新（rustup stable の bump）時の clippy 再ゼロ化**: CI（`ci-build.yml`）は `dtolnay/rust-toolchain@stable`（浮動）で clippy を `-D warnings` ゲートしている。`cargo update` とは別に stable が上がると新 lint で CI が突然赤くなりうる。`rustup update` で stable を上げたら、依存更新と同一 PR かは問わず `cargo clippy --workspace --all-targets -- -D warnings` と bench 構成（`--features bench --all-targets`）を再実行し、**警告ゼロを回復してからコミットする**。toolchain は固定していない（新 lint を早期検知する方針・#175）。
+
 ## ステップ 5: コミットと PR
 
 `/commit` → `/pr` へ接続する。更新内容（何をどの版からどの版へ）を PR 本文に列挙する。
