@@ -141,6 +141,16 @@ pub const SEARCH_LOWER_COLUMNS: [&str; 6] = [
     "directory_name_lower",
 ];
 
+/// searchGhosts と同形の SELECT 投影（g. 前置き）。列の単一権威は共有 fixture
+/// ghost-view-columns.json（本番 GHOST_VIEW_COLUMNS・DB スキーマと機械照合済み）。
+/// include_str! で取り込むため、fixture の列増減は再コンパイルで自動追従する。
+pub fn select_cols_prefixed() -> String {
+    const RAW: &str = include_str!("../../src/test/fixtures/ghost-view-columns.json");
+    let cols: Vec<String> =
+        serde_json::from_str(RAW).expect("ghost-view-columns.json をパースできること");
+    cols.iter().map(|c| format!("g.{c}")).collect::<Vec<_>>().join(", ")
+}
+
 /// searchGhosts と同形の WHERE（g. 前置き・6 列 OR）。
 pub fn search_where_prefixed() -> String {
     SEARCH_LOWER_COLUMNS
@@ -445,6 +455,19 @@ mod tests {
             order_by("frequency"),
             v["orderBy"]["frequency"].as_str().unwrap()
         );
+    }
+
+    #[test]
+    fn select_cols_prefixed_が実スキーマに対して有効な投影を返す() {
+        let cols = select_cols_prefixed();
+        assert!(cols.starts_with("g."), "g. 前置きの投影であること");
+
+        // 導出列が現行スキーマに実在することを prepare で機械検証する
+        // （fixture ↔ スキーマの照合は本番側テストが担うが、bench 側でも SELECT が通ることを縛る）
+        let tmp = TempDirGuard::new("bench_select_cols");
+        let conn = open_bench_db(&tmp.path().join("ghosts.db")).unwrap();
+        conn.prepare(&format!("SELECT {cols} FROM ghosts g LIMIT 0"))
+            .expect("fixture 由来の全列が ghosts スキーマに存在すること");
     }
 
     #[test]

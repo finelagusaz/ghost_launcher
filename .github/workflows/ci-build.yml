@@ -57,5 +57,11 @@ jobs:
       - name: Test ghost-meta with optional features
         run: cargo test -p ghost-meta --features thumbnail,serde
 
+      - name: Check bench harness compiles (signature drift guard)
+        run: cargo check --manifest-path src-tauri/Cargo.toml --features bench --benches
+
+      - name: Test bench_support guards
+        run: cargo test --manifest-path src-tauri/Cargo.toml --features bench --lib bench_support
+
       - name: Clippy (writer 混入ガード)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -A clippy::all -D clippy::disallowed-methods
