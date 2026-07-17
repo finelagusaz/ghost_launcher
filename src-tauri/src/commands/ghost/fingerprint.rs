@@ -14,7 +14,7 @@ pub(crate) fn metadata_modified_string(meta: &fs::Metadata) -> String {
 }
 
 /// descript.txt の metadata から (state, modified) のトークン用タプルを取得する
-pub(crate) fn descript_metadata_for_token(descript_path: &Path) -> (String, String) {
+fn descript_metadata_for_token(descript_path: &Path) -> (String, String) {
     match fs::metadata(descript_path) {
         Err(_) => ("missing".to_string(), "-".to_string()),
         Ok(meta) => match meta
