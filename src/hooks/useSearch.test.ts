@@ -64,8 +64,7 @@ describe("useSearch", () => {
   it("offset 変更時はバッファをマージする", async () => {
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu]);
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [marisa], total: 2 });
+    vi.mocked(searchGhosts).mockResolvedValueOnce([marisa]);
 
     const { result, rerender } = renderHook(
       ({ offset }) => useSearch("rk1", "", 1, offset, 1),
@@ -94,8 +93,7 @@ describe("useSearch", () => {
   it("隣接ウィンドウのマージ: 重複部分は上書きされ旧データが保持される", async () => {
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(3);
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [marisa, alice], total: 3 });
+    vi.mocked(searchGhosts).mockResolvedValueOnce([marisa, alice]);
 
     const { result, rerender } = renderHook(
       ({ offset }) => useSearch("rk1", "", 2, offset, 1),
@@ -122,9 +120,8 @@ describe("useSearch", () => {
 
   it("query 変更時はバッファがクリアされる", async () => {
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
-    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2);
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [marisa], total: 1 });
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    vi.mocked(searchGhosts).mockResolvedValueOnce([marisa]);
 
     const { result, rerender } = renderHook(
       ({ query }) => useSearch("rk1", query, 100, 0, 1),
@@ -180,8 +177,7 @@ describe("useSearch", () => {
   it("バッファサイズ上限超過時は全置換にフォールバックする", async () => {
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu]);
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(50000);
-    vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [marisa], total: 50000 });
+    vi.mocked(searchGhosts).mockResolvedValueOnce([marisa]);
 
     const farOffset = MAX_BUFFER_SIZE + 100;
 
@@ -262,10 +258,41 @@ describe("useSearch", () => {
     expect(searchGhostsInitialPage).toHaveBeenCalledWith("rk1", 100, "name");
   });
 
-  it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
+  it("スクロールによる offset 変更時は COUNT が発行されない（リセット時の 1 回のみ）", async () => {
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(10);
     vi.mocked(searchGhosts)
-      .mockResolvedValueOnce({ ghosts: [reimu, marisa], total: 5 })
-      .mockResolvedValueOnce({ ghosts: [alice], total: 5 });
+      .mockResolvedValueOnce([reimu])
+      .mockResolvedValueOnce([marisa]);
+
+    const { result, rerender } = renderHook(
+      ({ offset }) => useSearch("rk1", "ki", 1, offset, 1),
+      { initialProps: { offset: 0 } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.ghosts).toHaveLength(1);
+    });
+    expect(countGhostsByQuery).toHaveBeenCalledTimes(1);
+    expect(result.current.total).toBe(10);
+
+    rerender({ offset: 1 });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.ghosts).toHaveLength(2);
+    });
+
+    // ページ送りでは COUNT が再発行されず、total はリセット時の値を保持する
+    expect(countGhostsByQuery).toHaveBeenCalledTimes(1);
+    expect(result.current.total).toBe(10);
+  });
+
+  it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts)
+      .mockResolvedValueOnce([reimu, marisa])
+      .mockResolvedValueOnce([alice]);
 
     const { result, rerender } = renderHook(
       ({ sortEpoch }) => useSearch("rk1", "ki", 2, 3, 1, "random", sortEpoch),

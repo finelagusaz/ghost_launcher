@@ -67,12 +67,12 @@ export async function getCachedFingerprint(requestKey: string): Promise<string |
 
 export async function hasGhosts(requestKey: string): Promise<boolean> {
   const db = await getDb();
-  const countResult = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ?",
+  // EXISTS は最初の 1 行で観測が止まる（COUNT(*) はパーティション全数を数える）
+  const rows = await db.select<{ has: number }[]>(
+    "SELECT EXISTS(SELECT 1 FROM ghosts WHERE request_key = ?) as has",
     [requestKey]
   );
-  const total = countResult.length > 0 ? countResult[0].count : 0;
-  return total > 0;
+  return rows.length > 0 && rows[0].has === 1;
 }
 
 // SELECT 対象列の単一権威。satisfies が GhostView に無い列名（typo・削除漏れ）を弾く。
@@ -114,6 +114,9 @@ export const GHOST_SEARCH_LOWER_COLUMNS = [
 
 const GHOST_SEARCH_WHERE =
   GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
+
+const GHOST_SEARCH_WHERE_PREFIXED =
+  GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
 
 const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
   GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
@@ -185,26 +188,33 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
   return countResult.length > 0 ? countResult[0].count : 0;
 }
 
-export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number, sortOrder: SortOrder = "name"): Promise<{ ghosts: GhostView[], total: number }> {
+// ページフェッチ（SELECT のみ）。総件数は返さない: total が変わるのはリセット時
+// （requestKey/query/sort/epoch 変更）だけなので、COUNT の発行は useSearch が
+// リセット時に 1 回だけ countGhostsByQuery で行う（スクロールの各ページで併走させない）。
+export async function searchGhosts(requestKey: string, query: string, limit: number, offset: number, sortOrder: SortOrder = "name"): Promise<GhostView[]> {
   return measureSearch("searchGhosts", async () => {
     const db = await getDb();
 
     const normalizedQuery = normalizeForKey(query);
-    const likePattern = `%${normalizedQuery}%`;
     const orderBy = buildOrderBy(sortOrder);
-    const searchWhere = GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
 
-    const [total, rows] = await Promise.all([
-      countGhostsByQuery(requestKey, query),
-      db.select<GhostView[]>(
-        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? AND (${searchWhere}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+    let rows: GhostView[];
+    if (normalizedQuery === "") {
+      // 空クエリに LIKE '%%' の行ごと評価をさせない
+      rows = await db.select<GhostView[]>(
+        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+        [requestKey, limit, offset]
+      );
+    } else {
+      const likePattern = `%${normalizedQuery}%`;
+      rows = await db.select<GhostView[]>(
+        `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? AND (${GHOST_SEARCH_WHERE_PREFIXED}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
         [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
-      ),
-    ]);
+      );
+    }
 
-    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}, sort=${sortOrder}) → total=${total}`);
-    console.log(`[ghostDatabase] Fetched ${rows.length} rows`);
-    return { ghosts: rows, total };
+    console.log(`[ghostDatabase] searchGhosts(requestKey=${requestKey}, query="${query}", limit=${limit}, offset=${offset}, sort=${sortOrder}) → rows=${rows.length}`);
+    return rows;
   });
 }
 
@@ -214,9 +224,21 @@ export async function recordLaunch(ghostIdentityKey: string): Promise<void> {
 
 export async function getRandomGhost(requestKey: string): Promise<GhostView | null> {
   const db = await getDb();
-  const rows = await db.select<GhostView[]>(
-    `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY RANDOM() LIMIT 1`,
+  // ORDER BY RANDOM() はパーティション全走査＋全行ソートになるため、
+  // COUNT（index-only scan）＋乱数 OFFSET の単発取得で 1 体を選ぶ。
+  // ORDER BY なしの LIMIT 1 は行順が不定だが、無作為抽出には順序の権威が不要
+  const countResult = await db.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM ghosts WHERE request_key = ?",
     [requestKey]
+  );
+  const total = countResult.length > 0 ? countResult[0].count : 0;
+  if (total === 0) {
+    return null;
+  }
+  const randomOffset = Math.floor(Math.random() * total);
+  const rows = await db.select<GhostView[]>(
+    `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? LIMIT 1 OFFSET ?`,
+    [requestKey, randomOffset]
   );
   return rows.length > 0 ? rows[0] : null;
 }

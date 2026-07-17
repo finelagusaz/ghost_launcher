@@ -73,45 +73,50 @@ export function useSearch(
           return;
         }
 
-        const result = await searchGhosts(requestKey, query, limit, offset, sortOrder);
+        // COUNT はリセット時のみ発行する（total が変わるのはコンテキスト変更時だけ。
+        // スクロールのページ送りで再発行しない）。SELECT と並行して待ち時間を重ねない
+        const [pageGhosts, newTotal] = await Promise.all([
+          searchGhosts(requestKey, query, limit, offset, sortOrder),
+          isReset ? countGhostsByQuery(requestKey, query) : Promise.resolve(null),
+        ]);
         if (!isActive) return;
 
         resetKeyRef.current = resetKey;
 
         if (isReset) {
           // コンテキスト変更 → バッファクリアして全置換
-          setGhosts(result.ghosts);
+          setGhosts(pageGhosts);
           setLoadedStart(offset);
-          bufferRef.current = { ghosts: result.ghosts, start: offset };
+          bufferRef.current = { ghosts: pageGhosts, start: offset };
+          setTotal(newTotal ?? 0);
         } else {
-          // スクロールによる offset 変更 → マージ
+          // スクロールによる offset 変更 → マージ（total はリセット時の値を保持）
           const prev = bufferRef.current;
           const prevEnd = prev.start + prev.ghosts.length;
-          const newEnd = offset + result.ghosts.length;
+          const newEnd = offset + pageGhosts.length;
           const hasOverlap = offset <= prevEnd && newEnd >= prev.start;
           const mergedStart = Math.min(prev.start, offset);
           const mergedEnd = Math.max(prevEnd, newEnd);
 
           if (!hasOverlap || mergedEnd - mergedStart > MAX_BUFFER_SIZE) {
             // ギャップあり or バッファ上限超過 → 全置換
-            setGhosts(result.ghosts);
+            setGhosts(pageGhosts);
             setLoadedStart(offset);
-            bufferRef.current = { ghosts: result.ghosts, start: offset };
+            bufferRef.current = { ghosts: pageGhosts, start: offset };
           } else {
             // 隣接/重複 → マージ
             const merged = new Array<GhostView>(mergedEnd - mergedStart);
             for (let i = 0; i < prev.ghosts.length; i++) {
               merged[prev.start - mergedStart + i] = prev.ghosts[i];
             }
-            for (let i = 0; i < result.ghosts.length; i++) {
-              merged[offset - mergedStart + i] = result.ghosts[i];
+            for (let i = 0; i < pageGhosts.length; i++) {
+              merged[offset - mergedStart + i] = pageGhosts[i];
             }
             setGhosts(merged);
             setLoadedStart(mergedStart);
             bufferRef.current = { ghosts: merged, start: mergedStart };
           }
         }
-        setTotal(result.total);
       } catch (err) {
         console.error("Failed to search ghosts from SQLite:", err);
         if (isActive) {

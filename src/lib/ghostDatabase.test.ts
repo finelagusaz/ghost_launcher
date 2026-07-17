@@ -15,6 +15,14 @@ vi.mock("@tauri-apps/plugin-sql", () => ({
   },
 }));
 
+// reportDbSize は getDb 内から fire-and-forget で select（PRAGMA page_count 等）を
+// 発行し、mockSelect の呼び出し順・mockResolvedValueOnce のキューを汚染するため
+// パススルーでモックする（measureSearch は計測せず fn を素通しする）
+vi.mock("./dbMonitor", () => ({
+  measureSearch: <T,>(_label: string, fn: () => Promise<T>) => fn(),
+  reportDbSize: vi.fn().mockResolvedValue(undefined),
+}));
+
 beforeEach(() => {
   vi.resetModules();
   mockExecute.mockClear();
@@ -81,14 +89,87 @@ describe("ghostDatabase - getDb", () => {
 
 describe("ghostDatabase - searchGhosts NFKC正規化", () => {
   it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
-    mockSelect.mockResolvedValue([{ count: 0 }]);
+    mockSelect.mockResolvedValue([]);
     const { searchGhosts } = await import("./ghostDatabase");
     await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
 
+    const selectCall = mockSelect.mock.calls.find((c) =>
+      (c[0] as string).includes("LIKE"));
+    expect(selectCall).toBeDefined();
+    expect(selectCall![1][1]).toBe("%alice%");
+  });
+});
+
+describe("ghostDatabase - searchGhosts クエリ発行規律", () => {
+  it("COUNT を発行しない（総件数の取得はリセット時に useSearch が countGhostsByQuery で行う）", async () => {
+    mockSelect.mockResolvedValue([]);
+    const { searchGhosts } = await import("./ghostDatabase");
+    const rows = await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
+
+    expect(rows).toEqual([]);
     const countCall = mockSelect.mock.calls.find((c) =>
-      (c[0] as string).includes("COUNT(*)"));
-    expect(countCall).toBeDefined();
-    expect(countCall![1][1]).toBe("%alice%");
+      (c[0] as string).includes("COUNT"));
+    expect(countCall).toBeUndefined();
+  });
+
+  it("空クエリ時は LIKE なしの SQL でページを取得する", async () => {
+    mockSelect.mockResolvedValue([]);
+    const { searchGhosts } = await import("./ghostDatabase");
+    await searchGhosts("rk1", "", 50, 100);
+
+    expect(mockSelect).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockSelect.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toContain("LIKE");
+    expect(sql).toContain("WHERE g.request_key = ?");
+    expect(sql).toContain("OFFSET");
+    expect(params).toEqual(["rk1", 50, 100]);
+  });
+});
+
+describe("ghostDatabase - hasGhosts", () => {
+  it("EXISTS で 1 行観測する（COUNT 全数を発行しない）", async () => {
+    mockSelect.mockResolvedValue([{ has: 1 }]);
+    const { hasGhosts } = await import("./ghostDatabase");
+    const result = await hasGhosts("rk1");
+
+    expect(result).toBe(true);
+    const [sql, params] = mockSelect.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("EXISTS");
+    expect(sql).not.toContain("COUNT");
+    expect(params).toEqual(["rk1"]);
+  });
+
+  it("該当行がなければ false を返す", async () => {
+    mockSelect.mockResolvedValue([{ has: 0 }]);
+    const { hasGhosts } = await import("./ghostDatabase");
+    expect(await hasGhosts("rk-missing")).toBe(false);
+  });
+});
+
+describe("ghostDatabase - getRandomGhost", () => {
+  it("ORDER BY RANDOM() を使わず COUNT + 乱数 OFFSET で 1 体選ぶ", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    mockSelect
+      .mockResolvedValueOnce([{ count: 5 }])
+      .mockResolvedValueOnce([{ name: "Reimu" }]);
+    const { getRandomGhost } = await import("./ghostDatabase");
+    const ghost = await getRandomGhost("rk1");
+
+    expect(ghost).toEqual({ name: "Reimu" });
+    const [selectSql, selectParams] = mockSelect.mock.calls[1] as [string, unknown[]];
+    expect(selectSql).not.toContain("RANDOM()");
+    expect(selectSql).toContain("LIMIT 1 OFFSET ?");
+    expect(selectParams).toEqual(["rk1", 2]); // floor(0.5 * 5) = 2
+    randomSpy.mockRestore();
+  });
+
+  it("0 件時は SELECT を発行せず null を返す", async () => {
+    mockSelect.mockResolvedValueOnce([{ count: 0 }]);
+    const { getRandomGhost } = await import("./ghostDatabase");
+    const ghost = await getRandomGhost("rk-empty");
+
+    expect(ghost).toBeNull();
+    expect(mockSelect).toHaveBeenCalledTimes(1);
   });
 });
 

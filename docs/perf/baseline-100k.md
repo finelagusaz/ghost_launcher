@@ -64,6 +64,13 @@ cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench scan_b
 
 **like/rare と like/common の逆転について（フィクスチャ由来・一般化不可）**: n=100k で `like/rare`（42.186 ms）が `like/common`（68.390 ms）より速いという、素朴な「マッチ率が高いほど早期終了で速い」という予測に反する結果が出た。原因は `bench_support.rs::synth_ghost` の合成データ生成ロジックにある。`Q_RARE`（`craftman='作者777'`、`i % 1000 == 777`）にマッチする行は必ず `i` が奇数かつ `i % 5 == 2` になるため、名前が例外なく `en[2]="Ghost"` 由来の `"Ghost{i}"` になる。この "Ghost" プレフィックスは ASCII のため `name_lower` 順で非常に早い位置に集まり、`ORDER BY name_lower LIMIT 50` が早期に 50 件へ到達する。一方 `Q_COMMON`（`name` が `"さくら…"`、`i % 10 == 0`）はソートキーである `name_lower` 自身が一致条件のため、集団は "さくら" の Unicode 位置（全角カタカナ・漢字圏内、他の日本語プレフィックスの中間あたり）まで走査が進んでから初めて見つかる。この逆転は **合成データにおける「マッチ列と並び替え列の相関」というフィクスチャ固有の副作用であり、一般化できる知見ではない**（実データでは craftman と name は独立なので、この逆転は起きない見込み）。一般化できる知見は次の一点のみ: **先頭ワイルドカード LIKE は index 最適化されず、`request_key` の絞り込み以降は行ごとの残余フィルタになる**（`like/none` が index 経路の 3662 倍という事実。詳細は後述の所見を参照）。
 
+### Phase 1 検収記録（select-only ページフェッチ形状）
+
+- 計測日: 2026-07-17（epic #140 Phase 1・クエリ発行規律）
+- **実行環境が上記ベースラインと異なる**（AMD Ryzen 7 8840U / Windows 11 Home / 約 24 GB）ため、本節の絶対値を上表と比較してはならない。意味を持つのは**同一実行内のペア差**のみ
+- n=100k・common クエリのレイテンシ中央値: `count_plus_select_common` 214.16 ms / `select_only_common` 162.37 ms → **ペア差 ≈ 52 ms（約 24%）**
+- 解釈: Phase 1 で COUNT の発行はリセット時（requestKey/query/sort/epoch 変更）の 1 回に限定され、スクロールのページ送りは select-only になった。従来ページ毎に払っていた COUNT 分（このペア差）が消える
+
 ## FS 走査層（scan_bench）
 
 | 形状 | n=1k | n=10k | n=100k(indicative) |
