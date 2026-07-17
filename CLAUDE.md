@@ -80,6 +80,7 @@ ghost_launcher/
 │       │   └── locale.rs       # ユーザー言語ファイル読込
 │       ├── actor/              # ghosts.db/user-data.db への全書込を直列化する単一 writer アクター（mod.rs: Job enum、db_path.rs: パス解決の単一権威）
 │       ├── cache_schema.rs     # ghosts.db の使い捨てスキーマ（CACHE_SCHEMA が単一権威・ハッシュ user_version で自動リビルド）
+│       ├── bench_support.rs    # 性能計測ハーネス（feature="bench" 限定・本番非コンパイル）
 │       └── lib.rs              # Tauri アプリビルダー
 ├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
 │   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
@@ -113,7 +114,7 @@ ghost_launcher/
 
 - `lib/` — Tauri コマンド呼び出しラッパー・キャッシュ寿命管理・起動ロジック・設定ストア
 - `hooks/` — 設定・ゴーストスキャン・検索・仮想スクロール・テーマ検出などの React カスタムフック
-- `components/` — AppHeader / SettingsPanel / GhostContent / GhostList / GhostCard / SearchBox / SkeletonCard
+- `components/` — React UI コンポーネント（一覧は `src/components/` のファイル自体が単一権威。ここに列挙を複製しない）
 
 ### 横断パターン
 
@@ -138,7 +139,7 @@ ghost_launcher/
 
 複数フェーズ・10 タスク規模・アーキテクチャ変更を伴う大規模作業は、設計書（`docs/superpowers/specs/`）→実装計画（`docs/superpowers/plans/`）→タスク単位実行（各タスクで `/implement` 相当の TDD サイクル）の計画駆動フローへ切り替える（#134 / #146 の実績運用）。
 
-実装計画・タスク指示には絶対日付（実時計とドリフトして fixture rot を起こす）や「N 箇所」の数え上げ（実態とズレる）を書かず、相対時刻指定と grep コマンドで対象を指示する。
+実装計画・タスク指示・ドキュメント（CLAUDE.md / SPEC / スキル）には、絶対日付（実時計とドリフトして fixture rot を起こす）・「N 箇所/N 本」の数え上げ（実態とズレる）・検算していない全称/同一性の主張（「すべて」「唯一」「CI と同一」等）を書かない。対象は相対時刻指定と grep コマンドで指示し、事実はコード側の単一権威への参照で示す。強い主張を書くなら既存の全事例に当てて検算し、書けないなら書かない。機械検証されない同期の約束は「規範」であると明記し、検算手段（/health-check 等）を添える。
 
 ## 利用できるスキル
 
@@ -214,4 +215,5 @@ GitHub Flow に準拠する。
 - `RETROSPECTIVE.md` — 過去の振り返り（デバッグ教訓・アーキテクチャ上の学び）
   - **更新タイミング**: サイクル終了後（実装・レビュー・追加修正まで完了したとき）
   - **更新方法**: 上書き（追記しない）。前回サイクルの内容を新サイクルの振り返りで置き換える
+  - **持続タスクを置かない**: ネクストアクションは PR チェックリストか issue へ振り分ける（迷ったら issue。「検討」も追跡するなら issue 化、しないなら意図的スキップと明記。詳細は `/retrospective`）
   - **更新手順**: 新しいパターン・教訓を先に `CLAUDE.md` / `src/CLAUDE.md` 等のフォルダ規約 / スキルに抽出してから、`RETROSPECTIVE.md` を上書きする。抽出前に上書きすると教訓が失われる
