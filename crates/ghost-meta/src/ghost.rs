@@ -73,7 +73,7 @@ mod tests {
     use super::*;
     use crate::testutil::TempDirGuard;
 
-    fn create_ghost(root: &PathBuf, dir_name: &str, descript: &str) {
+    fn create_ghost(root: &Path, dir_name: &str, descript: &str) {
         let base = root.join(dir_name).join("ghost").join("master");
         fs::create_dir_all(&base).unwrap();
         fs::write(base.join("descript.txt"), descript).unwrap();

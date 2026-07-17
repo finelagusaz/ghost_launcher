@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{
-    configure_connection, ghost_identity_key, store_ghosts_delta, ScanEntryRow,
+    configure_connection, ghost_identity_key, store_ghosts_delta, GhostDelta, ScanEntryRow,
 };
 use crate::commands::ghost::{
     apply_scan_delta, check_parent_mtimes_match, collect_parent_mtimes,
@@ -47,9 +47,9 @@ fn synth_ghost(i: usize) -> Ghost {
     let jp = ["さくら", "うにゅう", "ゴースト", "妖精", "式神"];
     let en = ["Alice", "Bob", "Ghost", "Fairy", "Nova"];
     // i % 10 == 0 の行だけ名前を "さくら…" にして Q_COMMON の選択率を ~10% に固定
-    let base = if i % 10 == 0 {
+    let base = if i.is_multiple_of(10) {
         "さくら"
-    } else if i % 2 == 0 {
+    } else if i.is_multiple_of(2) {
         jp[i % jp.len()]
     } else {
         en[i % en.len()]
@@ -57,8 +57,8 @@ fn synth_ghost(i: usize) -> Ghost {
     Ghost {
         diff_fingerprint: format!("fp-{i}"),
         name: format!("{base}{i}"),
-        sakura_name: if i % 3 == 0 { format!("{base}の精") } else { String::new() },
-        kero_name: if i % 5 == 0 { format!("相方{i}") } else { String::new() },
+        sakura_name: if i.is_multiple_of(3) { format!("{base}の精") } else { String::new() },
+        kero_name: if i.is_multiple_of(5) { format!("相方{i}") } else { String::new() },
         // i % 1000 == 777 の行だけ craftman が "作者777" → Q_RARE の選択率 ~0.1%
         craftman: format!("作者{}", i % 1000),
         craftmanw: String::new(),
@@ -97,10 +97,12 @@ fn delta_store_ghosts(
     store_ghosts_delta(
         conn,
         request_key,
-        ghosts,
-        &[],
-        &scan_rows,
-        &[],
+        &GhostDelta {
+            upserts: ghosts,
+            deletes: &[],
+            scan_upserts: &scan_rows,
+            scan_deletes: &[],
+        },
         fingerprint,
         parent_mtimes,
     )
@@ -172,7 +174,7 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
             g.craftman
         );
         let descript_path = master.join("descript.txt");
-        if i % 7 == 0 {
+        if i.is_multiple_of(7) {
             // Shift_JIS（charset 明示）で文字コード判定経路を踏む
             let sjis_body = format!("charset,Shift_JIS\n{descript}");
             let (bytes, _, _) = encoding_rs::SHIFT_JIS.encode(&sjis_body);
@@ -183,7 +185,7 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
         }
 
         // 一部に surface0.png を置き thumbnail 解決を発生させる
-        if i % 3 == 0 {
+        if i.is_multiple_of(3) {
             let shell_master = ghost_dir.join(&g.directory_name).join("shell").join("master");
             fs::create_dir_all(&shell_master).map_err(|e| format!("mkdir shell: {e}"))?;
             fs::write(shell_master.join("surface0.png"), b"")

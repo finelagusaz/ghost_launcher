@@ -201,10 +201,10 @@ pub(crate) fn walk_parent(
     // 逐次: 結果をマージ
     for result in results {
         tokens.push(result.token);
-        if let Some(ghost) = result.ghost {
-            if let Some((_, ref mut ghost_list)) = ghosts {
-                ghost_list.push(ghost);
-            }
+        if let Some(ghost) = result.ghost
+            && let Some((_, ref mut ghost_list)) = ghosts
+        {
+            ghost_list.push(ghost);
         }
     }
 

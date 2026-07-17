@@ -6,6 +6,35 @@ pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    use tauri::Manager;
+    tauri::Builder::default()
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .setup(|app| {
+            match actor::bootstrap(app) {
+                Ok(handle) => {
+                    app.manage(handle);
+                }
+                Err(e) => return Err(format!("DB アクターの起動に失敗しました: {e}").into()),
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::ghost::scan_and_store,
+            commands::ghost::cleanup_ghost_caches,
+            commands::launch_history::record_launch,
+            commands::ssp::launch_ghost,
+            commands::ssp::validate_ssp_path,
+            commands::locale::read_user_locale,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
@@ -39,33 +68,4 @@ mod tests {
             );
         }
     }
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    use tauri::Manager;
-    tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::default().build())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
-        .setup(|app| {
-            match actor::bootstrap(app) {
-                Ok(handle) => {
-                    app.manage(handle);
-                }
-                Err(e) => return Err(format!("DB アクターの起動に失敗しました: {e}").into()),
-            }
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            commands::ghost::scan_and_store,
-            commands::ghost::cleanup_ghost_caches,
-            commands::launch_history::record_launch,
-            commands::ssp::launch_ghost,
-            commands::ssp::validate_ssp_path,
-            commands::locale::read_user_locale,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }

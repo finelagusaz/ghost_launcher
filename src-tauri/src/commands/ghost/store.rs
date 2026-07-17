@@ -94,13 +94,35 @@ pub(crate) fn read_scan_entries(
     Ok(map)
 }
 
-/// delta 差分書き込み（1 トランザクション）。全行読み取りをせず、変更子だけを操作する。
+/// `store_ghosts_delta` へ渡す差分ペイロード（借用）。`deletes`/`scan_deletes` が同型（&[String]）で
+/// 隣接する位置引数だと取り違えをコンパイラが検知できないため、名前付きフィールドで構造的に防ぐ。
 ///
 /// - `upserts`: 変更子（parse 成功）。`ON CONFLICT … DO UPDATE … WHERE row_fingerprint 相違` で、
 ///   新規は INSERT・メタ変化は UPDATE・不変は no-op（updated_at を bump しない）。初回/移行時
 ///   （ghosts 既存・scan_entries 空）でも UNIQUE 衝突せず UPDATE で吸収する。
 /// - `deletes`: DELETE 対象 `ghost_identity_key`（削除子＋parse 失敗子）。upsert より先に適用する。
 /// - `scan_upserts` / `scan_deletes`: `ghost_scan_entries` の差分（変更子を UPSERT・削除子を DELETE）。
+pub(crate) struct GhostDelta<'a> {
+    pub upserts: &'a [Ghost],
+    pub deletes: &'a [String],
+    pub scan_upserts: &'a [ScanEntryRow<'a>],
+    pub scan_deletes: &'a [String],
+}
+
+#[cfg(test)]
+impl GhostDelta<'_> {
+    /// 0 子変更の delta（fingerprint / parent_mtimes だけを書きたいテスト用）。
+    pub(crate) const EMPTY: GhostDelta<'static> = GhostDelta {
+        upserts: &[],
+        deletes: &[],
+        scan_upserts: &[],
+        scan_deletes: &[],
+    };
+}
+
+/// delta 差分書き込み（1 トランザクション）。全行読み取りをせず、変更子だけを操作する。
+///
+/// - `delta`: 差分ペイロード（各フィールドの意味は `GhostDelta` を参照）。
 /// - `fingerprint` / `parent_mtimes`: `ghost_fingerprints` を更新（0 子変更でも必ず書き、次回 Layer 1 を再 hit させる）。
 /// - 集計列 `last_launched` / `launch_count` は不可侵（INSERT 時は既定値・UPDATE 時は無触）。commit 後に backfill する。
 ///
@@ -110,10 +132,7 @@ pub(crate) fn read_scan_entries(
 pub(crate) fn store_ghosts_delta(
     conn: &Connection,
     request_key: &str,
-    upserts: &[Ghost],
-    deletes: &[String],
-    scan_upserts: &[ScanEntryRow],
-    scan_deletes: &[String],
+    delta: &GhostDelta,
     fingerprint: &str,
     parent_mtimes: &str,
 ) -> Result<usize, String> {
@@ -124,20 +143,20 @@ pub(crate) fn store_ghosts_delta(
     {
         // 1) DELETE（削除子＋parse 失敗子）を先に適用する。
         //    NFKC 衝突の corner（同一 identity の削除子と upsert が併存）で upsert を勝たせる。
-        if !deletes.is_empty() {
+        if !delta.deletes.is_empty() {
             let mut stmt = tx
                 .prepare_cached(
                     "DELETE FROM ghosts WHERE request_key = ?1 AND ghost_identity_key = ?2",
                 )
                 .map_err(|e| format!("DELETE 準備エラー: {e}"))?;
-            for identity_key in deletes {
+            for identity_key in delta.deletes {
                 stmt.execute(rusqlite::params![request_key, identity_key])
                     .map_err(|e| format!("DELETE エラー: {e}"))?;
             }
         }
 
         // 2) 変更子を UPSERT（INSERT / 既存は row_fingerprint 相違時のみ UPDATE）。
-        if !upserts.is_empty() {
+        if !delta.upserts.is_empty() {
             let mut stmt = tx
                 .prepare_cached(
                     "INSERT INTO ghosts (\
@@ -169,7 +188,7 @@ pub(crate) fn store_ghosts_delta(
                 )
                 .map_err(|e| format!("UPSERT 準備エラー: {e}"))?;
 
-            for ghost in upserts {
+            for ghost in delta.upserts {
                 let identity_key = build_ghost_identity_key(ghost);
                 stmt.execute(rusqlite::params![
                     request_key,
@@ -198,25 +217,25 @@ pub(crate) fn store_ghosts_delta(
         }
 
         // 3) ghost_scan_entries の差分（削除子を DELETE・変更子を UPSERT）。不変子は無触。
-        if !scan_deletes.is_empty() {
+        if !delta.scan_deletes.is_empty() {
             let mut stmt = tx
                 .prepare_cached(
                     "DELETE FROM ghost_scan_entries WHERE request_key = ?1 AND scan_key = ?2",
                 )
                 .map_err(|e| format!("scan_entries DELETE 準備エラー: {e}"))?;
-            for scan_key in scan_deletes {
+            for scan_key in delta.scan_deletes {
                 stmt.execute(rusqlite::params![request_key, scan_key])
                     .map_err(|e| format!("scan_entries DELETE エラー: {e}"))?;
             }
         }
-        if !scan_upserts.is_empty() {
+        if !delta.scan_upserts.is_empty() {
             let mut stmt = tx
                 .prepare_cached(
                     "INSERT OR REPLACE INTO ghost_scan_entries \
                      (request_key, scan_key, token, ghost_identity_key) VALUES (?1, ?2, ?3, ?4)",
                 )
                 .map_err(|e| format!("scan_entries UPSERT 準備エラー: {e}"))?;
-            for row in scan_upserts {
+            for row in delta.scan_upserts {
                 stmt.execute(rusqlite::params![
                     request_key,
                     row.scan_key,
@@ -332,10 +351,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&ghost),
-            &[],
-            &[scan_row("sk", "tok", &k)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&ghost),
+                scan_upserts: &[scan_row("sk", "tok", &k)],
+                ..GhostDelta::EMPTY
+            },
             "fp-nfkc",
             "",
         )
@@ -359,10 +379,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&ghost),
-            &[],
-            &[scan_row("sk", "tok", &k)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&ghost),
+                scan_upserts: &[scan_row("sk", "tok", &k)],
+                ..GhostDelta::EMPTY
+            },
             "fp-id",
             "",
         )
@@ -383,7 +404,7 @@ mod tests {
     #[test]
     fn check_parent_mtimes_match_が一致時にtrueを返す() {
         let conn = setup_db();
-        store_ghosts_delta(&conn, "rk1", &[], &[], &[], &[], "fp-1", "c:/ssp/ghost:12345").unwrap();
+        store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-1", "c:/ssp/ghost:12345").unwrap();
 
         assert!(super::super::fingerprint::check_parent_mtimes_match(
             &conn,
@@ -395,7 +416,7 @@ mod tests {
     #[test]
     fn check_parent_mtimes_match_が不一致時にfalseを返す() {
         let conn = setup_db();
-        store_ghosts_delta(&conn, "rk1", &[], &[], &[], &[], "fp-1", "c:/ssp/ghost:12345").unwrap();
+        store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-1", "c:/ssp/ghost:12345").unwrap();
 
         assert!(!super::super::fingerprint::check_parent_mtimes_match(
             &conn,
@@ -471,13 +492,14 @@ mod tests {
         let total = store_ghosts_delta(
             &conn,
             "rk1",
-            &[alice, bob],
-            &[],
-            &[
-                scan_row("sk-a", "tok-a", &ka),
-                scan_row("sk-b", "tok-b", &kb),
-            ],
-            &[],
+            &GhostDelta {
+                upserts: &[alice, bob],
+                scan_upserts: &[
+                    scan_row("sk-a", "tok-a", &ka),
+                    scan_row("sk-b", "tok-b", &kb),
+                ],
+                ..GhostDelta::EMPTY
+            },
             "fp-1",
             "mt-1",
         )
@@ -505,10 +527,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&alice),
-            &[],
-            &[scan_row("sk-a", "tok-a", &ka)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&alice),
+                scan_upserts: &[scan_row("sk-a", "tok-a", &ka)],
+                ..GhostDelta::EMPTY
+            },
             "fp-1",
             "mt-1",
         )
@@ -525,10 +548,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&alice),
-            &[],
-            &[scan_row("sk-a", "tok-a-changed", &ka)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&alice),
+                scan_upserts: &[scan_row("sk-a", "tok-a-changed", &ka)],
+                ..GhostDelta::EMPTY
+            },
             "fp-2",
             "mt-2",
         )
@@ -548,10 +572,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&alice),
-            &[],
-            &[scan_row("sk-a", "tok-a-2", &ka)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&alice),
+                scan_upserts: &[scan_row("sk-a", "tok-a-2", &ka)],
+                ..GhostDelta::EMPTY
+            },
             "fp-3",
             "mt-3",
         )
@@ -577,10 +602,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            &[alice, bob],
-            &[],
-            &[scan_row("sk-a", "tok-a", &ka), scan_row("sk-b", "tok-b", &kb)],
-            &[],
+            &GhostDelta {
+                upserts: &[alice, bob],
+                scan_upserts: &[scan_row("sk-a", "tok-a", &ka), scan_row("sk-b", "tok-b", &kb)],
+                ..GhostDelta::EMPTY
+            },
             "fp-1",
             "mt-1",
         )
@@ -590,10 +616,11 @@ mod tests {
         let total = store_ghosts_delta(
             &conn,
             "rk1",
-            &[],
-            std::slice::from_ref(&kb),
-            &[],
-            std::slice::from_ref(&"sk-b".to_string()),
+            &GhostDelta {
+                deletes: std::slice::from_ref(&kb),
+                scan_deletes: std::slice::from_ref(&"sk-b".to_string()),
+                ..GhostDelta::EMPTY
+            },
             "fp-2",
             "mt-2",
         )
@@ -615,7 +642,7 @@ mod tests {
     fn store_ghosts_delta_が_0変更でもfingerprintとparent_mtimesを書く() {
         let conn = setup_db();
         let total =
-            store_ghosts_delta(&conn, "rk1", &[], &[], &[], &[], "fp-only", "mt-only").unwrap();
+            store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-only", "mt-only").unwrap();
         assert_eq!(total, 0);
 
         let (fp, mt): (String, String) = conn
@@ -721,10 +748,11 @@ mod tests {
         store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&alice),
-            &[],
-            &[scan_row("sk-a", "tok-a", &ka)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&alice),
+                scan_upserts: &[scan_row("sk-a", "tok-a", &ka)],
+                ..GhostDelta::EMPTY
+            },
             "fp-seed",
             "mt-seed",
         )
@@ -734,10 +762,11 @@ mod tests {
         let result = store_ghosts_delta(
             &conn,
             "rk1",
-            std::slice::from_ref(&alice),
-            &[],
-            &[scan_row("sk-a", "tok-a-2", &ka)],
-            &[],
+            &GhostDelta {
+                upserts: std::slice::from_ref(&alice),
+                scan_upserts: &[scan_row("sk-a", "tok-a-2", &ka)],
+                ..GhostDelta::EMPTY
+            },
             "fp-1",
             "mt-1",
         );

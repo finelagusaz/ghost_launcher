@@ -128,10 +128,10 @@ fn read_seriko_use_self_alpha(ghost_root: &Path) -> AlphaMode {
         .join("shell")
         .join("master")
         .join("descript.txt");
-    if let Ok(fields) = parse_descript(&shell_descript) {
-        if fields.get("seriko.use_self_alpha").map(|v| v.as_str()) == Some("1") {
-            return AlphaMode::SelfAlpha;
-        }
+    if let Ok(fields) = parse_descript(&shell_descript)
+        && fields.get("seriko.use_self_alpha").map(|v| v.as_str()) == Some("1")
+    {
+        return AlphaMode::SelfAlpha;
     }
     AlphaMode::KeyColor
 }
@@ -180,13 +180,13 @@ mod tests {
     use crate::testutil::TempDirGuard;
     use std::path::PathBuf;
 
-    fn create_shell_master(ghost_root: &PathBuf) -> PathBuf {
+    fn create_shell_master(ghost_root: &Path) -> PathBuf {
         let shell_master = ghost_root.join("shell").join("master");
         fs::create_dir_all(&shell_master).unwrap();
         shell_master
     }
 
-    fn write_shell_descript(ghost_root: &PathBuf, content: &str) {
+    fn write_shell_descript(ghost_root: &Path, content: &str) {
         let shell_master = create_shell_master(ghost_root);
         fs::write(shell_master.join("descript.txt"), content).unwrap();
     }
