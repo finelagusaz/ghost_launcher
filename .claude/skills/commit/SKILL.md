@@ -32,9 +32,10 @@ npm test
 npm run check:ui-guidelines
 npm run test:ui-guidelines-check
 
-# グループ B（順次実行。CI の ci-build.yml と同一コマンド）
+# グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
 cargo test --workspace
 cargo test -p ghost-meta --features thumbnail,serde
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -A clippy::all -D clippy::disallowed-methods
 ```
 
 グループ A とグループ B は互いに独立しているため並列実行してよい（グループ B 内は target ディレクトリのロック競合を避けるため順次）。

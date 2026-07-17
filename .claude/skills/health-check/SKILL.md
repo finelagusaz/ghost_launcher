@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 ## 検査項目
 
-1. **SPEC.md と実装** — コマンド一覧・振る舞い・DB スキーマの記述が実装と一致するか（Tauri コマンドの増減、マイグレーション版数、ソート仕様などを突き合わせる）
+1. **SPEC.md と実装** — コマンド一覧・振る舞い・DB スキーマの記述が実装と一致するか（Tauri コマンドの増減、スキーマ定義（`CACHE_SCHEMA`/`ensure_schema`）、ソート仕様などを突き合わせる）
 2. **ルート CLAUDE.md** — 記載コマンドが実行可能か、ファイルパス・ディレクトリ構成図が実在と一致するか
 3. **フォルダ CLAUDE.md**（`src/` `src-tauri/` `e2e/`）— 記述が現在のコードと一致するか、移動・消失したファイルへの言及がないか
 4. **docs/** — `ui-guidelines.md`・`locale-customization.md` の規約が実装と一致するか
