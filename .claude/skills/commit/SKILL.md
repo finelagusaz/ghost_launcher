@@ -35,12 +35,12 @@ npm run test:ui-guidelines-check
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
 cargo test --workspace
 cargo test -p ghost-meta --features thumbnail,serde
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -A clippy::all -D clippy::disallowed-methods
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 グループ A とグループ B は互いに独立しているため並列実行してよい（グループ B 内は target ディレクトリのロック競合を避けるため順次）。
 
-> **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`）は CI 専用で、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
+> **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`・`cargo clippy --features bench --all-targets -- -D warnings`）は CI 専用で、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
 
 ### 追加の確認事項
 
