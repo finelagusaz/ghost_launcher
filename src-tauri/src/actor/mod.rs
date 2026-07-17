@@ -229,10 +229,12 @@ mod tests {
     use crate::testutil::TempDirGuard;
 
     /// 一時ファイル上に (ghosts, user-data) を初期化してアクターを起動する。
+    /// ghosts には identity "sspg" の行を seed する（record_launch の集計列 bump 観測用）。
     fn spawn_test_actor(dir: &TempDirGuard) -> ActorHandle {
         let ghosts = rusqlite::Connection::open(dir.path().join("ghosts.db")).unwrap();
         crate::commands::ghost::store::configure_connection(&ghosts).unwrap();
         crate::testutil::apply_cache_schema(&ghosts);
+        crate::testutil::insert_ghost_row(&ghosts, "sspg");
         let user = rusqlite::Connection::open(dir.path().join("user-data.db")).unwrap();
         crate::commands::launch_history::ensure_schema(&user).unwrap();
         spawn_actor(ghosts, user)
@@ -257,6 +259,12 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key='sspg'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(n, 1);
+        // ghosts 側の集計列 bump も観測する（テスト名「両db」の約束を実態と一致させる）
+        let ghosts = rusqlite::Connection::open(dir.path().join("ghosts.db")).unwrap();
+        let count: i64 = ghosts
+            .query_row("SELECT launch_count FROM ghosts WHERE ghost_identity_key='sspg'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "ghosts.db 側の launch_count が bump されているはず");
     }
 
     #[test]
@@ -288,6 +296,7 @@ mod tests {
 
     /// scan_and_store_blocking 相当の実ジョブを 2 本並行送信しても、単一 writer により
     /// 最終状態が「後勝ちの 1 状態」に収束する（旧 scan_lock配下の並行delta テストの後継）。
+    /// 旧テストと違い同期バリアは不要: 単一消費者キューでは interleaving が構造的に不可能なため。
     #[test]
     fn 並行scanジョブが直列化され整合状態に収束する() {
         use std::fs;
