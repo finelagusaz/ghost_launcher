@@ -6,12 +6,12 @@ pub enum GhostMetaError {
     Io(#[from] std::io::Error),
 }
 
-pub mod descript;
-pub mod ghost;
-pub mod thumbnail;
+mod descript;
+mod ghost;
+mod thumbnail;
 
 #[cfg(test)]
 pub(crate) mod testutil;
 
 pub use ghost::{read_ghost, GhostMeta};
-pub use thumbnail::{resolve_thumbnail, AlphaMode, ThumbnailInfo, ThumbnailKind};
+pub use thumbnail::{AlphaMode, ThumbnailInfo, ThumbnailKind};

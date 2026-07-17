@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 #[cfg(test)]
 use ts_rs::TS;
 
@@ -30,7 +30,7 @@ pub struct Ghost {
     pub thumbnail_kind: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(TS))]
 #[cfg_attr(test, ts(export))]
 pub struct ScanStoreResult {
