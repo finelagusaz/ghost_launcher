@@ -28,10 +28,23 @@ gh pr view <PR番号 or ブランチ> --json number,state,headRefName,mergedAt
 
 ```bash
 git switch main
+before_sync=$(git rev-parse HEAD)   # ステップ 3 の依存再同期の差分基点（pull 前の tip を控える）
 git pull origin main --ff-only
 ```
 
-## ステップ 3: ローカル作業ブランチの削除
+## ステップ 3: 依存の再同期（lockfile 変更時のみ）
+
+pull が lockfile を更新していたら、ローカルの依存を実体に合わせる。更新漏れのまま作業に入ると、`npm run build` が `@types/node` 欠落等で失敗し、コードの問題と切り分けにくい（#176 で実測）。判定は裁量でなく**機械的に**行う:
+
+```bash
+git diff --name-only "$before_sync"..HEAD -- package-lock.json Cargo.lock
+```
+
+- 出力に `package-lock.json` があれば `npm install`
+- 出力に `Cargo.lock` があれば `cargo fetch`
+- 出力が空なら何もしない（依存は不変）
+
+## ステップ 4: ローカル作業ブランチの削除
 
 ```bash
 git branch -D <branch>
@@ -39,6 +52,6 @@ git branch -D <branch>
 
 （スカッシュマージでは元コミットが main の祖先に入らないため `-d` は「未マージ」と誤検知する。内容が取り込まれているかは `git diff main..<branch> --stat` がほぼゼロであることで確認済みなら `-D` で削除してよい。）
 
-## ステップ 4: 結果の報告
+## ステップ 5: 結果の報告
 
 `git log --oneline -3 main` と `git status` を示し、main が最新・作業ツリーが clean になったことを伝える。
