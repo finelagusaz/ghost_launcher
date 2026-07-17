@@ -51,14 +51,16 @@ epic #140 の残 4 issue（#135〜#137 ＋ハーネス保守 #138/#139）に、�
 
 ### Phase 2: 物理設計改訂（CACHE_SCHEMA 1 回の改訂に束ねる・#136 ＋ #135 の残り）
 
-スキーマ変更＝全ユーザー自動リビルド（受容済みトレードオフ）のため、物理変更は 1 回の改訂に束ねてリビルド回数を 1 回にする。
+スキーマ変更＝全ユーザー自動リビルド（受容済みトレードオフ）のため、物理変更は 1 回の改訂に束ねてリビルド回数を 1 回にする。検索方式は §4.1 のとおり実測で確定済み（LIKE 系維持・`instr` ＋ `search_text` 同乗 index。FTS5 不採用）。実測記録は `docs/perf/2026-07-17-candidate-search-shapes.md`。
 
-- **ソート複合 index 追加**: `(request_key, last_launched DESC, name_lower)` と `(request_key, launch_count DESC, name_lower)`。SQLite は NULL を最小と扱い DESC で末尾に置くため、既存の `DESC NULLS LAST` は index 順序とそのまま適合する（#136 の分岐 2 つはこれで解ける。tie-break の `name_lower` も index に含めて完全 index-ordered にする）
+- **派生列 `search_text` の追加**: 検索 6 列（`_lower` 群）を `\x1f`（ユーザーが入力し得ない区切り）で連結した WHERE 専用列。Rust 書込側（store）が単一権威として導出する。SELECT 投影（`GHOST_VIEW_COLUMNS`・共有 fixture）には含めない
+- **検索述語を `instr(search_text, ?) > 0` へ**: JS の `searchGhosts` / `countGhostsByQuery` の 6 列 LIKE OR を置換する。LIKE の `%`/`_` メタ文字非エスケープ問題も同時に消える
+- **ソート複合 index（search_text 同乗）**: `(request_key, name_lower, search_text)`（既存 `(request_key, name_lower)` を置換）・`(request_key, last_launched DESC, name_lower, search_text)`・`(request_key, launch_count DESC, name_lower, search_text)` を追加。search_text の同乗により、検索×ソートでプランナが index 上で instr を評価し（非マッチ行の本体 seek なし・LIMIT 件のマッチで早期終了・ヒント不要）、素朴なソート index 追加で起きる sort-first 劣化（実測 229〜339ms）を避ける。SQLite は NULL を最小と扱い DESC で末尾に置くため、既存の `DESC NULLS LAST` は index 順序とそのまま適合する（#136 の分岐 2 つはこれで解ける）
 - **冗長 index 削除**: `idx_ghosts_request_key` は複合 index 群の prefix に包含されており削除する（UPSERT の書込コストも下がる）
-- **検索方式の決定ゲート（§4.1）**: FTS5 導入時はこの改訂に同梱する
 - **parity テストの退役**: これが使い捨てスキーマ初のスキーマ変更リリースになるため、src-tauri/CLAUDE.md の取り決めどおり `cache_schema.rs` の parity テストと `lib.rs` の旧 `migrations()` を同一 PR で削除する
+- **検索入力のデバウンス（JS・スキーマ無関係）**: キー入力毎のクエリ発行をデバウンス/in-flight 合流で削減する（Phase 1 の発行規律の続き。スキーマと独立のため同 Phase 内の別コミットでよい）
 
-受け入れ: `search_bench` の `empty_sort/recent`・`frequency` が `name` と同桁（~30µs 台）へ、EXPLAIN QUERY PLAN から `USE TEMP B-TREE FOR ORDER BY` が消える（random は式ソートのため対象外・現状維持）。
+受け入れ: `search_bench` の `cand_*` 相当形状が本番スキーマで再現すること——10万体で検索（全ソート・全クエリ長）が概ね 10〜17ms、`empty_sort/recent`・`frequency` が `name` と同桁（µs 台）へ、EXPLAIN QUERY PLAN から `USE TEMP B-TREE FOR ORDER BY` が消える（random は式ソートのため対象外。検索×random は filter-first 相当の十数〜数十 ms を許容）。DB サイズ増（`PRAGMA page_count` 比較）と store 系 bench（UPSERT・リビルド書込コスト）を計測して記録する。
 
 ### Phase 3: backfill の経路限定（#156）
 
@@ -79,26 +81,22 @@ epic #140 の残 4 issue（#135〜#137 ＋ハーネス保守 #138/#139）に、�
 
 ## 4. 設計判断
 
-### 4.1 検索方式（Phase 2 の決定ゲート）
+### 4.1 検索方式（決定済み: LIKE 系維持＋instr＋search_text 同乗 index。FTS5 不採用）
 
-Phase 1 完了後に残る検索コストは「キー入力毎の SELECT（LIKE 残余フィルタ）1 回」= 10万体実測で 42〜117ms/回。選択肢:
+Phase 2 着手時の実測（`docs/perf/2026-07-17-candidate-search-shapes.md`・ユーザー裁定 2026-07-17）で確定した。
 
-| 案 | 効果 | コスト・制約 |
-|---|---|---|
-| LIKE 維持（Phase 1 のみ） | 実装ゼロ。現実規模（数千体）では ~1ms 未満で十分 | 10万体では 1 キー入力 40ms 超が残る |
-| trigram FTS5 | substring 検索を index 化（10万体でも ms 級） | **3 文字未満のクエリには効かず LIKE 同等へフォールバック**（日本語ゴースト名は 1〜2 文字検索が現実的にありうる）。検索列を連結した external content テーブル＋トリガー同期を CACHE_SCHEMA に追加。NFKC 正規化パリティは既存 `_lower` 列を原文に使えば維持 |
-| 前方一致へ割り切り | 既存 index で即解決 | 中間一致 UX の喪失（受容しがたい） |
-
-**判定基準**: 対象規模の裁定に従う。epic #140 は「10万体規模」を明示スコープとするため既定は trigram FTS5 だが、#134 の教訓（多秒フリーズは 10万体合成のみ・現実規模は桁違いに軽い）を踏まえ、**Phase 2 着手時の brainstorm で「1〜2 文字クエリの実頻度」と「LIKE フォールバックの許容」をユーザーと確認して確定**する。FTS5 を見送る場合、#135 は「Phase 1（増幅解消）で対処・index 化は意図的スキップ」として理由付きクローズする。
+- **実測根拠**: 現行 6 列 LIKE の 10万体最悪 305.6ms（0 件マッチ）が、search_text 同乗 index ＋ instr で 16.8ms（約 18 倍）。検索×recent ソートも 9.9〜16.4ms。改善の主因は「カバリング index 上でフィルタが完結し、非マッチ行の幅広テーブル行 seek が消える」ことであり、連結列単体は効果ゼロ（現行と誤差レベル）と分離検証済み
+- **FTS5 不採用の理由**: trigram は 3 文字未満のクエリに効かず LIKE へフォールバックする。日本語ゴースト名は 1〜2 文字検索が現実的に多く、インクリメンタル検索の最初の 1〜2 打鍵は必ずこの fallback を通るため、体感の入口を改善できない。同乗 index 方式は**全クエリ長・全ソート**に効き、external content テーブル＋トリガー同期の複雑さ（本体と index の乖離という新規バグクラス）も負わない
+- **#135 の扱い**: Phase 2 完了時に「LIKE 系維持＋同乗 index で対処」としてクローズする
 
 ### 4.2 リビルドの束ね方
 
-Phase 2 以外はスキーマ不変。FTS5 を後から足す判断になった場合も、他のスキーマ変更と束ねて 1 リビルドにする（`CACHE_SCHEMA` 変更のたびに全ユーザーがフルスキャン再投入を払うため）。
+Phase 2 以外はスキーマ不変。将来スキーマ変更を追加する判断になった場合（FTS5 の再検討を含む）も、他のスキーマ変更と束ねて 1 リビルドにする（`CACHE_SCHEMA` 変更のたびに全ユーザーがフルスキャン再投入を払うため）。
 
 ## 5. 不変条件
 
 - **IPC 契約不変**: `scan_and_store`・`record_launch`・`cleanup_ghost_caches` の引数・戻り値は全フェーズで不変（`/ipc-check` 対象外の見込みだが各フェーズで確認）
-- **NFKC 正規化パリティ**: 検索キーは JS `normalizeForKey` と Rust `ghost_identity_key` の既存パリティを維持。FTS5 導入時も index の原文は既存 `_lower` 列から導出する
+- **NFKC 正規化パリティ**: 検索キーは JS `normalizeForKey` と Rust `ghost_identity_key` の既存パリティを維持。`search_text` は既存 `_lower` 列の連結として導出するため、パリティは列側で維持される
 - **集計列の権威**: `ghost_launches`（user-data.db）が権威、`ghosts` の集計列は導出キャッシュ——この関係は Phase 3 後も不変
 - **`GHOST_VIEW_COLUMNS` 網羅**: SELECT 投影は全フェーズで不変（fixtures 機械照合の対象）
 
@@ -106,7 +104,7 @@ Phase 2 以外はスキーマ不変。FTS5 を後から足す判断になった�
 
 - 各フェーズ TDD（/implement）。検収は `search_bench`/`scan_bench` の該当形状（Phase 0 で CI ガード済みのハーネス）
 - Phase 1: vitest（COUNT 非発行・空クエリ SQL 形状）＋ bench 形状追加
-- Phase 2: EXPLAIN QUERY PLAN 検証（bench_support の既存パリティガードへ形状を追加）・parity テスト退役
+- Phase 2: EXPLAIN QUERY PLAN 検証（`cand_*` 形状の本番スキーマでの再現・bench_support の既存パリティガードへ形状を追加）・parity テスト退役
 - Phase 3: Layer 1 経路の GROUP BY 非発行テスト・#93 回帰ガード維持
 - 検索 UI に触れるフェーズの完了時は `/e2e` を一巡（正常水準 10 passed / 1 skipped）
 
