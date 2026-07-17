@@ -38,6 +38,6 @@ Phase 2 の検収実測は狙った形状（search/sort）で行い受け入れ�
 
 ### ネクストアクション
 
-- **docs/locale-customization.md の複数形キー記載ギャップ — issue 化して追跡**（/health-check 検出・本サイクル起因ではない既存 drift）: キー一覧の `list.count` は日本語のみで、英語等は i18next 複数形キー `list.count_one`/`list.count_other` を使う。ユーザーが英語の件数表示を `list.count` で上書きしても効かない
+- **docs/locale-customization.md の複数形キー記載ギャップ — #164 起票・PR #165 で消化済み**（/health-check 検出・本サイクル起因ではない既存 drift）: キー一覧の `list.count` は日本語のみで、英語等は i18next 複数形キー `list.count_one`/`list.count_other` を使う。ユーザーが英語の件数表示を `list.count` で上書きしても効かなかった
 - **FS 監視（ReadDirectoryChangesW）によるスキャン層の追加最適化 — 意図的に追跡しない**（設計書スコープ外の再確認）: 現行の 2 層 fingerprint で実用十分。ユーザー報告があれば再訪する
 - **#137 の再浮上条件 — issue コメントに記録済み**: 遅い環境での 16ms 超過報告が出たら、第一手は痩せ sort index 並設（#137 コメント参照）
