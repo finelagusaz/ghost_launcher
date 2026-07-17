@@ -248,10 +248,12 @@ pub(crate) fn apply_scan_delta(
     store::store_ghosts_delta(
         conn,
         request_key,
-        &upserts,
-        &delete_identities,
-        &scan_upserts,
-        &scan_deletes,
+        &store::GhostDelta {
+            upserts: &upserts,
+            deletes: &delete_identities,
+            scan_upserts: &scan_upserts,
+            scan_deletes: &scan_deletes,
+        },
         fingerprint,
         parent_mtimes,
     )
@@ -264,14 +266,14 @@ mod tests {
     use super::scan::scan_ghosts_with_fingerprint_internal;
     use crate::testutil::TempDirGuard;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    fn create_ghost_dir(root: &PathBuf, name: &str) -> Result<(), String> {
+    fn create_ghost_dir(root: &Path, name: &str) -> Result<(), String> {
         create_ghost_dir_with_descript(root, name, "name,Test Ghost\ncharset,UTF-8\n")
     }
 
     fn create_ghost_dir_with_descript(
-        root: &PathBuf,
+        root: &Path,
         name: &str,
         descript: &str,
     ) -> Result<(), String> {
@@ -780,7 +782,7 @@ mod tests {
     fn seed_ghost_and_pending_launch(
         conn: &rusqlite::Connection,
         user_conn: &rusqlite::Connection,
-        ssp_root: &PathBuf,
+        ssp_root: &Path,
     ) -> Result<(String, String), String> {
         let ssp_ghost = ssp_root.join("ghost");
         fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;

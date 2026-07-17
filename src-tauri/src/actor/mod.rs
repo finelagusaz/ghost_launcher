@@ -30,10 +30,10 @@ pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
     crate::commands::ghost::store::configure_connection(&user_conn)
         .map_err(|e| format!("user-data.db の{e}"))?;
     crate::commands::launch_history::ensure_schema(&user_conn)?;
-    if ghosts_path.exists() {
-        if let Ok(g) = rusqlite::Connection::open(&ghosts_path) {
-            let _ = crate::commands::launch_history::migrate_legacy_launch_history(&g, &user_conn);
-        }
+    if ghosts_path.exists()
+        && let Ok(g) = rusqlite::Connection::open(&ghosts_path)
+    {
+        let _ = crate::commands::launch_history::migrate_legacy_launch_history(&g, &user_conn);
     }
 
     // (3) ghosts を開きスキーマ確定（webview ロード前なので初回 SELECT は必ず確定後）。

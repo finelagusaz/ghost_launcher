@@ -44,13 +44,13 @@ fn detect_charset(bytes: &[u8]) -> Charset {
     let ascii_content = String::from_utf8_lossy(&bytes[..scan_len]);
     for line in ascii_content.lines() {
         let line = line.trim();
-        if let Some((key, value)) = line.split_once(',') {
-            if key.trim().eq_ignore_ascii_case("charset") {
-                if value.trim().eq_ignore_ascii_case("UTF-8") {
-                    return Charset::Utf8;
-                }
-                return Charset::ShiftJis;
+        if let Some((key, value)) = line.split_once(',')
+            && key.trim().eq_ignore_ascii_case("charset")
+        {
+            if value.trim().eq_ignore_ascii_case("UTF-8") {
+                return Charset::Utf8;
             }
+            return Charset::ShiftJis;
         }
     }
     // デフォルトは Shift_JIS
