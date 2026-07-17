@@ -655,7 +655,7 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 
 - トリガー: `main` への push・PR
 - 実行環境: `windows-latest`
-- ステップ: `npm run build` → `npm test` → `check:ui-guidelines` → `test:ui-guidelines-check` → `cargo test --workspace` → ts-rs 生成型の再生成照合（`git diff --exit-code`）→ ghost-meta feature テスト
+- ステップ: `.github/workflows/ci-build.yml` が単一権威（ここに列挙を複製しない。フロントエンド系ゲート・Rust テスト・ts-rs 生成型照合・bench ハーネスガード・clippy ガードを含む）
 - 備考: E2E テストはリリースビルドと tauri-driver が必要なため CI には含まない。ローカルで手動実行する。
 
 ### 11.2 リリース（`release.yml`）

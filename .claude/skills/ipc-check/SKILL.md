@@ -27,7 +27,7 @@ git status --porcelain src/types/generated/
 
 ## 検査 3: セマンティクス変更
 
-戻り値の「空・省略・null」の意味を変えた変更（例: `cache_hit=true` のとき `ghosts: []` を「0 件」でなく「省略」の意味で返す）では:
+戻り値の「空・省略・null」の意味を変えた変更（例: `cache_hit=true` のとき `total: 0` を「0 件」でなく「省略」の意味で返す）では:
 
 1. その戻り値を受け取る**全コードパス**を検索して列挙する
 2. 各受け手が新しい意味で正しく解釈するか確認する
@@ -38,7 +38,7 @@ git status --porcelain src/types/generated/
 
 `invoke` をモックするテストについて:
 
-1. モックの戻り値が Rust 側の実装で**実際に発生しうる組み合わせ**か確認する（例: `cache_hit=true` なら Rust は必ず `ghosts: []` を返す。`cache_hit: true, ghosts: [1件]` は現実に発生しない）
+1. モックの戻り値が Rust 側の実装で**実際に発生しうる組み合わせ**か確認する（例: `cache_hit=true` なら Rust は必ず `total: 0` を返す。`cache_hit: true, total: 1` は現実に発生しない）
 2. 発生しない組み合わせを返すモックは、本物のバグを検知できない無意味テスト。実契約に合わせて修正する
 
 ## サブエージェント委譲
