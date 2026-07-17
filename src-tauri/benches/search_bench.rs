@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion};
 use ghost_launcher_lib::bench_support::{
-    open_bench_db, order_by, search_where_prefixed, seed_ghosts_db, select_cols_prefixed,
-    Q_COMMON, Q_NONE, Q_RARE,
+    open_bench_db, order_by, seed_ghosts_db, select_cols_prefixed, Q_COMMON, Q_NONE, Q_RARE,
+    SEARCH_WHERE_PREFIXED,
 };
 use rusqlite::Connection;
 
@@ -43,7 +43,7 @@ fn dump_query_plans() {
     let (_g, conn) = seeded_readonly_db("plan", 1000);
     // 本番 GHOST_SELECT_COLUMNS_PREFIXED と同形の投影（fixture 連動・materialize コストを再現）
     let select_cols = select_cols_prefixed();
-    let where_c = search_where_prefixed();
+    let where_c = SEARCH_WHERE_PREFIXED;
     // EXPLAIN QUERY PLAN は未束縛 ? を嫌うため、リテラル値で組む（プランは値非依存で SCAN/index が判る）。
     let where_lit = where_c.replace("instr(g.search_text, ?)", "instr(g.search_text, 'さくら')");
     let shapes: Vec<(&str, String)> = vec![
@@ -71,7 +71,7 @@ fn dump_query_plans() {
 fn bench_search(c: &mut Criterion) {
     // 本番 GHOST_SELECT_COLUMNS_PREFIXED と同形の投影（fixture 連動・materialize コストを再現）
     let select_cols = select_cols_prefixed();
-    let where_c = search_where_prefixed();
+    let where_c = SEARCH_WHERE_PREFIXED;
     // COUNT は本番 countGhostsByQuery と同形（前置きなし）
     let count_where = where_c.replace("g.", "");
     for &n in &[1_000usize, 10_000, 100_000] {

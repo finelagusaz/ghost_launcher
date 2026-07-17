@@ -89,9 +89,9 @@ EXPLAIN QUERY PLAN: 全形状が同乗 index を選択（random のみ TEMP B-TR
 | store_initial | 162.7 ms | 214.6 ms | +32% |
 | store_rescan_nodiff | 71.6 ms | 87.0 ms | +21% |
 
-**DB サイズ（bench_support の ignored 計測テスト・n=100k・同一 DB 内で index 群を入替えて VACUUM 比較）**: 新スキーマ 52.4 MB / 旧物理相当 35.8 MB / **増分 +16.6 MB（+46%）**。
+**DB サイズ（n=100k・同一 DB 内で新旧の index 群を入替えて VACUUM ペア比較。一時的な計測テストで実施し、記録後に撤去）**: 新スキーマ 52.4 MB / 旧物理相当 35.8 MB / **増分 +16.6 MB（+46%）**。
 
-書込・サイズの増分は同乗 index 3 本の維持コストで、書込は cache miss 時のみ発生する受容済みトレードオフ（設計書 Phase 2 節）。
+書込・サイズの増分は同乗 index 3 本の維持コストで、書込は cache miss 時のみ発生する受容済みトレードオフ（設計書 Phase 2 節）。なお計測後の simplify で、読み手（フィルタ・ソート）が存在しない `idx_ghosts_request_key_directory_name_lower` も削除したため、出荷スキーマの実サイズ・書込コストは上記よりわずかに小さい。
 
 ## 未計測（意図的スキップ）
 

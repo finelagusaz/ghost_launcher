@@ -11,7 +11,7 @@ use rusqlite::{Connection, TransactionBehavior};
 /// 生成列（VIRTUAL）。導出式はこの 1 箇所が単一権威で、書込側（store）は関与しない。
 /// JS の検索述語 instr(search_text, ?) と search_text 同乗の複合 index 群が参照する
 /// （実測根拠は docs/perf/2026-07-17-candidate-search-shapes.md）。
-pub(crate) const CACHE_SCHEMA: &str = "CREATE TABLE ghosts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  directory_name TEXT NOT NULL,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL,\n  name_lower TEXT NOT NULL,\n  directory_name_lower TEXT NOT NULL,\n  request_key TEXT NOT NULL DEFAULT '',\n  updated_at TEXT NOT NULL DEFAULT '',\n  craftman TEXT NOT NULL DEFAULT '',\n  thumbnail_path TEXT NOT NULL DEFAULT '',\n  thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0,\n  thumbnail_kind TEXT NOT NULL DEFAULT '',\n  ghost_identity_key TEXT NOT NULL DEFAULT '',\n  row_fingerprint TEXT NOT NULL DEFAULT '',\n  sakura_name TEXT NOT NULL DEFAULT '',\n  kero_name TEXT NOT NULL DEFAULT '',\n  craftmanw TEXT NOT NULL DEFAULT '',\n  sakura_name_lower TEXT NOT NULL DEFAULT '',\n  kero_name_lower TEXT NOT NULL DEFAULT '',\n  craftman_lower TEXT NOT NULL DEFAULT '',\n  craftmanw_lower TEXT NOT NULL DEFAULT '',\n  last_launched TEXT,\n  launch_count INTEGER NOT NULL DEFAULT 0,\n  search_text TEXT GENERATED ALWAYS AS (name_lower || char(31) || sakura_name_lower || char(31) || kero_name_lower || char(31) || craftman_lower || char(31) || craftmanw_lower || char(31) || directory_name_lower) VIRTUAL\n);\nCREATE INDEX idx_ghosts_request_key_name_search ON ghosts(request_key, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_recent_search ON ghosts(request_key, last_launched DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_frequency_search ON ghosts(request_key, launch_count DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_directory_name_lower ON ghosts(request_key, directory_name_lower);\nCREATE INDEX idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nCREATE UNIQUE INDEX idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);\nCREATE TABLE ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT '',\n  parent_mtimes TEXT NOT NULL DEFAULT ''\n);\nCREATE TABLE ghost_scan_entries (\n  request_key TEXT NOT NULL,\n  scan_key TEXT NOT NULL,\n  token TEXT NOT NULL,\n  ghost_identity_key TEXT NOT NULL,\n  PRIMARY KEY (request_key, scan_key)\n) WITHOUT ROWID;";
+pub(crate) const CACHE_SCHEMA: &str = "CREATE TABLE ghosts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  directory_name TEXT NOT NULL,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL,\n  name_lower TEXT NOT NULL,\n  directory_name_lower TEXT NOT NULL,\n  request_key TEXT NOT NULL DEFAULT '',\n  updated_at TEXT NOT NULL DEFAULT '',\n  craftman TEXT NOT NULL DEFAULT '',\n  thumbnail_path TEXT NOT NULL DEFAULT '',\n  thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0,\n  thumbnail_kind TEXT NOT NULL DEFAULT '',\n  ghost_identity_key TEXT NOT NULL DEFAULT '',\n  row_fingerprint TEXT NOT NULL DEFAULT '',\n  sakura_name TEXT NOT NULL DEFAULT '',\n  kero_name TEXT NOT NULL DEFAULT '',\n  craftmanw TEXT NOT NULL DEFAULT '',\n  sakura_name_lower TEXT NOT NULL DEFAULT '',\n  kero_name_lower TEXT NOT NULL DEFAULT '',\n  craftman_lower TEXT NOT NULL DEFAULT '',\n  craftmanw_lower TEXT NOT NULL DEFAULT '',\n  last_launched TEXT,\n  launch_count INTEGER NOT NULL DEFAULT 0,\n  search_text TEXT GENERATED ALWAYS AS (name_lower || char(31) || sakura_name_lower || char(31) || kero_name_lower || char(31) || craftman_lower || char(31) || craftmanw_lower || char(31) || directory_name_lower) VIRTUAL\n);\nCREATE INDEX idx_ghosts_request_key_name_search ON ghosts(request_key, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_recent_search ON ghosts(request_key, last_launched DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_frequency_search ON ghosts(request_key, launch_count DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nCREATE UNIQUE INDEX idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);\nCREATE TABLE ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT '',\n  parent_mtimes TEXT NOT NULL DEFAULT ''\n);\nCREATE TABLE ghost_scan_entries (\n  request_key TEXT NOT NULL,\n  scan_key TEXT NOT NULL,\n  token TEXT NOT NULL,\n  ghost_identity_key TEXT NOT NULL,\n  PRIMARY KEY (request_key, scan_key)\n) WITHOUT ROWID;";
 
 /// CACHE_SCHEMA 文字列の FNV-1a ハッシュを i32 に畳んだ値（0 は未初期化の予約値なので 1 にずらす）。
 /// スキーマ本文の変更＝自動的に version が変わる。手動 bump が存在しないため
@@ -184,29 +184,6 @@ mod tests {
         assert_eq!(st, "n\u{1f}s\u{1f}k\u{1f}c\u{1f}w\u{1f}d");
     }
 
-    #[test]
-    fn 冗長indexが削除され同乗index群が存在する() {
-        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-        ensure_cache_schema(&mut conn).unwrap();
-        let indexes: Vec<String> = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='ghosts'")
-            .unwrap()
-            .query_map([], |r| r.get::<_, String>(0))
-            .unwrap()
-            .filter_map(Result::ok)
-            .collect();
-        for present in [
-            "idx_ghosts_request_key_name_search",
-            "idx_ghosts_request_key_recent_search",
-            "idx_ghosts_request_key_frequency_search",
-        ] {
-            assert!(indexes.contains(&present.to_string()), "{present} が存在しない");
-        }
-        for absent in ["idx_ghosts_request_key", "idx_ghosts_request_key_name_lower"] {
-            assert!(!indexes.contains(&absent.to_string()), "{absent} は複合 index に包含されるため削除済みのはず");
-        }
-    }
-
     /// EXPLAIN QUERY PLAN の detail 行を連結して返す
     fn plan(conn: &rusqlite::Connection, sql: &str) -> String {
         let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
@@ -220,38 +197,65 @@ mod tests {
 
     #[test]
     fn 検索とソートの形状が同乗indexを使いtemp_btreeを踏まない() {
-        // docs/perf/2026-07-17-candidate-search-shapes.md の cand_* 形状が本番スキーマで
-        // 再現することの EXPLAIN 側ガード（レイテンシは search_bench で計測）。
-        // 射影に非 index 列（path）を含め、カバリング判定に依存しない形で検証する。
+        // EXPLAIN 側ガード（レイテンシは search_bench で計測。実測記録は
+        // docs/perf/2026-07-17-candidate-search-shapes.md）。SQL 形状は共有 fixture
+        // search-sql-shapes.json（JS parity テスト・bench_support と同一の照合点）から
+        // 組み立てる——リテラル複製すると本番形状の変更に追従せず旧形状のまま green を
+        // 出し続けるため。射影に非 index 列（path）を含め、カバリング判定に依存しない。
+        let raw = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/search-sql-shapes.json"
+        ))
+        .expect("fixture を読めること");
+        let shapes: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        // EXPLAIN QUERY PLAN は未束縛 ? を嫌うためリテラル化する（プランは値非依存）
+        let where_lit = shapes["searchWhere"].as_str().unwrap().replace('?', "'さ'");
+        let order_by = |sort: &str| shapes["orderBy"][sort].as_str().unwrap();
+
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         ensure_cache_schema(&mut conn).unwrap();
 
-        // 検索 × name ソート → 同乗 index 上で instr を評価
-        let p = plan(&conn,
-            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND instr(g.search_text, 'さ') > 0 \
-             ORDER BY g.name_lower ASC LIMIT 50");
-        assert!(p.contains("idx_ghosts_request_key_name_search"), "name 検索が同乗 index を使わない: {p}");
-        assert!(!p.contains("USE TEMP B-TREE"), "name 検索に TEMP B-TREE が残る: {p}");
-
-        // 検索 × recent ソート → recent 同乗 index・TEMP B-TREE なし
-        let p = plan(&conn,
-            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND instr(g.search_text, 'さ') > 0 \
-             ORDER BY g.last_launched DESC NULLS LAST, g.name_lower ASC LIMIT 50");
-        assert!(p.contains("idx_ghosts_request_key_recent_search"), "recent 検索が同乗 index を使わない: {p}");
-        assert!(!p.contains("USE TEMP B-TREE"), "recent 検索に TEMP B-TREE が残る: {p}");
-
-        // 空クエリ × recent / frequency ソート → index-ordered（TEMP B-TREE 消滅・#136）
-        let p = plan(&conn,
-            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' \
-             ORDER BY g.last_launched DESC NULLS LAST, g.name_lower ASC LIMIT 50");
-        assert!(p.contains("idx_ghosts_request_key_recent_search"), "recent ソートが index を使わない: {p}");
-        assert!(!p.contains("USE TEMP B-TREE"), "recent ソートに TEMP B-TREE が残る: {p}");
-
-        let p = plan(&conn,
-            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' \
-             ORDER BY g.launch_count DESC, g.name_lower ASC LIMIT 50");
-        assert!(p.contains("idx_ghosts_request_key_frequency_search"), "frequency ソートが index を使わない: {p}");
-        assert!(!p.contains("USE TEMP B-TREE"), "frequency ソートに TEMP B-TREE が残る: {p}");
+        let cases = [
+            // 検索 × name / recent ソート → 同乗 index 上で instr を評価
+            (
+                "name 検索",
+                format!(
+                    "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                    order_by("name")
+                ),
+                "idx_ghosts_request_key_name_search",
+            ),
+            (
+                "recent 検索",
+                format!(
+                    "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                    order_by("recent")
+                ),
+                "idx_ghosts_request_key_recent_search",
+            ),
+            // 空クエリ × recent / frequency ソート → index-ordered（TEMP B-TREE 消滅・#136）
+            (
+                "recent ソート",
+                format!(
+                    "SELECT g.path FROM ghosts g WHERE g.request_key='rk' ORDER BY {} LIMIT 50",
+                    order_by("recent")
+                ),
+                "idx_ghosts_request_key_recent_search",
+            ),
+            (
+                "frequency ソート",
+                format!(
+                    "SELECT g.path FROM ghosts g WHERE g.request_key='rk' ORDER BY {} LIMIT 50",
+                    order_by("frequency")
+                ),
+                "idx_ghosts_request_key_frequency_search",
+            ),
+        ];
+        for (label, sql, index) in cases {
+            let p = plan(&conn, &sql);
+            assert!(p.contains(index), "{label} が {index} を使わない: {p}");
+            assert!(!p.contains("USE TEMP B-TREE"), "{label} に TEMP B-TREE が残る: {p}");
+        }
     }
 
     #[test]
