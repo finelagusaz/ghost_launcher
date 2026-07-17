@@ -113,6 +113,7 @@ pub(crate) fn scan_and_store_blocking(
     if cache_hit {
         // Layer 2 hit: 親 mtime は変わったがゴースト構成は同じ
         // parent_mtimes を更新して次回 Layer 1 で hit するようにする
+        // （hit 経路ゆえ backfill も呼ばない。Layer 1 のコメント参照・#156）
         let _ = conn.execute(
             "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
             rusqlite::params![current_mtimes, request_key],
@@ -128,6 +129,7 @@ pub(crate) fn scan_and_store_blocking(
     // Cache miss → delta 差分書き込み（前回 scan_entries と差分を取り、変更子だけ parse）
     let total = apply_scan_delta(conn, &request_key, &entries, &fingerprint, &current_mtimes)?;
 
+    // healing: リビルド後の集計復元と record_launch bump 失敗の修復（cache miss 経路のみ・#156）
     let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
 
     Ok(ScanStoreResult {
@@ -774,17 +776,19 @@ mod tests {
     /// その後に user-data へ起動履歴を 1 件挿入した状態を作る。
     /// 以降に backfill_aggregates が走れば集計列（launch_count/last_launched）が
     /// 0/NULL でなくなるため、「集計列が不変」= GROUP BY 非発行の観測になる。
+    /// 戻り値は (seed 時の fingerprint, alpha の identity_key)。
     fn seed_ghost_and_pending_launch(
         conn: &rusqlite::Connection,
         user_conn: &rusqlite::Connection,
-        ssp_ghost: &PathBuf,
-        ssp_path: &str,
-    ) -> Result<(super::ScanStoreResult, String), String> {
-        create_ghost_dir_with_descript(ssp_ghost, "alpha", "name,Alpha\ncharset,UTF-8\n")?;
+        ssp_root: &PathBuf,
+    ) -> Result<(String, String), String> {
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
+        create_ghost_dir_with_descript(&ssp_ghost, "alpha", "name,Alpha\ncharset,UTF-8\n")?;
         let seeded = super::scan_and_store_blocking(
             conn,
             user_conn,
-            ssp_path.to_string(),
+            ssp_root.to_string_lossy().to_string(),
             vec![],
             "rk1".to_string(),
             None,
@@ -798,7 +802,7 @@ mod tests {
                 rusqlite::params![identity],
             )
             .unwrap();
-        Ok((seeded, identity))
+        Ok((seeded.fingerprint, identity))
     }
 
     fn read_aggregates(
@@ -819,22 +823,19 @@ mod tests {
     fn scan_and_store_blockingのlayer1_hit経路はbackfillを発行しない() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_backfill_layer1_test");
         let ssp_root = workspace.path().join("ssp");
-        let ssp_ghost = ssp_root.join("ghost");
-        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let ssp_path = ssp_root.to_string_lossy().to_string();
-        let (seeded, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+        let (fingerprint, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // 親 mtime 不変 + cached_fingerprint あり → Layer 1 hit
         let result = super::scan_and_store_blocking(
             &conn,
             &user_conn,
-            ssp_path,
+            ssp_root.to_string_lossy().to_string(),
             vec![],
             "rk1".to_string(),
-            Some(seeded.fingerprint),
+            Some(fingerprint),
         )?;
         assert!(result.cache_hit, "Layer 1 hit にならなかった（テスト前提の崩れ）");
 
@@ -850,13 +851,10 @@ mod tests {
     fn scan_and_store_blockingのlayer2_hit経路はbackfillを発行しない() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_backfill_layer2_test");
         let ssp_root = workspace.path().join("ssp");
-        let ssp_ghost = ssp_root.join("ghost");
-        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let ssp_path = ssp_root.to_string_lossy().to_string();
-        let (seeded, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+        let (fingerprint, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // parent_mtimes を欠損させ Layer 1 を外す → Layer 2 の fingerprint 等値判定で hit
         conn.execute(
@@ -867,10 +865,10 @@ mod tests {
         let result = super::scan_and_store_blocking(
             &conn,
             &user_conn,
-            ssp_path,
+            ssp_root.to_string_lossy().to_string(),
             vec![],
             "rk1".to_string(),
-            Some(seeded.fingerprint),
+            Some(fingerprint),
         )?;
         assert!(result.cache_hit, "Layer 2 hit にならなかった（テスト前提の崩れ）");
 
@@ -886,23 +884,20 @@ mod tests {
     fn scan_and_store_blockingのcache_miss経路はbackfillを発行する() -> Result<(), String> {
         let workspace = TempDirGuard::new("ghost_launcher_backfill_miss_test");
         let ssp_root = workspace.path().join("ssp");
-        let ssp_ghost = ssp_root.join("ghost");
-        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let ssp_path = ssp_root.to_string_lossy().to_string();
-        let (seeded, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+        let (fingerprint, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // ゴースト追加で親 mtime も fingerprint も変える → cache miss
-        create_ghost_dir_with_descript(&ssp_ghost, "bravo", "name,Bravo\ncharset,UTF-8\n")?;
+        create_ghost_dir_with_descript(&ssp_root.join("ghost"), "bravo", "name,Bravo\ncharset,UTF-8\n")?;
         let result = super::scan_and_store_blocking(
             &conn,
             &user_conn,
-            ssp_path,
+            ssp_root.to_string_lossy().to_string(),
             vec![],
             "rk1".to_string(),
-            Some(seeded.fingerprint),
+            Some(fingerprint),
         )?;
         assert!(!result.cache_hit, "cache miss にならなかった（テスト前提の崩れ）");
 
