@@ -40,6 +40,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -A clippy::al
 
 グループ A とグループ B は互いに独立しているため並列実行してよい（グループ B 内は target ディレクトリのロック競合を避けるため順次）。
 
+> **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`）は CI 専用で、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
+
 ### 追加の確認事項
 
 - **新規テストファイルを追加した場合**: `ci-build.yml` で実行されるか・`tsconfig.json` の `exclude` に追加が必要か・`vitest.config.ts` の `include` が検出するかを確認する
