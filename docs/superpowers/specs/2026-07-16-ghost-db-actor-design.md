@@ -249,6 +249,8 @@ fn ensure_cache_schema(conn: &rusqlite::Connection) -> Result<(), String> {
   - 旧 migration 合成との一致（§8 の二段構え）
   - user_version 不一致 → リビルド／一致 → データ保持
   - **リビルド実行中の並行 reader が「no such table」を観測しない**（単一 tx の検証）
+    ※実装検証は省略: `ensure_cache_schema` は webview ロード前にしか走らず並行 reader が
+    構造的に存在しないため（単一 tx は防御的保証に留まる・issue #148）
   - **legacy 移送 → リビルドの順序**: 旧世代 DB（migration 11 相当＋履歴あり）からの
     起動シーケンスで、リビルド後も user-data.db に履歴が残る（issue #93 回帰ガードの拡張。
     現行 `アップグレードとリセットを通じて…` テストを新方式へ改修）

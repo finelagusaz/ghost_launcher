@@ -5,6 +5,15 @@ pub(crate) fn apply_cache_schema(conn: &rusqlite::Connection) {
         .unwrap_or_else(|e| panic!("cache schema の適用に失敗: {e}"));
 }
 
+/// ghosts テーブルへ最小構成の 1 行を seed する（集計列 bump 観測などのテスト用）。
+pub(crate) fn insert_ghost_row(conn: &rusqlite::Connection, identity_key: &str) {
+    conn.execute(
+        "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
+        rusqlite::params![identity_key],
+    )
+    .unwrap();
+}
+
 /// テスト用の一時ディレクトリ。Drop 時に自動削除される。
 pub(crate) struct TempDirGuard {
     path: std::path::PathBuf,

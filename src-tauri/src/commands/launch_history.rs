@@ -119,15 +119,12 @@ pub async fn record_launch(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use crate::testutil::insert_ghost_row;
 
     fn ghosts_conn_with_row(identity_key: &str) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         crate::testutil::apply_cache_schema(&conn);
-        conn.execute(
-            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
-            rusqlite::params![identity_key],
-        )
-        .unwrap();
+        insert_ghost_row(&conn, identity_key);
         conn
     }
 
@@ -239,14 +236,6 @@ mod tests {
             .collect();
         assert!(cols.contains(&"ghost_identity_key".to_string()));
         assert!(cols.contains(&"launched_at".to_string()));
-    }
-
-    fn insert_ghost_row(conn: &Connection, identity_key: &str) {
-        conn.execute(
-            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
-            rusqlite::params![identity_key],
-        )
-        .unwrap();
     }
 
     // 旧世代（migration 1..=11 の ghosts.db・履歴同居）からのアップグレードで、

@@ -2,3 +2,11 @@
 [[disallowed-methods]]
 path = "rusqlite::Connection::open"
 reason = "ghosts.db/user-data.db の接続は actor::bootstrap と spawn_actor 経由のみ。テストは #[allow(clippy::disallowed_methods)] を付ける"
+
+[[disallowed-methods]]
+path = "rusqlite::Connection::open_with_flags"
+reason = "同上（actor 経由のみ）"
+
+[[disallowed-methods]]
+path = "rusqlite::Connection::open_with_flags_and_vfs"
+reason = "同上（actor 経由のみ）"
