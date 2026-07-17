@@ -84,7 +84,7 @@ locales/
 | `list.empty` | ゴーストが 0 件のときの表示 | — |
 | `list.emptySearch` | 検索で 0 件のときの表示 | `{{query}}` |
 | `list.clearSearch` | 検索0件表示の「検索をクリア」ボタン | — |
-| `list.count` | ゴースト件数表示 | `{{count}}` |
+| `list.count` | ゴースト件数表示（言語により複数形サフィックス付き。注意事項参照） | `{{count}}` |
 | `card.launch` | 起動ボタン | — |
 | `card.launching` | 起動中ボタン（押下後） | — |
 | `card.launchError` | 起動失敗時のエラーメッセージ | `{{detail}}` |
@@ -106,6 +106,7 @@ locales/
 - 文字コードは **UTF-8** で保存してください
 - フラットなキー・バリュー形式です（ネストは不可。値は文字列のみ）
 - アプリ起動後に JSON を編集した場合は、設定パネルで言語を選び直すと反映されます（同じ言語のままの場合は、一度別の言語に切り替えてから戻してください）
+- **複数形のあるキー**（現在は `list.count` のみ）: 英語の内蔵翻訳は i18next の複数形サフィックス付きキー `list.count_one` / `list.count_other` を使っています。**英語（`en.json`）で件数表示を変更する場合はこの 2 キーを上書きしてください**（`list.count` を書いても効きません）。日本語・韓国語・中国語・ロシア語の内蔵翻訳はフラットな `list.count` です。なお、ロシア語のように複数形カテゴリを持つ言語では、サフィックス付きキー（例: `list.count_one` / `list.count_few` / `list.count_many`）を追加するとフラットキーより優先され、文法的に正しい複数形を定義できます
 
 ---
 
@@ -131,7 +132,8 @@ locales/
 {
   "card.launch": "Launch",
   "card.launching": "Launching...",
-  "list.count": "{{count}} ghost(s)",
+  "list.count_one": "{{count}} ghost",
+  "list.count_other": "{{count}} ghosts",
   "list.empty": "No ghosts found",
   "search.placeholder": "Search by ghost name"
 }
@@ -193,7 +195,7 @@ locales/
 | `list.empty` | Shown when no ghosts are found | — |
 | `list.emptySearch` | Shown when a search returns no matches | `{{query}}` |
 | `list.clearSearch` | "Clear search" button in the no-match state | — |
-| `list.count` | Ghost count display | `{{count}}` |
+| `list.count` | Ghost count display (some languages use plural-suffixed keys; see Notes) | `{{count}}` |
 | `card.launch` | Launch button | — |
 | `card.launching` | Launch button after clicked | — |
 | `card.launchError` | Error message on launch failure | `{{detail}}` |
@@ -215,3 +217,4 @@ locales/
 - Save the file in **UTF-8** encoding
 - Use flat key-value pairs only (no nesting; values must be strings)
 - If you edit the JSON while the app is running, re-select the language in the settings panel to apply changes (if already using that language, switch to another and back)
+- **Pluralized keys** (currently only `list.count`): the built-in English translation uses i18next plural-suffixed keys `list.count_one` / `list.count_other`. **To change the count display in English (`en.json`), override these two keys** — overriding `list.count` has no effect. The built-in Japanese, Korean, Chinese, and Russian translations use the flat `list.count` key. For languages with plural categories such as Russian, adding suffixed keys (e.g. `list.count_one` / `list.count_few` / `list.count_many`) takes precedence over the flat key and lets you define grammatically correct plurals
