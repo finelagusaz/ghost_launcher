@@ -12,7 +12,20 @@ export type Harness = {
   tauriDriver: ChildProcessWithoutNullStreams;
 };
 
-const WD_SERVER = "http://127.0.0.1:4444/";
+// tauri-driver の --port/--native-port は既定 4444/4445 の固定値。全テストで共有すると、
+// Windows では kill() が子プロセス（msedgedriver）を道連れにしないため、前テストの
+// 孤児 msedgedriver に次テストが相乗りし、孤児の遅延死で ECONNRESET になる（issue #153）。
+// harness ごとに空きポートを取得して干渉を断つ。
+async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address() as net.AddressInfo;
+      srv.close(() => resolve(port));
+    });
+    srv.once("error", reject);
+  });
+}
 
 async function fileExists(targetPath: string): Promise<boolean> {
   try {
@@ -58,7 +71,7 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   throw new Error(`Timed out waiting for port ${port}`);
 }
 
-async function spawnTauriDriver(): Promise<ChildProcessWithoutNullStreams> {
+async function spawnTauriDriver(port: number, nativePort: number): Promise<ChildProcessWithoutNullStreams> {
   const tauriDriverPath = getTauriDriverPath();
   if (!(await fileExists(tauriDriverPath))) {
     throw new Error(
@@ -74,17 +87,19 @@ async function spawnTauriDriver(): Promise<ChildProcessWithoutNullStreams> {
     ? path.join(os.tmpdir(), `edgedriver-${pinnedVersion}`)
     : undefined;
   const nativeDriverPath = await downloadEdgeDriver(pinnedVersion, cacheDir);
-  const proc = spawn(tauriDriverPath, ["--native-driver", nativeDriverPath], {
-    stdio: "pipe",
-  });
+  const proc = spawn(
+    tauriDriverPath,
+    ["--native-driver", nativeDriverPath, "--port", String(port), "--native-port", String(nativePort)],
+    { stdio: "pipe" },
+  );
   proc.on("error", () => {
     // ポートタイムアウトまたはセッション作成エラーで処理
   });
-  await waitForPort(4444, 12_000);
+  await waitForPort(port, 12_000);
   return proc;
 }
 
-async function createWebDriverSession(): Promise<WebDriver> {
+async function createWebDriverSession(port: number): Promise<WebDriver> {
   const appBinary = getAppBinaryPath();
   if (!(await fileExists(appBinary))) {
     throw new Error(
@@ -93,7 +108,7 @@ async function createWebDriverSession(): Promise<WebDriver> {
   }
 
   return new Builder()
-    .usingServer(WD_SERVER)
+    .usingServer(`http://127.0.0.1:${port}/`)
     .withCapabilities({
       browserName: "wry",
       "tauri:options": {
@@ -107,8 +122,10 @@ export async function createHarness(): Promise<Harness> {
   let tauriDriver: ChildProcessWithoutNullStreams | undefined;
   let driver: WebDriver | undefined;
   try {
-    tauriDriver = await spawnTauriDriver();
-    driver = await createWebDriverSession();
+    const port = await getFreePort();
+    const nativePort = await getFreePort();
+    tauriDriver = await spawnTauriDriver(port, nativePort);
+    driver = await createWebDriverSession(port);
     return { driver, tauriDriver };
   } catch (e) {
     if (driver) {
