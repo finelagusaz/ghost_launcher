@@ -76,7 +76,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `cache_schema.rs`   | ghosts.db の使い捨てスキーマ管理。`CACHE_SCHEMA` が単一権威で、そのハッシュを `PRAGMA user_version` に刻み、不一致時は起動時に単一トランザクションで自動リビルドする |
 | `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換・差分検知（scan）・差分 delta 書込とキャッシュ寿命管理（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
-| `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・スキャン時の集計列 backfill・旧 ghosts.db 履歴の移送 |
+| `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・キャッシュ再構築（cache miss）後の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 
 **`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
@@ -214,7 +214,7 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | `launched_at`        | `TEXT`    | 起動日時（`datetime('now')`）                    |
 
 - `ghosts.id` ではなく `ghost_identity_key` で `ghosts` 側の集計列と対応付ける（DB をまたぐため SQL の JOIN 自体は組めない。`record_launch` コマンドが両 DB を個別に UPDATE して同期する）
-- `ghosts` が `DELETE FROM` で再投入されても `ghost_identity_key` は不変のため、スキャン時バックフィルで自動的に再結合する
+- `ghosts` が `DELETE FROM` で再投入されても `ghost_identity_key` は不変のため、キャッシュ再構築後のバックフィルで自動的に再結合する
 - インデックス: `idx_ghost_launches_identity(ghost_identity_key)`・`idx_ghost_launches_at(launched_at DESC)`
 
 ### 4.5 永続テーブルのキー設計ルール
@@ -299,7 +299,7 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | ------ | ----------------------------------------------------------------------------------------- |
 | 引数   | `ghost_identity_key: String`                                                              |
 | 戻り値 | `()`                                                                                      |
-| 処理   | 起動履歴を記録する。DB アクターの `RecordLaunch` ジョブとして実行され、`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回スキャン時のバックフィルで整合する。ghosts.db への全書き込み（scan・cleanup を含む）は単一 writer アクターが直列実行するため、スキャン終了時のバックフィル（SELECT→絶対値 UPDATE）と自動的に相互排他される（集計列の巻き戻り防止） |
+| 処理   | 起動履歴を記録する。DB アクターの `RecordLaunch` ジョブとして実行され、`user-data.db`（永続、権威）へ `ghost_launches` 行を INSERT した後、`ghosts.db` の該当行の `last_launched`/`launch_count`（導出集計列、§4.3）を UPDATE する。user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回のキャッシュ再構築（cache miss）後のバックフィルで整合する（cache hit 経路ではバックフィルは走らない。集計列は導出キャッシュのため、それまでのズレの実害は並び順のみ）。ghosts.db への全書き込み（scan・cleanup を含む）は単一 writer アクターが直列実行するため、cache miss スキャン終了時のバックフィル（SELECT→絶対値 UPDATE）と自動的に相互排他される（集計列の巻き戻り防止） |
 | エラー | いずれかの DB への書込失敗時にエラーを返す（フロントエンドはログのみで UI をブロックしない） |
 
 ### 6.6 `cleanup_ghost_caches`
