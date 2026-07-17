@@ -247,14 +247,15 @@ mod tests {
         let ghosts_path = dir.path().join("ghosts.db");
         let user_path = dir.path().join("user-data.db");
 
-        // 旧バージョン再現: migration 1..=11 のみ適用し、ghost 行 + 起動履歴 2 件を投入
+        // 旧バージョン再現: v11 世代（履歴同居・user_version=0）の ghosts.db を本テストに必要な
+        // 最小限で再現する（旧 migrations() は parity テスト退役と同時に削除済み。以下は
+        // リリース済み旧スキーマの凍結断片で、insert_ghost_row の列と ghost_launches を含む）。
         {
             let conn = Connection::open(&ghosts_path).unwrap();
-            let mut migs = crate::migrations();
-            migs.sort_by_key(|m| m.version);
-            for m in migs.iter().filter(|m| m.version <= 11) {
-                conn.execute_batch(m.sql).unwrap();
-            }
+            conn.execute_batch(
+                "CREATE TABLE ghosts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  directory_name TEXT NOT NULL,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL,\n  name_lower TEXT NOT NULL,\n  directory_name_lower TEXT NOT NULL,\n  request_key TEXT NOT NULL DEFAULT '',\n  updated_at TEXT NOT NULL DEFAULT '',\n  craftman TEXT NOT NULL DEFAULT '',\n  thumbnail_path TEXT NOT NULL DEFAULT '',\n  thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0,\n  thumbnail_kind TEXT NOT NULL DEFAULT '',\n  ghost_identity_key TEXT NOT NULL DEFAULT '',\n  row_fingerprint TEXT NOT NULL DEFAULT '',\n  sakura_name TEXT NOT NULL DEFAULT '',\n  kero_name TEXT NOT NULL DEFAULT '',\n  craftmanw TEXT NOT NULL DEFAULT '',\n  sakura_name_lower TEXT NOT NULL DEFAULT '',\n  kero_name_lower TEXT NOT NULL DEFAULT '',\n  craftman_lower TEXT NOT NULL DEFAULT '',\n  craftmanw_lower TEXT NOT NULL DEFAULT ''\n);\nCREATE TABLE ghost_launches (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  ghost_identity_key TEXT NOT NULL,\n  launched_at TEXT NOT NULL\n);",
+            )
+            .unwrap();
             insert_ghost_row(&conn, "sspg");
             for at in ["2026-01-01 00:00:00", "2026-01-02 00:00:00"] {
                 conn.execute(

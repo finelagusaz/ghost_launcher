@@ -20,7 +20,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | F-03 | ゴーストスキャン           | SSP フォルダ + 追加フォルダ内のゴーストを走査し `descript.txt` からメタデータを解析 |
 | F-04 | フィンガープリント差分検知 | ディレクトリ構成・更新時刻のハッシュでスキャン結果の変化を検出                      |
 | F-05 | ゴーストキャッシュ         | スキャン結果と fingerprint を SQLite に永続化して差分検知。世代数（最新 5 世代）と TTL（30 日）による寿命管理で肥大化を防止 |
-| F-06 | ゴースト検索               | SQLite に対する部分一致検索（対象列は §4.2 の検索用 `_lower` 列群を横断）           |
+| F-06 | ゴースト検索               | SQLite に対する部分一致検索（対象は §4.2 の検索用 `_lower` 列群。実行は連結生成列 `search_text` への `instr` リテラル一致・§4.3。キー入力はデバウンスで合流してから発行する） |
 | F-07 | ゴースト起動               | SSP を `/g` オプション付きで起動（SSP 内: ディレクトリ名、外部: フルパス指定）      |
 | F-08 | 仮想スクロール             | 80件以上で仮想化。全件数で固定スクロール空間を確保し、バッファマージ方式で先読み読込 |
 | F-09 | テーマ追従                 | OS のライト/ダークテーマに自動追従（Fluent UI）                                     |
@@ -157,6 +157,7 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `craftmanw_lower`        | `TEXT`    | `craftmanw` の NFKC 正規化・小文字版（検索用）           |
 | `last_launched`          | `TEXT`    | 最終起動日時（非正規化集計列。`user-data.db` の `ghost_launches` から導出）|
 | `launch_count`           | `INTEGER` | 起動回数（非正規化集計列。同上）                          |
+| `search_text`            | `TEXT`    | 検索用 6 列（`_lower` 群）を `\x1f` 区切りで連結した**生成列**（`GENERATED ALWAYS … VIRTUAL`。導出式は `CACHE_SCHEMA` が単一権威・書込側は関与しない）。検索述語 `instr(search_text, ?)` と search_text 同乗の複合 index 群が参照する |
 
 - `ghosts` テーブルはファイルシステム索引の揮発キャッシュであり、スキャンで完全再投入可能
 - スキーマは `CACHE_SCHEMA`（使い捨てスキーマ、`src-tauri/src/cache_schema.rs`）が単一権威。スキーマ本文を変更すると、次回起動時に `ensure_cache_schema` が `PRAGMA user_version` の不一致を検知して全テーブルを自動的に作り直し、フルスキャンで再投入させる（手動でのバージョン番号管理は不要。§13 参照）

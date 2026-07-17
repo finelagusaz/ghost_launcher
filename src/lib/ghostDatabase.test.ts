@@ -88,15 +88,41 @@ describe("ghostDatabase - getDb", () => {
 });
 
 describe("ghostDatabase - searchGhosts NFKC正規化", () => {
-  it("全角英字クエリを NFKC 正規化してから小文字化した LIKE パターンで検索する", async () => {
+  it("全角英字クエリを NFKC 正規化してから小文字化した instr 引数で検索する", async () => {
     mockSelect.mockResolvedValue([]);
     const { searchGhosts } = await import("./ghostDatabase");
     await searchGhosts("rk1", "Ａｌｉｃｅ", 50, 0);
 
     const selectCall = mockSelect.mock.calls.find((c) =>
-      (c[0] as string).includes("LIKE"));
+      (c[0] as string).includes("instr"));
     expect(selectCall).toBeDefined();
-    expect(selectCall![1][1]).toBe("%alice%");
+    // instr はリテラル一致（%/_ のワイルドカード解釈なし）のためパターン包みをしない
+    expect(selectCall![1]).toEqual(["rk1", "alice", 50, 0]);
+  });
+});
+
+describe("ghostDatabase - instr 述語（search_text 生成列）", () => {
+  it("searchGhosts の非空クエリは instr(g.search_text) を使い LIKE を含まない", async () => {
+    mockSelect.mockResolvedValue([]);
+    const { searchGhosts } = await import("./ghostDatabase");
+    await searchGhosts("rk1", "100%", 50, 0);
+
+    const [sql, params] = mockSelect.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("instr(g.search_text, ?) > 0");
+    expect(sql).not.toContain("LIKE");
+    // % がワイルドカード化しない（リテラル "100%" のまま束縛される）
+    expect(params).toEqual(["rk1", "100%", 50, 0]);
+  });
+
+  it("countGhostsByQuery の非空クエリは instr(search_text) を使い LIKE を含まない", async () => {
+    mockSelect.mockResolvedValue([{ count: 1 }]);
+    const { countGhostsByQuery } = await import("./ghostDatabase");
+    await countGhostsByQuery("rk1", "Ａｌｉｃｅ");
+
+    const [sql, params] = mockSelect.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("instr(search_text, ?) > 0");
+    expect(sql).not.toContain("LIKE");
+    expect(params).toEqual(["rk1", "alice"]);
   });
 });
 
@@ -268,7 +294,7 @@ describe("ghostDatabase - countGhostsByQuery", () => {
     expect(call![1]).toEqual(["rk1"]);
   });
 
-  it("非空クエリ時は NFKC 正規化した LIKE で件数取得する", async () => {
+  it("非空クエリ時は NFKC 正規化した instr 引数で件数取得する", async () => {
     mockSelect.mockResolvedValue([{ count: 1 }]);
     const { countGhostsByQuery } = await import("./ghostDatabase");
     const total = await countGhostsByQuery("rk1", "Ａｌｉｃｅ");
@@ -277,7 +303,7 @@ describe("ghostDatabase - countGhostsByQuery", () => {
     const call = mockSelect.mock.calls.find((c) =>
       (c[0] as string).includes("COUNT(*)"));
     expect(call).toBeDefined();
-    expect(call![1][1]).toBe("%alice%");
+    expect(call![1][1]).toBe("alice");
   });
 });
 describe("ghostDatabase - getCachedFingerprint", () => {

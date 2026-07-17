@@ -1,12 +1,5 @@
 {
-  "searchLowerColumns": [
-    "name_lower",
-    "sakura_name_lower",
-    "kero_name_lower",
-    "craftman_lower",
-    "craftmanw_lower",
-    "directory_name_lower"
-  ],
+  "searchWhere": "instr(g.search_text, ?) > 0",
   "orderBy": {
     "name": "g.name_lower ASC",
     "recent": "g.last_launched DESC NULLS LAST, g.name_lower ASC",
