@@ -85,10 +85,12 @@ pub(crate) fn scan_and_store_blocking(
     // Layer 1: 親ディレクトリ mtime 高速チェック（< 1ms）
     // NTFS では親の mtime は直下のエントリ追加・削除でのみ変化する。
     // 既存ゴースト内の descript.txt 編集は検出できない（「再読込」で対応）。
+    // hit 経路は backfill_aggregates を呼ばない（#156）。集計列の平常時更新は
+    // record_launch の即時 bump が担い、healing（リビルド後の復元・bump 失敗の修復）は
+    // cache miss 経路の backfill に遅延する（集計列は導出キャッシュで、ズレの実害は並び順のみ）。
     if cached_fingerprint.is_some()
         && fingerprint::check_parent_mtimes_match(conn, &request_key, &current_mtimes)
     {
-        let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
         return Ok(ScanStoreResult {
             cache_hit: true,
             total: 0,
@@ -115,7 +117,6 @@ pub(crate) fn scan_and_store_blocking(
             "UPDATE ghost_fingerprints SET parent_mtimes = ?1 WHERE request_key = ?2",
             rusqlite::params![current_mtimes, request_key],
         );
-        let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
         return Ok(ScanStoreResult {
             cache_hit: true,
             total: 0,
@@ -759,6 +760,155 @@ mod tests {
             )
             .unwrap();
         assert_eq!(name, "Fullwidth");
+        Ok(())
+    }
+
+    /// user-data.db 接続（起動履歴スキーマ適用済み）を作る（backfill 経路テスト用）。
+    fn in_memory_user_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::commands::launch_history::ensure_schema(&conn).unwrap();
+        conn
+    }
+
+    /// backfill 経路テストの共通 seed: ゴースト 1 体（alpha）を cache miss で書き込み、
+    /// その後に user-data へ起動履歴を 1 件挿入した状態を作る。
+    /// 以降に backfill_aggregates が走れば集計列（launch_count/last_launched）が
+    /// 0/NULL でなくなるため、「集計列が不変」= GROUP BY 非発行の観測になる。
+    fn seed_ghost_and_pending_launch(
+        conn: &rusqlite::Connection,
+        user_conn: &rusqlite::Connection,
+        ssp_ghost: &PathBuf,
+        ssp_path: &str,
+    ) -> Result<(super::ScanStoreResult, String), String> {
+        create_ghost_dir_with_descript(ssp_ghost, "alpha", "name,Alpha\ncharset,UTF-8\n")?;
+        let seeded = super::scan_and_store_blocking(
+            conn,
+            user_conn,
+            ssp_path.to_string(),
+            vec![],
+            "rk1".to_string(),
+            None,
+        )?;
+        assert!(!seeded.cache_hit, "seed は cache miss であるべき");
+
+        let identity = super::store::ghost_identity_key("ssp", "alpha");
+        user_conn
+            .execute(
+                "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, '2026-01-01 00:00:00')",
+                rusqlite::params![identity],
+            )
+            .unwrap();
+        Ok((seeded, identity))
+    }
+
+    fn read_aggregates(
+        conn: &rusqlite::Connection,
+        identity: &str,
+    ) -> (i64, Option<String>) {
+        conn.query_row(
+            "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = ?1",
+            [identity],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    /// Phase 3（#156）: Layer 1 hit（親 mtime 不変）の高速パスで backfill_aggregates が
+    /// 発行されないこと。走れば seed 後に挿入した履歴が集計列へ再導出され 0/NULL でなくなる。
+    #[test]
+    fn scan_and_store_blockingのlayer1_hit経路はbackfillを発行しない() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_backfill_layer1_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
+        let conn = in_memory_ghost_db();
+        let user_conn = in_memory_user_db();
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+        let (seeded, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+
+        // 親 mtime 不変 + cached_fingerprint あり → Layer 1 hit
+        let result = super::scan_and_store_blocking(
+            &conn,
+            &user_conn,
+            ssp_path,
+            vec![],
+            "rk1".to_string(),
+            Some(seeded.fingerprint),
+        )?;
+        assert!(result.cache_hit, "Layer 1 hit にならなかった（テスト前提の崩れ）");
+
+        let (count, last) = read_aggregates(&conn, &identity);
+        assert_eq!(count, 0, "Layer 1 hit 経路で backfill が発行された（#156 の退行）");
+        assert_eq!(last, None);
+        Ok(())
+    }
+
+    /// Phase 3（#156）: Layer 2 hit（fingerprint 一致・parent_mtimes 欠損＝旧世代 DB 移行時）
+    /// でも backfill_aggregates が発行されないこと。
+    #[test]
+    fn scan_and_store_blockingのlayer2_hit経路はbackfillを発行しない() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_backfill_layer2_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
+        let conn = in_memory_ghost_db();
+        let user_conn = in_memory_user_db();
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+        let (seeded, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+
+        // parent_mtimes を欠損させ Layer 1 を外す → Layer 2 の fingerprint 等値判定で hit
+        conn.execute(
+            "UPDATE ghost_fingerprints SET parent_mtimes = '' WHERE request_key = 'rk1'",
+            [],
+        )
+        .unwrap();
+        let result = super::scan_and_store_blocking(
+            &conn,
+            &user_conn,
+            ssp_path,
+            vec![],
+            "rk1".to_string(),
+            Some(seeded.fingerprint),
+        )?;
+        assert!(result.cache_hit, "Layer 2 hit にならなかった（テスト前提の崩れ）");
+
+        let (count, last) = read_aggregates(&conn, &identity);
+        assert_eq!(count, 0, "Layer 2 hit 経路で backfill が発行された（#156 の退行）");
+        assert_eq!(last, None);
+        Ok(())
+    }
+
+    /// Phase 3（#156）の対称ガード: cache miss（実書込）経路では backfill_aggregates が
+    /// 引き続き発行されること（リビルド後の集計復元と bump 失敗修復の healing 責務）。
+    #[test]
+    fn scan_and_store_blockingのcache_miss経路はbackfillを発行する() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_backfill_miss_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
+        let conn = in_memory_ghost_db();
+        let user_conn = in_memory_user_db();
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+        let (seeded, identity) =
+            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_ghost, &ssp_path)?;
+
+        // ゴースト追加で親 mtime も fingerprint も変える → cache miss
+        create_ghost_dir_with_descript(&ssp_ghost, "bravo", "name,Bravo\ncharset,UTF-8\n")?;
+        let result = super::scan_and_store_blocking(
+            &conn,
+            &user_conn,
+            ssp_path,
+            vec![],
+            "rk1".to_string(),
+            Some(seeded.fingerprint),
+        )?;
+        assert!(!result.cache_hit, "cache miss にならなかった（テスト前提の崩れ）");
+
+        let (count, last) = read_aggregates(&conn, &identity);
+        assert_eq!(count, 1, "cache miss 経路の backfill（healing 責務）が失われた");
+        assert_eq!(last.as_deref(), Some("2026-01-01 00:00:00"));
         Ok(())
     }
 
