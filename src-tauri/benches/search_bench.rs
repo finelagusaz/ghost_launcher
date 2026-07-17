@@ -69,7 +69,8 @@ fn dump_query_plans() {
 const CANDIDATE_DDL: &str = "\
 ALTER TABLE ghosts ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
 UPDATE ghosts SET search_text = name_lower || char(31) || sakura_name_lower || char(31) || kero_name_lower || char(31) || craftman_lower || char(31) || craftmanw_lower || char(31) || directory_name_lower;
-CREATE INDEX idx_cand_search_cover ON ghosts(request_key, name_lower, search_text);";
+CREATE INDEX idx_cand_search_cover ON ghosts(request_key, name_lower, search_text);
+CREATE INDEX idx_cand_recent ON ghosts(request_key, last_launched DESC, name_lower);";
 
 /// seed 済み一時 DB に候補 DDL を適用し、読み取り PRAGMA で開き直して返す。
 fn seeded_candidate_db(tag: &str, n: usize) -> (tempfile_dir::Guard, Connection) {
@@ -152,6 +153,121 @@ fn bench_candidate_noidx(c: &mut Criterion) {
                 "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? AND instr(g.search_text, ?) > 0 ORDER BY {ob} LIMIT ?"
             );
             group.bench_with_input(BenchmarkId::new("instr1_concat_noidx", sel), &sql, |b, sql| {
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+            });
+        }
+        group.finish();
+    }
+}
+
+/// ソート index（Phase 2 予定形）共存時の「検索 × 非 name ソート」の実測。
+/// プランナが sort-first（idx_cand_recent スキャン＋行 seek）と filter-first
+/// （idx_cand_search_cover カバリング＋TEMP B-TREE）のどちらを選ぶか、
+/// および INDEXED BY で両経路を強制した場合の上限/下限を測る。
+fn bench_candidate_sort_search(c: &mut Criterion) {
+    let select_cols = select_cols_prefixed();
+    let ob_recent = order_by("recent");
+    for &n in &[100_000usize] {
+        let (_g, conn) = seeded_candidate_db(&format!("cand_sort_n{n}"), n);
+
+        // プラン確認（empty+recent はソート index の効果検証・Phase 2 受け入れ形状）
+        let probes: Vec<(&str, String)> = vec![
+            ("empty_recent", format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {ob_recent} LIMIT 50")),
+            ("search_recent(planner)", format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND instr(g.search_text, 'さくら') > 0 ORDER BY {ob_recent} LIMIT 50")),
+        ];
+        println!("\n===== EXPLAIN QUERY PLAN 検索×ソート (n={n}) =====");
+        for (label, sql) in probes {
+            println!("--- {label} ---");
+            let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+            let mut rows = stmt.query([]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                let detail: String = row.get(3).unwrap();
+                println!("  {detail}");
+            }
+        }
+        println!("==================================================\n");
+
+        let mut group = c.benchmark_group(format!("cand_sort_n{n}"));
+        group.sample_size(20).measurement_time(Duration::from_secs(15));
+
+        // ソート index の単独効果（検索なし・Phase 2 の #136 受け入れ形状）
+        let sql_empty = format!(
+            "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? ORDER BY {ob_recent} LIMIT ?"
+        );
+        group.bench_function("empty_recent", |b| {
+            b.iter(|| run_select(&conn, &sql_empty, rusqlite::params![RK, LIMIT]));
+        });
+
+        for (sel, q) in [("none", Q_NONE), ("common", Q_COMMON)] {
+            // プランナ任せ
+            let sql = format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? AND instr(g.search_text, ?) > 0 ORDER BY {ob_recent} LIMIT ?"
+            );
+            group.bench_with_input(BenchmarkId::new("search_recent", sel), &sql, |b, sql| {
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+            });
+
+            // filter-first を強制（カバリング index でフィルタ → マッチ行のみ TEMP B-TREE）
+            let sql_f = format!(
+                "SELECT {select_cols} FROM ghosts g INDEXED BY idx_cand_search_cover WHERE g.request_key=? AND instr(g.search_text, ?) > 0 ORDER BY {ob_recent} LIMIT ?"
+            );
+            group.bench_with_input(BenchmarkId::new("search_recent_filter_first", sel), &sql_f, |b, sql| {
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+            });
+
+            // sort-first を強制（ソート index 順スキャン＋行 seek・マッチ 50 件で早期終了）
+            let sql_s = format!(
+                "SELECT {select_cols} FROM ghosts g INDEXED BY idx_cand_recent WHERE g.request_key=? AND instr(g.search_text, ?) > 0 ORDER BY {ob_recent} LIMIT ?"
+            );
+            group.bench_with_input(BenchmarkId::new("search_recent_sort_first", sel), &sql_s, |b, sql| {
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+            });
+        }
+        group.finish();
+    }
+}
+
+/// ソート index に search_text を同乗させる複合案。sort-first スキャンが index 上で
+/// instr を評価（行 seek なし）し、LIMIT 件のマッチで早期終了できるかを測る。
+const CANDIDATE_DDL_SORTCOVER: &str = "\
+ALTER TABLE ghosts ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
+UPDATE ghosts SET search_text = name_lower || char(31) || sakura_name_lower || char(31) || kero_name_lower || char(31) || craftman_lower || char(31) || craftmanw_lower || char(31) || directory_name_lower;
+CREATE INDEX idx_cand_recent_cover ON ghosts(request_key, last_launched DESC, name_lower, search_text);";
+
+fn bench_candidate_sort_cover(c: &mut Criterion) {
+    let select_cols = select_cols_prefixed();
+    let ob_recent = order_by("recent");
+    for &n in &[100_000usize] {
+        let guard = tempfile_dir::Guard::new(&format!("cand_sortcover_n{n}"));
+        let path = guard.path().join("ghosts.db");
+        {
+            let seed_conn = open_bench_db(&path).unwrap();
+            seed_ghosts_db(&seed_conn, RK, n).unwrap();
+            seed_conn.execute_batch(CANDIDATE_DDL_SORTCOVER).unwrap();
+        }
+        let conn = open_bench_db(&path).unwrap();
+
+        let probe = format!(
+            "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND instr(g.search_text, 'さくら') > 0 ORDER BY {ob_recent} LIMIT 50"
+        );
+        println!("\n===== EXPLAIN QUERY PLAN 検索×recent（search_text 同乗 index）(n={n}) =====");
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {probe}")).unwrap();
+        let mut rows = stmt.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            let detail: String = row.get(3).unwrap();
+            println!("  {detail}");
+        }
+        println!("=====================================================================\n");
+
+        let mut group = c.benchmark_group(format!("cand_sortcover_n{n}"));
+        group.sample_size(20).measurement_time(Duration::from_secs(15));
+        for (sel, q) in [("none", Q_NONE), ("common", Q_COMMON)] {
+            let sql = format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? AND instr(g.search_text, ?) > 0 ORDER BY {ob_recent} LIMIT ?"
+            );
+            group.bench_with_input(BenchmarkId::new("search_recent_ridealong", sel), &sql, |b, sql| {
                 b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
             });
         }
@@ -340,5 +456,7 @@ fn main() {
     bench_search(&mut c);
     bench_candidate_search(&mut c);
     bench_candidate_noidx(&mut c);
+    bench_candidate_sort_search(&mut c);
+    bench_candidate_sort_cover(&mut c);
     c.final_summary();
 }
