@@ -145,6 +145,19 @@ fn bench_search(c: &mut Criterion) {
             });
         });
 
+        // Phase 1 検収: COUNT 併走を外した select-only ページフェッチ。
+        // count_plus_select_common との差が「スクロール毎に消えた COUNT 増幅」に相当する
+        group.bench_function("select_only_common", |b| {
+            b.iter(|| {
+                let lc = &like_common;
+                run_select(
+                    &conn,
+                    &select_sql,
+                    rusqlite::params![RK, lc, lc, lc, lc, lc, lc, LIMIT],
+                );
+            });
+        });
+
         group.finish();
     }
 }
