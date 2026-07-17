@@ -60,7 +60,7 @@ epic #140 の残 4 issue（#135〜#137 ＋ハーネス保守 #138/#139）に、�
 - **parity テストの退役**: これが使い捨てスキーマ初のスキーマ変更リリースになるため、src-tauri/CLAUDE.md の取り決めどおり `cache_schema.rs` の parity テストと `lib.rs` の旧 `migrations()` を同一 PR で削除する
 - **検索入力のデバウンス（JS・スキーマ無関係）**: キー入力毎のクエリ発行をデバウンス/in-flight 合流で削減する（Phase 1 の発行規律の続き。スキーマと独立のため同 Phase 内の別コミットでよい）
 
-受け入れ: `search_bench` の `cand_*` 相当形状が本番スキーマで再現すること——10万体で検索（全ソート・全クエリ長）が概ね 10〜17ms、`empty_sort/recent`・`frequency` が `name` と同桁（µs 台）へ、EXPLAIN QUERY PLAN から `USE TEMP B-TREE FOR ORDER BY` が消える（random は式ソートのため対象外。検索×random は filter-first 相当の十数〜数十 ms を許容）。DB サイズ増（`PRAGMA page_count` 比較）と store 系 bench（UPSERT・リビルド書込コスト）を計測して記録する。
+受け入れ: 本番スキーマで検索（全ソート・全クエリ長）が 10万体で数 ms〜20ms 台前半（旧 6 列 LIKE 比 約 15 倍）、`empty_sort/recent`・`frequency` が `name` と同桁（µs 台）へ、EXPLAIN QUERY PLAN から `USE TEMP B-TREE FOR ORDER BY` が消える（random は式ソートのため対象外）。DB サイズ増と store 系 bench（書込コスト）の増分を計測して記録する。**→ 実測済み**: `docs/perf/2026-07-17-candidate-search-shapes.md`「Phase 2 検収実測」（EXPLAIN ガードは `cache_schema.rs` のテストへ常設・検索形状は `search_bench` の `search`/`search_recent` として常設）。
 
 ### Phase 3: backfill の経路限定（#156）
 
@@ -104,7 +104,7 @@ Phase 2 以外はスキーマ不変。将来スキーマ変更を追加する判
 
 - 各フェーズ TDD（/implement）。検収は `search_bench`/`scan_bench` の該当形状（Phase 0 で CI ガード済みのハーネス）
 - Phase 1: vitest（COUNT 非発行・空クエリ SQL 形状）＋ bench 形状追加
-- Phase 2: EXPLAIN QUERY PLAN 検証（`cand_*` 形状の本番スキーマでの再現・bench_support の既存パリティガードへ形状を追加）・parity テスト退役
+- Phase 2: EXPLAIN QUERY PLAN 検証（`cache_schema.rs` のテストに常設・`search_bench` の `search`/`search_recent` 形状で計測）・parity テスト退役
 - Phase 3: Layer 1 経路の GROUP BY 非発行テスト・#93 回帰ガード維持
 - 検索 UI に触れるフェーズの完了時は `/e2e` を一巡（正常水準 10 passed / 1 skipped）
 

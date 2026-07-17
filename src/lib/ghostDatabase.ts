@@ -103,20 +103,13 @@ export const GHOST_VIEW_COLUMNS = [
 // 列挙漏れがあると never でなくなり、下の型注釈が never に解決されて代入が型エラーになる。
 type MissingGhostViewColumns = Exclude<keyof GhostView, (typeof GHOST_VIEW_COLUMNS)[number]>;
 
-export const GHOST_SEARCH_LOWER_COLUMNS = [
-  "name_lower",
-  "sakura_name_lower",
-  "kero_name_lower",
-  "craftman_lower",
-  "craftmanw_lower",
-  "directory_name_lower",
-] as const;
-
-const GHOST_SEARCH_WHERE =
-  GHOST_SEARCH_LOWER_COLUMNS.map((col) => `${col} LIKE ?`).join(" OR ");
-
-const GHOST_SEARCH_WHERE_PREFIXED =
-  GHOST_SEARCH_LOWER_COLUMNS.map((col) => `g.${col} LIKE ?`).join(" OR ");
+// 検索述語。search_text は CACHE_SCHEMA（src-tauri/src/cache_schema.rs）の生成列で、
+// 検索 6 列（_lower 群）の \x1f 連結。導出式はスキーマ側が単一権威。
+// instr はリテラル一致のため LIKE と違い %/_ のワイルドカード解釈が起きない。
+const GHOST_SEARCH_WHERE = "instr(search_text, ?) > 0";
+// export は言語間パリティテスト（searchSqlShapes.parity.test.ts・共有 fixture 経由で
+// bench_support::search_where_prefixed と同期）のため
+export const GHOST_SEARCH_WHERE_PREFIXED = "instr(g.search_text, ?) > 0";
 
 const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
   GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
@@ -178,10 +171,9 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
       [requestKey]
     );
   } else {
-    const likePattern = `%${normalizedQuery}%`;
     countResult = await db.select<{ count: number }[]>(
       `SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`,
-      [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern)]
+      [requestKey, normalizedQuery]
     );
   }
 
@@ -200,16 +192,15 @@ export async function searchGhosts(requestKey: string, query: string, limit: num
 
     let rows: GhostView[];
     if (normalizedQuery === "") {
-      // 空クエリに LIKE '%%' の行ごと評価をさせない
+      // 空クエリに検索述語の行ごと評価をさせない
       rows = await db.select<GhostView[]>(
         `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
         [requestKey, limit, offset]
       );
     } else {
-      const likePattern = `%${normalizedQuery}%`;
       rows = await db.select<GhostView[]>(
         `SELECT ${GHOST_SELECT_COLUMNS_PREFIXED} FROM ghosts g WHERE g.request_key = ? AND (${GHOST_SEARCH_WHERE_PREFIXED}) ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
-        [requestKey, ...GHOST_SEARCH_LOWER_COLUMNS.map(() => likePattern), limit, offset]
+        [requestKey, normalizedQuery, limit, offset]
       );
     }
 

@@ -64,7 +64,35 @@ n=10k では like6_wide 25.1/15.7 ms に対し候補群は概ね 0.7〜1.3 ms。
 4. 副問い合わせ形状の追加改善は ~6% で複雑さに見合わず不採用
 5. trigram FTS5 は不要: 同乗 index 方式が**全クエリ長（1〜2 文字含む）・全ソート**で 10万体 10〜17ms を達成する
 
-## 未計測（Phase 2 実装時の宿題）
+## Phase 2 検収実測（本番スキーマ適用後・同一マシン）
 
-- 本番スキーマ適用後の DB サイズ増（`PRAGMA page_count` 比較）と store 系 bench（UPSERT・リビルド書込コスト）の再計測
-- 検索×random（式ソートのため TEMP B-TREE 残置。filter-first 相当の十数〜数十 ms と見込むが未実測）
+実装形: `search_text` は **VIRTUAL 生成列**（導出式は `CACHE_SCHEMA` が単一権威・本体テーブルのバイト数を持たない）＋ 同乗複合 index 3 本（name/recent/frequency）・`idx_ghosts_request_key` と `idx_ghosts_request_key_name_lower` を削除。
+
+**読み経路（search_bench・n=100k・中央値）**:
+
+| 形状 | 実測 | 対比 |
+|---|---|---|
+| empty_sort/name | 65.3 µs | — |
+| empty_sort/recent | 66.2 µs | 旧 TEMP B-TREE（同マシン実測 14ms 相当）→ name と同桁 |
+| empty_sort/frequency | 67.4 µs | 同上 |
+| empty_sort/random | 21.6 ms | 式ソートのため TEMP B-TREE 残置（対象外・許容） |
+| search/none | 19.8 ms | 旧 6 列 LIKE 305.6 ms 比 約 15 倍 |
+| search/rare | 7.0 ms / search/common | 12.0 ms |
+| search_recent/none | 22.7 ms / search_recent/common | 14.8 ms |
+
+EXPLAIN QUERY PLAN: 全形状が同乗 index を選択（random のみ TEMP B-TREE・許容済み）。0 件マッチ最悪の絶対値は候補計測（16.4〜16.8ms）より 2 割前後高く出た（index 追加による DB 拡大・run 間変動の範囲）。
+
+**書込コスト（scan_bench store 形状・n=10k・main との worktree ペア比較）**:
+
+| 形状 | main（旧） | Phase 2（新） | 増分 |
+|---|---|---|---|
+| store_initial | 162.7 ms | 214.6 ms | +32% |
+| store_rescan_nodiff | 71.6 ms | 87.0 ms | +21% |
+
+**DB サイズ（bench_support の ignored 計測テスト・n=100k・同一 DB 内で index 群を入替えて VACUUM 比較）**: 新スキーマ 52.4 MB / 旧物理相当 35.8 MB / **増分 +16.6 MB（+46%）**。
+
+書込・サイズの増分は同乗 index 3 本の維持コストで、書込は cache miss 時のみ発生する受容済みトレードオフ（設計書 Phase 2 節）。
+
+## 未計測（意図的スキップ）
+
+- 検索×random の専用形状（式ソートのため TEMP B-TREE 残置。empty_sort/random 21.6ms が上界の目安で、体感問題が報告されたら形状を追加する）

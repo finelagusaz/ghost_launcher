@@ -131,15 +131,6 @@ pub fn seed_ghosts_db(conn: &Connection, request_key: &str, n: usize) -> Result<
     Ok(())
 }
 
-/// 検索対象の _lower 列（GHOST_SEARCH_LOWER_COLUMNS と一致）。真の権威は ghostDatabase.ts。
-pub const SEARCH_LOWER_COLUMNS: [&str; 6] = [
-    "name_lower",
-    "sakura_name_lower",
-    "kero_name_lower",
-    "craftman_lower",
-    "craftmanw_lower",
-    "directory_name_lower",
-];
 
 /// searchGhosts と同形の SELECT 投影（g. 前置き）。列の単一権威は共有 fixture
 /// ghost-view-columns.json（本番 GHOST_VIEW_COLUMNS・DB スキーマと機械照合済み）。
@@ -151,13 +142,11 @@ pub fn select_cols_prefixed() -> String {
     cols.iter().map(|c| format!("g.{c}")).collect::<Vec<_>>().join(", ")
 }
 
-/// searchGhosts と同形の WHERE（g. 前置き・6 列 OR）。
+/// searchGhosts と同形の WHERE（g. 前置き）。真の権威は ghostDatabase.ts の
+/// GHOST_SEARCH_WHERE_PREFIXED（共有 fixture search-sql-shapes.json で機械照合）。
+/// search_text は CACHE_SCHEMA の生成列（検索 6 列の \x1f 連結）。
 pub fn search_where_prefixed() -> String {
-    SEARCH_LOWER_COLUMNS
-        .iter()
-        .map(|c| format!("g.{c} LIKE ?"))
-        .collect::<Vec<_>>()
-        .join(" OR ")
+    "instr(g.search_text, ?) > 0".to_string()
 }
 
 /// buildOrderBy(ghostDatabase.ts:212) と同形の ORDER BY 式。
@@ -379,6 +368,46 @@ mod tests {
 
     use crate::testutil::TempDirGuard;
 
+    /// スキーマ改訂の検収用サイズ計測（手動実行専用）:
+    /// cargo test --features bench --lib bench_support -- --ignored dbサイズ --nocapture
+    /// VIRTUAL 生成列は本体テーブルのバイト数を持たないため、同一 seed データ上で
+    /// 「現行 index 群 ⇔ 旧 index 群（Phase 2 以前）」を入れ替えて VACUUM すれば
+    /// 物理サイズの新旧を同一 DB でペア比較できる。
+    #[test]
+    #[ignore = "検収用の手動計測（seed 100k が重い）"]
+    fn 検収用_100kのdbサイズ増分を実測する() {
+        let tmp = TempDirGuard::new("bench_db_size");
+        let db = tmp.path().join("ghosts.db");
+        let conn = open_bench_db(&db).unwrap();
+        seed_ghosts_db(&conn, "rk", 100_000).unwrap();
+
+        let size_of = |conn: &Connection| -> u64 {
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")
+                .unwrap();
+            std::fs::metadata(&db).unwrap().len()
+        };
+
+        let new_size = size_of(&conn);
+        // 旧物理構成（Phase 2 以前の index 群）へ入れ替え
+        conn.execute_batch(
+            "DROP INDEX idx_ghosts_request_key_name_search;\
+             DROP INDEX idx_ghosts_request_key_recent_search;\
+             DROP INDEX idx_ghosts_request_key_frequency_search;\
+             CREATE INDEX old_idx_ghosts_request_key ON ghosts(request_key);\
+             CREATE INDEX old_idx_ghosts_request_key_name_lower ON ghosts(request_key, name_lower);",
+        )
+        .unwrap();
+        let old_size = size_of(&conn);
+
+        println!(
+            "[db-size] n=100k 新スキーマ {:.1} MB / 旧物理相当 {:.1} MB / 増分 {:+.1} MB ({:+.0}%)",
+            new_size as f64 / 1_048_576.0,
+            old_size as f64 / 1_048_576.0,
+            (new_size as f64 - old_size as f64) / 1_048_576.0,
+            (new_size as f64 / old_size as f64 - 1.0) * 100.0
+        );
+    }
+
     #[test]
     fn seed_ghosts_db_が_n_行を投入する() {
         let tmp = TempDirGuard::new("bench_seed_count");
@@ -441,13 +470,11 @@ mod tests {
         let raw = std::fs::read_to_string(path).expect("fixture を読めること");
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
 
-        let cols: Vec<String> = v["searchLowerColumns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|x| x.as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(SEARCH_LOWER_COLUMNS.to_vec(), cols);
+        assert_eq!(
+            search_where_prefixed(),
+            v["searchWhere"].as_str().unwrap(),
+            "検索述語が共有 fixture と一致しない"
+        );
 
         assert_eq!(order_by("name"), v["orderBy"]["name"].as_str().unwrap());
         assert_eq!(order_by("recent"), v["orderBy"]["recent"].as_str().unwrap());
@@ -478,12 +505,9 @@ mod tests {
         seed_ghosts_db(&conn, "rk", 10_000).unwrap();
 
         let count = |q: &str| -> i64 {
-            let like = format!("%{}%", q);
             conn.query_row(
-                "SELECT COUNT(*) FROM ghosts WHERE request_key='rk' AND \
-                 (name_lower LIKE ?1 OR sakura_name_lower LIKE ?1 OR kero_name_lower LIKE ?1 \
-                  OR craftman_lower LIKE ?1 OR craftmanw_lower LIKE ?1 OR directory_name_lower LIKE ?1)",
-                [like],
+                "SELECT COUNT(*) FROM ghosts WHERE request_key='rk' AND instr(search_text, ?1) > 0",
+                [q],
                 |r| r.get(0),
             )
             .unwrap()

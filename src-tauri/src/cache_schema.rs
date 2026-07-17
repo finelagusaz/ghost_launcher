@@ -6,9 +6,12 @@
 
 use rusqlite::{Connection, TransactionBehavior};
 
-/// 現行スキーマの全定義（旧 sqlx migration 1〜14 の合成結果。parity テストが一致を機械検証する）。
-/// 列順は ALTER TABLE の追加順を保存している（PRAGMA table_info の cid 比較を成立させるため）。
-pub(crate) const CACHE_SCHEMA: &str = "CREATE TABLE ghosts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  directory_name TEXT NOT NULL,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL,\n  name_lower TEXT NOT NULL,\n  directory_name_lower TEXT NOT NULL,\n  request_key TEXT NOT NULL DEFAULT '',\n  updated_at TEXT NOT NULL DEFAULT '',\n  craftman TEXT NOT NULL DEFAULT '',\n  thumbnail_path TEXT NOT NULL DEFAULT '',\n  thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0,\n  thumbnail_kind TEXT NOT NULL DEFAULT '',\n  ghost_identity_key TEXT NOT NULL DEFAULT '',\n  row_fingerprint TEXT NOT NULL DEFAULT '',\n  sakura_name TEXT NOT NULL DEFAULT '',\n  kero_name TEXT NOT NULL DEFAULT '',\n  craftmanw TEXT NOT NULL DEFAULT '',\n  sakura_name_lower TEXT NOT NULL DEFAULT '',\n  kero_name_lower TEXT NOT NULL DEFAULT '',\n  craftman_lower TEXT NOT NULL DEFAULT '',\n  craftmanw_lower TEXT NOT NULL DEFAULT '',\n  last_launched TEXT,\n  launch_count INTEGER NOT NULL DEFAULT 0\n);\nCREATE INDEX idx_ghosts_request_key ON ghosts(request_key);\nCREATE INDEX idx_ghosts_request_key_name_lower ON ghosts(request_key, name_lower);\nCREATE INDEX idx_ghosts_request_key_directory_name_lower ON ghosts(request_key, directory_name_lower);\nCREATE INDEX idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nCREATE UNIQUE INDEX idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);\nCREATE TABLE ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT '',\n  parent_mtimes TEXT NOT NULL DEFAULT ''\n);\nCREATE TABLE ghost_scan_entries (\n  request_key TEXT NOT NULL,\n  scan_key TEXT NOT NULL,\n  token TEXT NOT NULL,\n  ghost_identity_key TEXT NOT NULL,\n  PRIMARY KEY (request_key, scan_key)\n) WITHOUT ROWID;";
+/// 現行スキーマの全定義（単一権威）。
+/// search_text は検索 6 列を \x1f（char(31)・ユーザーが入力し得ない区切り）で連結した
+/// 生成列（VIRTUAL）。導出式はこの 1 箇所が単一権威で、書込側（store）は関与しない。
+/// JS の検索述語 instr(search_text, ?) と search_text 同乗の複合 index 群が参照する
+/// （実測根拠は docs/perf/2026-07-17-candidate-search-shapes.md）。
+pub(crate) const CACHE_SCHEMA: &str = "CREATE TABLE ghosts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  directory_name TEXT NOT NULL,\n  path TEXT NOT NULL,\n  source TEXT NOT NULL,\n  name_lower TEXT NOT NULL,\n  directory_name_lower TEXT NOT NULL,\n  request_key TEXT NOT NULL DEFAULT '',\n  updated_at TEXT NOT NULL DEFAULT '',\n  craftman TEXT NOT NULL DEFAULT '',\n  thumbnail_path TEXT NOT NULL DEFAULT '',\n  thumbnail_use_self_alpha INTEGER NOT NULL DEFAULT 0,\n  thumbnail_kind TEXT NOT NULL DEFAULT '',\n  ghost_identity_key TEXT NOT NULL DEFAULT '',\n  row_fingerprint TEXT NOT NULL DEFAULT '',\n  sakura_name TEXT NOT NULL DEFAULT '',\n  kero_name TEXT NOT NULL DEFAULT '',\n  craftmanw TEXT NOT NULL DEFAULT '',\n  sakura_name_lower TEXT NOT NULL DEFAULT '',\n  kero_name_lower TEXT NOT NULL DEFAULT '',\n  craftman_lower TEXT NOT NULL DEFAULT '',\n  craftmanw_lower TEXT NOT NULL DEFAULT '',\n  last_launched TEXT,\n  launch_count INTEGER NOT NULL DEFAULT 0,\n  search_text TEXT GENERATED ALWAYS AS (name_lower || char(31) || sakura_name_lower || char(31) || kero_name_lower || char(31) || craftman_lower || char(31) || craftmanw_lower || char(31) || directory_name_lower) VIRTUAL\n);\nCREATE INDEX idx_ghosts_request_key_name_search ON ghosts(request_key, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_recent_search ON ghosts(request_key, last_launched DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_frequency_search ON ghosts(request_key, launch_count DESC, name_lower, search_text);\nCREATE INDEX idx_ghosts_request_key_directory_name_lower ON ghosts(request_key, directory_name_lower);\nCREATE INDEX idx_ghosts_request_key_updated_at ON ghosts(request_key, updated_at);\nCREATE UNIQUE INDEX idx_ghosts_request_key_identity ON ghosts(request_key, ghost_identity_key);\nCREATE INDEX idx_ghosts_request_key_identity_fingerprint ON ghosts(request_key, ghost_identity_key, row_fingerprint);\nCREATE TABLE ghost_fingerprints (\n  request_key TEXT PRIMARY KEY,\n  fingerprint TEXT NOT NULL,\n  updated_at TEXT NOT NULL DEFAULT '',\n  parent_mtimes TEXT NOT NULL DEFAULT ''\n);\nCREATE TABLE ghost_scan_entries (\n  request_key TEXT NOT NULL,\n  scan_key TEXT NOT NULL,\n  token TEXT NOT NULL,\n  ghost_identity_key TEXT NOT NULL,\n  PRIMARY KEY (request_key, scan_key)\n) WITHOUT ROWID;";
 
 /// CACHE_SCHEMA 文字列の FNV-1a ハッシュを i32 に畳んだ値（0 は未初期化の予約値なので 1 にずらす）。
 /// スキーマ本文の変更＝自動的に version が変わる。手動 bump が存在しないため
@@ -163,76 +166,92 @@ mod tests {
         assert_ne!(cache_schema_version(), 0, "0 は未初期化の予約値");
     }
 
-    /// DDL テキストの正規化: IF NOT EXISTS・引用符・空白差を吸収する。
-    /// COLLATE・CHECK・部分インデックス述語は PRAGMA に現れないため、
-    /// 構造比較（下）とこのテキスト比較の二段構えで一致を検証する（設計書 §8）。
-    fn normalize_ddl(sql: &str) -> String {
-        sql.replace("IF NOT EXISTS ", "")
-            .replace('"', "")
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .replace("( ", "(")
-            .replace(" )", ")")
-            .replace(" ,", ",")
-            .replace(", ", ",")
-    }
-
-    /// (種別, 名前) → 正規化 DDL。自動生成物（sqlite_% と PK の自動インデックス）は除外。
-    fn schema_objects(conn: &rusqlite::Connection) -> std::collections::BTreeMap<(String, String), String> {
-        let mut stmt = conn
-            .prepare("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND sql IS NOT NULL")
-            .unwrap();
-        stmt.query_map([], |r| {
-            Ok(((r.get::<_, String>(0)?, r.get::<_, String>(1)?), r.get::<_, String>(2)?))
-        })
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|(k, sql)| (k, normalize_ddl(&sql)))
-        .collect()
-    }
-
-    /// テーブル毎の table_info（cid,name,type,notnull,dflt,pk）の一覧
-    fn table_infos(conn: &rusqlite::Connection, table: &str) -> Vec<(i32, String, String, i32, Option<String>, i32)> {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info(\"{table}\")")).unwrap();
-        stmt.query_map([], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
-        })
-        .unwrap()
-        .filter_map(Result::ok)
-        .collect()
-    }
-
-    /// 最大リスクの機械検証（設計書 §8）: CACHE_SCHEMA と旧 migration 15 本の合成結果が
-    /// 完全一致すること。このテストの寿命はスキーマを初めて変更するリリースまで
-    /// （その時点で旧 migrations() ごと削除する）。
     #[test]
-    fn cache_schemaは旧migration合成とスキーマが完全一致する() {
-        // 旧: migration を順番に全適用
-        let legacy = rusqlite::Connection::open_in_memory().unwrap();
-        let mut migs = crate::migrations();
-        migs.sort_by_key(|m| m.version);
-        for m in &migs {
-            legacy.execute_batch(m.sql).unwrap();
-        }
-        // 新: CACHE_SCHEMA を適用
-        let mut fresh = rusqlite::Connection::open_in_memory().unwrap();
-        ensure_cache_schema(&mut fresh).unwrap();
+    fn search_textが検索6列の連結として導出される() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_cache_schema(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO ghosts (request_key, ghost_identity_key, name, directory_name, path, source, \
+             name_lower, directory_name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower) \
+             VALUES ('rk', 'id1', 'N', 'D', '/d', 'ssp', 'n', 'd', 's', 'k', 'c', 'w')",
+            [],
+        )
+        .unwrap();
+        let st: String = conn
+            .query_row("SELECT search_text FROM ghosts WHERE request_key='rk'", [], |r| r.get(0))
+            .unwrap();
+        // 連結順は name, sakura, kero, craftman, craftmanw, directory。区切りは \x1f
+        assert_eq!(st, "n\u{1f}s\u{1f}k\u{1f}c\u{1f}w\u{1f}d");
+    }
 
-        // 第一段: 正規化 DDL テキストの全オブジェクト比較
-        assert_eq!(
-            schema_objects(&legacy),
-            schema_objects(&fresh),
-            "sqlite_master の DDL（正規化後）が一致しない"
-        );
-        // 第二段: 構造比較（列の型・NOT NULL・DEFAULT・順序）
-        for table in ["ghosts", "ghost_fingerprints", "ghost_scan_entries"] {
-            assert_eq!(
-                table_infos(&legacy, table),
-                table_infos(&fresh, table),
-                "{table} の table_info が一致しない"
-            );
+    #[test]
+    fn 冗長indexが削除され同乗index群が存在する() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_cache_schema(&mut conn).unwrap();
+        let indexes: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='ghosts'")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        for present in [
+            "idx_ghosts_request_key_name_search",
+            "idx_ghosts_request_key_recent_search",
+            "idx_ghosts_request_key_frequency_search",
+        ] {
+            assert!(indexes.contains(&present.to_string()), "{present} が存在しない");
         }
+        for absent in ["idx_ghosts_request_key", "idx_ghosts_request_key_name_lower"] {
+            assert!(!indexes.contains(&absent.to_string()), "{absent} は複合 index に包含されるため削除済みのはず");
+        }
+    }
+
+    /// EXPLAIN QUERY PLAN の detail 行を連結して返す
+    fn plan(conn: &rusqlite::Connection, sql: &str) -> String {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        let mut rows = stmt.query([]).unwrap();
+        let mut details = Vec::new();
+        while let Some(row) = rows.next().unwrap() {
+            details.push(row.get::<_, String>(3).unwrap());
+        }
+        details.join("\n")
+    }
+
+    #[test]
+    fn 検索とソートの形状が同乗indexを使いtemp_btreeを踏まない() {
+        // docs/perf/2026-07-17-candidate-search-shapes.md の cand_* 形状が本番スキーマで
+        // 再現することの EXPLAIN 側ガード（レイテンシは search_bench で計測）。
+        // 射影に非 index 列（path）を含め、カバリング判定に依存しない形で検証する。
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        ensure_cache_schema(&mut conn).unwrap();
+
+        // 検索 × name ソート → 同乗 index 上で instr を評価
+        let p = plan(&conn,
+            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND instr(g.search_text, 'さ') > 0 \
+             ORDER BY g.name_lower ASC LIMIT 50");
+        assert!(p.contains("idx_ghosts_request_key_name_search"), "name 検索が同乗 index を使わない: {p}");
+        assert!(!p.contains("USE TEMP B-TREE"), "name 検索に TEMP B-TREE が残る: {p}");
+
+        // 検索 × recent ソート → recent 同乗 index・TEMP B-TREE なし
+        let p = plan(&conn,
+            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' AND instr(g.search_text, 'さ') > 0 \
+             ORDER BY g.last_launched DESC NULLS LAST, g.name_lower ASC LIMIT 50");
+        assert!(p.contains("idx_ghosts_request_key_recent_search"), "recent 検索が同乗 index を使わない: {p}");
+        assert!(!p.contains("USE TEMP B-TREE"), "recent 検索に TEMP B-TREE が残る: {p}");
+
+        // 空クエリ × recent / frequency ソート → index-ordered（TEMP B-TREE 消滅・#136）
+        let p = plan(&conn,
+            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' \
+             ORDER BY g.last_launched DESC NULLS LAST, g.name_lower ASC LIMIT 50");
+        assert!(p.contains("idx_ghosts_request_key_recent_search"), "recent ソートが index を使わない: {p}");
+        assert!(!p.contains("USE TEMP B-TREE"), "recent ソートに TEMP B-TREE が残る: {p}");
+
+        let p = plan(&conn,
+            "SELECT g.path FROM ghosts g WHERE g.request_key='rk' \
+             ORDER BY g.launch_count DESC, g.name_lower ASC LIMIT 50");
+        assert!(p.contains("idx_ghosts_request_key_frequency_search"), "frequency ソートが index を使わない: {p}");
+        assert!(!p.contains("USE TEMP B-TREE"), "frequency ソートに TEMP B-TREE が残る: {p}");
     }
 
     #[test]

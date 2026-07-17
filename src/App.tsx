@@ -15,6 +15,7 @@ import {
 import { useSettings } from "./hooks/useSettings";
 import { useGhosts } from "./hooks/useGhosts";
 import { useSearch } from "./hooks/useSearch";
+import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { useAppShellState } from "./hooks/useAppShellState";
 import { useLauncherToasts } from "./hooks/useLauncherToasts";
 import { useGhostLauncher } from "./hooks/useGhostLauncher";
@@ -26,6 +27,9 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
 import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
 import type { SortOrder } from "./types";
+
+// 検索デバウンス幅。1 打鍵の間隔より長く、「入力を止めたら即結果」と感じる短さに保つ
+const SEARCH_DEBOUNCE_MS = 150;
 
 const useStyles = makeStyles({
   app: {
@@ -88,7 +92,10 @@ function App() {
   // reseedRandomSort() 自体はモジュール変数の変更のみで React から不可視のため、
   // これを resetKey に含めて全置換フェッチを強制する（App.tsx#handleSortChange 参照）
   const [sortEpoch, setSortEpoch] = useState(0);
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  // タイピング中のクエリ発行を打鍵毎から区切り毎に合流させる（時間側の合流）。
+  // useDeferredValue はレンダー優先度側の遅延で、役割が異なるため両方通す
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
+  const deferredSearchQuery = useDeferredValue(debouncedSearchQuery);
   const LIMIT = 500;
 
   const {
