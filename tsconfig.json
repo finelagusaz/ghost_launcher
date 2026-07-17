@@ -5,6 +5,10 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    // src はブラウザ/React コード。@types/node（config 用に導入）の global 型漏れを防ぎ
+    // node 組込みの誤用を型で弾く。import.meta.env は src/vite-env.d.ts の参照ディレクティブ、
+    // React 型は import 経由で解決されるため types 空でも影響しない
+    "types": [],
 
     /* Bundler mode */
     "moduleResolution": "bundler",

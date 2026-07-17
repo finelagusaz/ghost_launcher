@@ -4,7 +4,14 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    // vite.config.ts / vitest.config.ts は node 組込み（url/path/process）を使うため
+    // node 型をこのプロジェクトにだけ通す（src 側 tsconfig.json には漏らさない）
+    "types": ["node"],
+    // composite は noEmit と両立不可（TS5069）。型検査ゲート専用のため emit 生成物は
+    // gitignore 済みの node_modules 配下へ逃がし、リポジトリを汚さない
+    "outDir": "./node_modules/.tmp/config",
+    "tsBuildInfoFile": "./node_modules/.tmp/config/.tsbuildinfo"
   },
   "include": ["vite.config.ts", "vitest.config.ts"]
 }
