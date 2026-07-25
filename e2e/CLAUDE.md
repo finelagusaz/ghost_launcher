@@ -7,7 +7,7 @@
 - `e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当
 - E2E テストはリリースビルドが前提（`npm run tauri build` 後に実行）
 - **CI には含まれないため、UI 操作・言語表示・フォーム入力に関わる変更をした場合はローカルで手動実行が必須**
-- **既知の失敗テスト（依存更新と独立した既存問題）**: issue #69（SearchBox placeholder 反映）。この失敗は環境/実装側の課題であり、依存更新後に再発しても deps 起因と即断しないこと。失敗がブランチの退行か判断に迷ったら main のビルドで同一テストを実行しベースライン比較する。（#90 のスクロールテスト stale flake は #107 で解消済み — `visibleGhostNames` を要素単位 try-catch で `StaleElementReferenceError` のみ吸収し他例外は再送出する方式に修正。#183 のダイアログ可視性 flake は `openSettings` を可視性待ちに変更して解消済み）
+- **既知の失敗テストは現在ゼロ**。過去の間欠失敗は解消済み（#90 スクロール stale → #107 で `visibleGhostNames` を要素単位 try-catch にし `StaleElementReferenceError` のみ吸収／#183 ダイアログ可視性 → #191 で `openSettings` を可視性待ちに変更／#69 SearchBox placeholder → 再現しなくなりクローズ）。**したがって失敗を「既知」として片付けず、退行として扱う**。ブランチの退行か判断に迷ったら main のビルドで同一テストを実行しベースライン比較する。間欠性の判定は `--repeat-each=N` で行う（単発 pass も単発 fail も根拠にならない）
 
 ## 実行方法
 
