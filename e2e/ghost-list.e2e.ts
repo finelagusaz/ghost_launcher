@@ -1,5 +1,5 @@
 import { test as base, expect } from "@playwright/test";
-import { By, until, Key, error as seleniumError, type WebDriver } from "selenium-webdriver";
+import { By, Key, error as seleniumError, type WebDriver } from "selenium-webdriver";
 import { createHarness, disposeHarness, type Harness } from "./helpers/harness";
 import { waitForAppReady, waitForGhosts, openSettings, closeSettings } from "./helpers/ui";
 
@@ -82,11 +82,9 @@ test("設定ダイアログを開閉できる", async ({ harness }) => {
 
   await openSettings(driver);
 
-  // ダイアログタイトル「設定」または "Settings" が表示される（アニメーション完了まで待機）
-  const dialogTitleEl = await driver.findElement(
-    By.xpath("//h2[text()='設定' or text()='Settings']"),
-  );
-  await driver.wait(until.elementIsVisible(dialogTitleEl), 5_000);
+  // ダイアログタイトル「設定」または "Settings" が描画されている
+  // （可視になるまでの待機は openSettings が担うため、ここでは存在確認のみでよい）
+  await driver.findElement(By.xpath("//h2[text()='設定' or text()='Settings']"));
 
   await closeSettings(driver);
 });
