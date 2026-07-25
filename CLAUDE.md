@@ -61,62 +61,11 @@ cargo sweep -t 30 .
 
 ## ディレクトリ構成
 
-```
-ghost_launcher/
-├── src/                        # フロントエンド（React 19 / TypeScript）→ src/CLAUDE.md
-│   ├── lib/                    # Tauri 呼び出し・ビジネスロジック
-│   ├── hooks/                  # React カスタムフック
-│   ├── components/             # React コンポーネント
-│   ├── types/                  # TS 型定義（generated/ は ts-rs 自動生成・手編集禁止）
-│   ├── locales/                # UI 翻訳リソース（ja/en/zh-CN/zh-TW/ko/ru）
-│   ├── test/                   # vitest セットアップ・Tauri API モック・fixtures
-│   └── App.tsx                 # ルートコンポーネント
-├── src-tauri/                  # Rust バックエンド → src-tauri/CLAUDE.md
-│   └── src/
-│       ├── commands/
-│       │   ├── ghost/          # ゴーストスキャン・フィンガープリント
-│       │   ├── ssp.rs          # ゴースト起動・SSP パス検証コマンド
-│       │   ├── launch_history.rs # 起動履歴記録（record_launch）・user-data.db 管理
-│       │   └── locale.rs       # ユーザー言語ファイル読込
-│       ├── actor/              # ghosts.db/user-data.db への全書込を直列化する単一 writer アクター（mod.rs: Job enum、db_path.rs: パス解決の単一権威）
-│       ├── cache_schema.rs     # ghosts.db の使い捨てスキーマ（CACHE_SCHEMA が単一権威・ハッシュ user_version で自動リビルド）
-│       ├── bench_support.rs    # 性能計測ハーネス（feature="bench" 限定・本番非コンパイル）
-│       └── lib.rs              # Tauri アプリビルダー
-├── crates/ghost-meta/          # ゴーストメタデータ解析クレート
-│   └── src/                    # descript.txt パーサー・ゴースト走査・サムネイル解決
-├── e2e/                        # E2E テスト → e2e/CLAUDE.md
-│   ├── helpers/
-│   │   ├── harness.ts          # tauri-driver 起動・WebDriver セッション管理
-│   │   └── ui.ts               # 共通 UI ヘルパー（waitForAppReady など）
-│   ├── ghost-list.e2e.ts       # ゴースト一覧・検索・スクロールの E2E テスト
-│   └── i18n.e2e.ts             # 言語切り替え・NFKC 正規化の E2E テスト
-├── scripts/                    # UI ガイドライン検査（check-ui-guidelines.mjs）・Claude Code フック（hooks/*.sh）
-├── docs/
-│   ├── ui-guidelines.md        # UI デザインガイドライン
-│   └── locale-customization.md # ユーザー言語カスタマイズ仕様
-├── Cargo.toml                  # workspace ルート（src-tauri + crates/ghost-meta）
-├── RETROSPECTIVE.md            # 過去の振り返り（サイクル毎に上書き）
-└── SPEC.md                     # 機能仕様書
-```
+フォルダ固有の規約は各フォルダの `CLAUDE.md` が単一権威（`src/`・`src-tauri/`・`e2e/`）。ゴーストメタデータ解析は `crates/ghost-meta/`。
 
-## アーキテクチャ
+- `src/types/generated/` は ts-rs 自動生成。**手編集禁止**
 
-**Tauri 2 アプリ**: Rust バックエンド + React 19 / TypeScript フロントエンド。
-
-### バックエンド（`src-tauri/src/` + `crates/ghost-meta/`）
-
-- `lib.rs` — Tauri アプリビルダー。コマンド・プラグイン登録。setup 内で DB アクター起動配線（`actor::bootstrap`）
-- `commands/ghost/` — ゴーストスキャン・DB 書き込み・フィンガープリントコマンド群。`scan.rs`（Rayon 並列スキャン + 型変換）、`store.rs`（rusqlite 差分 UPSERT）、`fingerprint.rs`（2 層差分検知）、`path_utils.rs`（パス正規化）、`types.rs`（型定義）
-- `commands/ssp.rs` — `launch_ghost`（`ssp.exe /g {ghost}` 起動）・`validate_ssp_path` コマンド
-- `crates/ghost-meta/` — ゴーストメタデータ解析ワークスペースクレート。`descript.txt` パーサー・ゴースト走査・サムネイル解決
-
-### フロントエンド（`src/`）
-
-- `lib/` — Tauri コマンド呼び出しラッパー・キャッシュ寿命管理・起動ロジック・設定ストア
-- `hooks/` — 設定・ゴーストスキャン・検索・仮想スクロール・テーマ検出などの React カスタムフック
-- `components/` — React UI コンポーネント（一覧は `src/components/` のファイル自体が単一権威。ここに列挙を複製しない）
-
-### 横断パターン
+## 横断パターン
 
 **Tauri コマンド呼び出し**: フロントエンドは `invoke()` で camelCase の引数名を使い、Rust 側では自動的に snake_case に変換されます（例: `sspPath` → `ssp_path`, `additionalFolders` → `additional_folders`）。
 
@@ -200,9 +149,7 @@ GitHub Flow に準拠する。
 
 ### スカッシュマージのマージ済み確認
 
-スカッシュマージでは元コミットが main の祖先に入らないため、`git log main..branch` は「未マージ」と誤検知する。内容が main に取り込まれているかは `git diff main..branch --stat` で判断する。差分がほぼゼロなら実質マージ済み。
-
-**ただし差分ゼロ判定が使えるのはマージ直後のブランチだけ**。main が先行した古いブランチでは、差分の大半が「main が獲得した変更をブランチが持っていない」ことの裏返しとして大量の削除行に見える。数字の大きさを未マージの作業量と読み違えないこと。古いブランチは `gh pr view <branch> --json state,headRefName` が `MERGED` かつ head 一致であることと、実装が main に実在すること（`git grep <語> main -- <path>`）で判定する。
+スカッシュマージでは元コミットが main の祖先に入らないため、`git log main..branch` は「未マージ」と誤検知する。判定手順は `/post-merge-sync` スキル（ステップ 4）が単一権威。
 
 ## CLAUDE.md の保守ルール
 
