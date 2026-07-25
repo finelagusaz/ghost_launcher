@@ -37,7 +37,7 @@ bench = []
 
 [dev-dependencies]
 ts-rs = "12"
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "search_bench"
