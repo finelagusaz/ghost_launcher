@@ -37,7 +37,11 @@ export async function openSettings(driver: WebDriver): Promise<void> {
     const btn = await driver.findElement(By.css("[data-testid='settings-button']"));
     await btn.click();
   }
-  await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
+  // 存在だけでなく可視になるまで待つ。Fluent UI Dialog は <dialog> 要素を使い、
+  // open 属性が付くまで子孫ごと display:none になるため、elementLocated だけでは
+  // 開くアニメーションの途中を掴み「存在するが不可視」の要素を呼び出し側へ渡してしまう。
+  const dialog = await driver.wait(until.elementLocated(By.css("[role='dialog']")), 5_000);
+  await driver.wait(until.elementIsVisible(dialog), 5_000);
 }
 
 /** 設定ダイアログを閉じる */

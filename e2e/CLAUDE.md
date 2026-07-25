@@ -7,7 +7,7 @@
 - `e2e/helpers/harness.ts` が tauri-driver の起動・WebDriver セッション確立・後片付けを担当
 - E2E テストはリリースビルドが前提（`npm run tauri build` 後に実行）
 - **CI には含まれないため、UI 操作・言語表示・フォーム入力に関わる変更をした場合はローカルで手動実行が必須**
-- **既知の失敗テスト（依存更新と独立した既存問題）**: issue #69（SearchBox placeholder 反映）。この失敗は環境/実装側の課題であり、依存更新後に再発しても deps 起因と即断しないこと。失敗がブランチの退行か判断に迷ったら main のビルドで同一テストを実行しベースライン比較する。（#90 のスクロールテスト stale flake は #107 で解消済み — `visibleGhostNames` を要素単位 try-catch で `StaleElementReferenceError` のみ吸収し他例外は再送出する方式に修正）
+- **既知の失敗テスト（依存更新と独立した既存問題）**: issue #69（SearchBox placeholder 反映）。この失敗は環境/実装側の課題であり、依存更新後に再発しても deps 起因と即断しないこと。失敗がブランチの退行か判断に迷ったら main のビルドで同一テストを実行しベースライン比較する。（#90 のスクロールテスト stale flake は #107 で解消済み — `visibleGhostNames` を要素単位 try-catch で `StaleElementReferenceError` のみ吸収し他例外は再送出する方式に修正。#183 のダイアログ可視性 flake は `openSettings` を可視性待ちに変更して解消済み）
 
 ## 実行方法
 
@@ -30,6 +30,7 @@ npm run e2e
 ## 記述パターン
 
 - セレクタは日英両言語対応（XPath で `text()='起動' or text()='Launch'` のように記述）
+- **可視性が要る場面で `until.elementLocated` を使わない**。存在しか見ないため、Fluent UI Dialog の `<dialog>`（`open` 属性が付くまで子孫ごと `display:none`）では開くアニメーション途中の不可視要素を掴む。ダイアログを開いた後の操作・アサーションは `openSettings` の可視性待ちに委ね、呼び出し側で待ち直さない（#183。その場対処を呼び出し側に置くとヘルパー本体に還元されず、他の呼び出し側で再発する）
 - SSP パス未設定など環境依存のテストは `test.skip()` で安全にスキップ
 
 ## テスト追加の手順
