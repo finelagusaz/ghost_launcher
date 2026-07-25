@@ -75,16 +75,7 @@ EOF
 
 **Test plan の書き方**:
 
-このプロジェクトのコミット前チェックリストに基づき、実際に検証した項目をチェック済みで記載する:
-
-- `npm run build`
-- `npm test`
-- `npm run check:ui-guidelines`
-- `npm run test:ui-guidelines-check`
-- `cargo test --workspace`（Rust 変更がある場合）
-- `cargo test -p ghost-meta --features thumbnail,serde`（ghost-meta 変更がある場合）
-
-コード変更を伴わない PR（ドキュメントのみ等）では、該当しないチェック項目は省略してよい。
+`/commit` ステップ 2 のチェックリスト（ゲート一式の単一権威）のうち、**実際に実行して通った項目だけ**をコマンド名でチェック済みに記載する。コマンド列をここに複製しない（`/commit` 側と drift する）。docs-only 免除でスキップした項目は列挙せず、免除した旨を 1 行で書く。
 
 ### ステップ 5: 結果の報告
 

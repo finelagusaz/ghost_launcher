@@ -5,7 +5,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
 
 # 実装フルサイクル
 
-コード変更を調査からコミットまで一気通貫で進めるワークフロー。CLAUDE.md の開発方針（KISS/DRY/SRP/YAGNI）とデバッグ原則は常に前提とする。
+コード変更を調査からコミットまで一気通貫で進めるワークフロー。KISS/DRY/SRP/YAGNI・既存パターン踏襲・「症状でなく根本原因を直す」は常に前提とする。
 
 ## ステップ 1: 明確化
 
@@ -58,7 +58,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
   | コード変更 | 同期するドキュメント |
   |---|---|
   | 振る舞い・DB スキーマ・コマンド仕様 | SPEC.md |
-  | `src-tauri/src/commands/` 等へのモジュール（ファイル）新設・移動・削除 | SPEC.md §3.2 モジュール表・ルート CLAUDE.md ツリー |
+  | `src-tauri/src/commands/` 等へのモジュール（ファイル）新設・移動・削除 | SPEC.md §3.2 モジュール表 |
   | `src/locales/*.json` のキー増減 | `docs/locale-customization.md` のキー一覧 |
   | 安全網（`ci-build.yml`・`clippy.toml`・`scripts/hooks/`・`.claude/settings.json`）の新設・変更 | `/commit` チェックリスト（グループ A/B）との整合を突合して同期する |
   | アーキテクチャ・横断パターンの変更（書込経路・キャッシュ機構・スキーマ方式等） | `.claude/skills/` を関連語で grep し、化石化するスキル記述を同一 PR で更新する |

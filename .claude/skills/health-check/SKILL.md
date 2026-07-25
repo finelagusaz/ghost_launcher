@@ -21,6 +21,7 @@ disable-model-invocation: true
 7. **生成型** — `src/types/generated/` にコミット漏れ・実装に対応しない孤児ファイルがないか（`cargo test --workspace` 後に `git status --porcelain src/types/generated/` で確認）
 8. **RETROSPECTIVE.md** — ネクストアクションが issue 化または消化されているか（`gh issue list` と突き合わせる）
 9. **足場（scaffolding）の残存** — 撤去条件つきで書かれた仮設コード（「後続タスクで置き換え」「仮実装」等）がサイクルを跨いで生存していないか（`grep -rniE 'TODO|FIXME|後続タスク|後で(削除|置き換え|実装)|仮実装|仮置き' src src-tauri crates`）。ヒットが撤去待ちか、恒久的な備考かを区別して報告する（`placeholder` 等は UI 属性・i18n キーで恒常ヒットするため意図句に絞っている）
+10. **常時ロード文脈の再肥大化** — ルート CLAUDE.md に、モデルが既に持つ一般則・ハーネス既定の言い直し・スキル本文や `package.json` から導出できる記述が再流入していないか。各見出しを「repo 固有の落とし穴か / 既定を上書きする指示か」で判定し、どちらでもないものは生存コピーの所在（スキル名・ファイル）を添えて報告する
 
 ## 出力形式
 
