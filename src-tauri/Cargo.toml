@@ -11,7 +11,15 @@ readme = "../README.md"
 
 [lib]
 name = "ghost_launcher_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# rlib 単独に絞る（#201）。cdylib/staticlib を含む lib target には cargo が
+# -C extra-filename を付けないため、rlib が deps/libghost_launcher_lib.rlib という
+# 単一パスへ出力される。release を継承するプロファイル（bench・test --release）では
+# 同じ lib が panic=abort（bin 経由・[profile.release] 由来）と panic=unwind
+# （bench/test target は常に unwind 強制）の 2 unit としてビルドされ、
+# この単一パスを奪い合って後勝ちになり、リンク時に panic strategy 不整合で落ちる。
+# モバイル（iOS/Android）へ移植する際は staticlib/cdylib を戻したうえで、
+# [profile.release] の panic 設定を見直すこと。
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
