@@ -40,7 +40,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 グループ A とグループ B は互いに独立しているため並列実行してよい（グループ B 内は target ディレクトリのロック競合を避けるため順次）。
 
-> **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`・`cargo clippy --features bench --all-targets -- -D warnings`）は CI 専用で、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
+> **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`・`cargo clippy --features bench --all-targets -- -D warnings`）と、bench プロファイルのコンパイルゲート（`cargo bench --features bench --bench search_bench --no-run` → 同 `--bench scan_bench --no-run` の順次実行）は CI 専用で、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため。とりわけ後者は release 継承プロファイルのフルビルドを伴う）。bench 関連ファイル・`[lib] crate-type`・`[profile.*]` を変更したときのみ手動で実行する。
 
 ### 追加の確認事項
 

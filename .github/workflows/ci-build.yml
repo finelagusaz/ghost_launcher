@@ -72,3 +72,13 @@ jobs:
       # 別ステップで lint する。bench 限定の新 lint 素通りを防ぐ。
       - name: Clippy (bench feature, deny warnings)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --features bench --all-targets -- -D warnings
+
+      # bench プロファイル（release 継承・panic = "abort" を持つ）を PR 時にコンパイルするゲート。
+      # 上の cargo check は dev プロファイルのため panic strategy の不整合を原理的に捕まえず、
+      # release.yml の tauri build は tag 時のみで PR を守らない。
+      # docs/perf/baseline-100k.md の実行手順と同じ順序で 2 本続けて通す（#201 の再現経路そのもの）。
+      # 実行は不要（衝突はリンク時に出る）ため --no-run でコンパイルのみに留める。
+      - name: Bench profile compiles (panic strategy drift guard)
+        run: |
+          cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench search_bench --no-run
+          cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench scan_bench --no-run
