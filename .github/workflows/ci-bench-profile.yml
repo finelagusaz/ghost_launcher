@@ -19,6 +19,15 @@ on:
       - 'crates/**/Cargo.toml'
       - 'src-tauri/benches/**'
       - '.github/workflows/ci-bench-profile.yml'
+  # main への push では paths で絞らない。理由は 2 つ。
+  # (1) キャッシュのブランチスコープ: PR ブランチの run が作ったキャッシュは他の PR から
+  #     読めず、全ブランチが読めるのは既定ブランチの run が作ったものだけ。main 側で
+  #     常に温めておかないと、PR ごとに使い捨てのキャッシュを作るだけになる（#211）。
+  # (2) paths を複製すると、PR 側との同期が機械検証されない重複になる。
+  # マージ後の実行なので誰の待ち時間も増やさず、ゲートの main 上での再確認も兼ねる。
+  push:
+    branches:
+      - main
   # path filter は「変更した人」を守るが「変更していないのに壊れた」を取り逃がす。
   # cargo 自身の更新や依存構成の変化で成果物パスの決定が変われば差分ゼロでも壊れるため、
   # 週次で既定ブランチ（main）を回してその穴を埋める。省くと切り出しが検知経路の削除になる。
@@ -39,6 +48,10 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      # 効果が実測できなければ外す前提で入れている（#211）。
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
 
       # フロントエンドのビルドは不要（build.rs は frontendDist の実在を要求しない。
       # dist/ を退避した状態で build script を強制再実行して確認済み）。
