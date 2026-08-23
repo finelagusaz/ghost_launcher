@@ -23,7 +23,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
 - 関連する関数の使用箇所を検索し、影響範囲を確認する
 - 対称的なコードパス（追加/削除、成功/失敗）がある場合は両方を確認する
 - 変更しないと判断したファイルについても、その根拠を確認する
-- `.github/workflows/ci-build.yml` を読み、変更が CI で正しく検証されるか確認する
+- `.github/workflows/` 配下のワークフローを読み、変更が CI で正しく検証されるか確認する（発火条件に `paths` フィルタを持つものがあり、変更したファイルによっては走らない）
 
 ## ステップ 4: テストを先に書く（Red）
 
@@ -60,7 +60,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
   | 振る舞い・DB スキーマ・コマンド仕様 | SPEC.md |
   | `src-tauri/src/commands/` 等へのモジュール（ファイル）新設・移動・削除 | SPEC.md §3.2 モジュール表 |
   | `src/locales/*.json` のキー増減 | `docs/locale-customization.md` のキー一覧 |
-  | 安全網（`ci-build.yml`・`clippy.toml`・`scripts/hooks/`・`.claude/settings.json`）の新設・変更 | `/commit` チェックリスト（グループ A/B）との整合を突合して同期する |
+  | 安全網（`.github/workflows/`・`clippy.toml`・`scripts/hooks/`・`.claude/settings.json`）の新設・変更 | `/commit` チェックリスト（グループ A/B）との整合を突合して同期する |
   | アーキテクチャ・横断パターンの変更（書込経路・キャッシュ機構・スキーマ方式等） | `.claude/skills/` を関連語で grep し、化石化するスキル記述を同一 PR で更新する |
 
 - `/commit` へ接続する（チェックリストの実行とコミットは `/commit` の責務）
