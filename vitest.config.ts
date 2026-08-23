@@ -28,6 +28,11 @@ export default defineConfig({
     // これは vitest 固有ではなく素の Node でも同じ（`node --input-type=module` で確認済み）。
     // Fluent UI の連鎖ごと Vite に処理させ、module フィールド経由で ESM を掴ませる。
     // tabster 単独の inline では import 元が externalize されたままのため効かない。詳細は #203。
+    // 撤去条件: tabster が exports を宣言して ESM エントリを指すか、Fluent UI が tabster の
+    // import 形式を変えれば不要になる。次が成功するようになれば撤去してよい:
+    //   node --input-type=module -e "import { Button } from '@fluentui/react-components'"
+    // 代償: inline した範囲は Vite が解決するため、@fluentui 側で同種の ESM 破綻が起きても
+    // テストでは検知できなくなる。上記コマンドが撤去可否と破綻検知を兼ねる。
     server: {
       deps: {
         inline: [/@fluentui\//, "tabster"],
