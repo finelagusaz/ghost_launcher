@@ -42,7 +42,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 > **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`・`cargo clippy --features bench --all-targets -- -D warnings`）は `ci-build.yml` の CI 専用ステップで、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
 >
-> bench プロファイルのコンパイルゲート（`cargo bench --no-run` を 2 本順次）は `ci-bench-profile.yml` が単一権威。`Cargo.toml`・`Cargo.lock`・`benches/` の変更で自動発火し、加えて週次と `workflow_dispatch` でも走るため、ローカルでの手動実行もこのチェックリストへの追加も不要（release 継承プロファイルのフルビルドを伴い CI 時間をおよそ倍にしたため #209 で `ci-build.yml` から切り出した）。
+> bench プロファイルのコンパイルゲート（`cargo bench --no-run` を 2 本順次）は `ci-bench-profile.yml` が単一権威。`Cargo.toml`・`Cargo.lock`・`benches/` の変更で自動発火し、加えて main への push・週次・`workflow_dispatch` でも走るため、ローカルでの手動実行もこのチェックリストへの追加も不要（release 継承プロファイルのフルビルドを伴い CI 時間をおよそ倍にしたため #209 で `ci-build.yml` から切り出した）。
 
 ### 追加の確認事項
 

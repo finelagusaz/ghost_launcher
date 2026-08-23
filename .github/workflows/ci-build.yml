@@ -30,6 +30,12 @@ jobs:
         with:
           components: clippy
 
+      # cargo registry と target/ の依存ぶんをキャッシュする。既定のキャッシュキーは
+      # github.job を含むため、ci-bench-profile.yml（別プロファイル）とは自動的に分かれる。
+      # 効果が実測できなければ外す前提で入れている（#211）。
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
       - name: Install dependencies
         run: npm ci
 
