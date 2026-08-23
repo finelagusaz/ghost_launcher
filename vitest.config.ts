@@ -31,6 +31,9 @@ export default defineConfig({
     // 撤去条件: tabster が exports を宣言して ESM エントリを指すか、Fluent UI が tabster の
     // import 形式を変えれば不要になる。次が成功するようになれば撤去してよい:
     //   node --input-type=module -e "import { Button } from '@fluentui/react-components'"
+    // 上流の追跡先: microsoft/fluentui#34685（native ESM 非対応。P1・OPEN）。close されたら上を試す。
+    // 公式のテストガイドは Jest（transform 経由）で native ESM 解決は想定外のため、inline は
+    // 上流が想定する消費モデルへ揃える操作にあたる。奇策ではない。
     // 代償: inline した範囲は Vite が解決するため、@fluentui 側で同種の ESM 破綻が起きても
     // テストでは検知できなくなる。上記コマンドが撤去可否と破綻検知を兼ねる。
     server: {
