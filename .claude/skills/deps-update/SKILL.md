@@ -21,6 +21,8 @@ cargo update --dry-run
 
 - **パッチ・マイナー更新**: 一括で進めてよい
 - **メジャー更新**: 1 件ずつ changelog・breaking changes を確認し、ユーザーに更新可否を確認する。**波及範囲は changelog の散文でなくパッケージメタデータで実測する**（`npm view <pkg>@<ver> engines exports peerDependencies`）。見送って issue 化する場合もこの実測結果を issue に書く（想定で書くと着手時にスコープごと覆る。#185 は「マッチャー波及」を懸念して起票したが、実際の争点は `engines.node` と CI のランタイム版だった）
+- **上流の変更が意図的か先に確かめる**: 更新で壊れたとき、原因を「上流の不備」と決めつけない。changelog が設計判断として名指ししているなら（例: Fluent UI 9.74.6 の ESM-first 化は `drop the node export condition` と明記）、**待っても直らないため「上流の修正を待つ」は選択肢にならず、追随か据え置きの二択になる**。見送りを issue 化する際もこの区別を書く（#203 は当初「上流の不備・修正待ち」と書き、ユーザーの指摘で全面改訂した）
+- **`Cargo.lock` に増えたクレートを供給網の増加と即断しない**: optional dependency は feature が有効化されなくても lock に記録される。`cargo tree -i <crate>`（必要なら `--target all`）と突き合わせ、ビルドグラフに現れないなら実際にコンパイルされるクレートは増えていない。lock と `cargo tree` の食い違いそのものが答えになる
 - **tauri 系**（`@tauri-apps/cli` / `@tauri-apps/api` / 各プラグイン / `tauri` クレート）: CLI・api・プラグインの版を揃える
 - **rusqlite / libsqlite3-sys**: `tauri-plugin-sql` との links 制約で上限が固定されている。`src-tauri/CLAUDE.md`「rusqlite と sqlx-sqlite の libsqlite3-sys 共有制約」を読み、解錠条件を満たしていない限り major bump しない
 - **シリアライズ・ストレージ形式に関わるクレート**: 後方互換性の検証手順（`src-tauri/CLAUDE.md`「依存クレートの移行・更新」）に従う
