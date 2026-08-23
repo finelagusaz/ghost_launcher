@@ -1,0 +1,50 @@
+name: Bench Profile
+
+# bench プロファイル（release 継承・panic = "abort" を持つ）をコンパイルするゲート。
+# ci-build.yml の `cargo check --benches` は dev プロファイルのため panic strategy の
+# 不整合を原理的に捕まえず、release.yml の tauri build は tag 時のみ動く。
+#
+# 当初は ci-build.yml の 1 ステップだったが、実測で CI 時間をおよそ倍にし
+# docs-only の PR まで対価を払っていたため #209 で切り出した（#207 で 8m20s）。
+on:
+  pull_request:
+    branches:
+      - main
+    # 設定の所在に対応させる: [profile.*] はルート、[lib] crate-type は src-tauri。
+    # ワークスペースを増やしたときに漏れないよう crates/ 配下も含める。
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - 'src-tauri/benches/**'
+      - '.github/workflows/ci-bench-profile.yml'
+  # path filter は「変更した人」を守るが「変更していないのに壊れた」を取り逃がす。
+  # cargo 自身の更新や依存構成の変化で成果物パスの決定が変われば差分ゼロでも壊れるため、
+  # 週次で既定ブランチ（main）を回してその穴を埋める。省くと切り出しが検知経路の削除になる。
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench-profile:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # フロントエンドのビルドは不要（build.rs は frontendDist の実在を要求しない。
+      # dist/ を退避した状態で build script を強制再実行して確認済み）。
+      # docs/perf/baseline-100k.md の実行手順と同じ順序で 2 本続けて通す（#201 の再現経路そのもの）。
+      # 実行は不要（衝突はリンク時に出る）ため --no-run でコンパイルのみに留める。
+      - name: Bench profile compiles (panic strategy drift guard)
+        run: |
+          cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench search_bench --no-run
+          cargo bench --manifest-path src-tauri/Cargo.toml --features bench --bench scan_bench --no-run
