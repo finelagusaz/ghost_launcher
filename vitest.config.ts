@@ -21,5 +21,25 @@ export default defineConfig({
     // globals は使用しない（各テストファイルで明示的に import する）
     // scripts/ は Node.js --test 用なので vitest の対象から除外する
     include: ["src/**/*.test.{ts,tsx}"],
+    // Fluent UI 9.74.6 の ESM-first 化により @fluentui/* が type:module となり、
+    // exports から node 条件が消えた（上流の意図的な変更）。その結果 react-tabster の
+    // `import { createTabster } from 'tabster'` が静的 ESM 解決になるが、tabster は
+    // exports を宣言せず main が CJS を指すため名前付き export を検出できず失敗する。
+    // これは vitest 固有ではなく素の Node でも同じ（`node --input-type=module` で確認済み）。
+    // Fluent UI の連鎖ごと Vite に処理させ、module フィールド経由で ESM を掴ませる。
+    // tabster 単独の inline では import 元が externalize されたままのため効かない。詳細は #203。
+    // 撤去条件: tabster が exports を宣言して ESM エントリを指すか、Fluent UI が tabster の
+    // import 形式を変えれば不要になる。次が成功するようになれば撤去してよい:
+    //   node --input-type=module -e "import { Button } from '@fluentui/react-components'"
+    // 上流の追跡先: microsoft/fluentui#34685（native ESM 非対応。P1・OPEN）。close されたら上を試す。
+    // 公式のテストガイドは Jest（transform 経由）で native ESM 解決は想定外のため、inline は
+    // 上流が想定する消費モデルへ揃える操作にあたる。奇策ではない。
+    // 代償: inline した範囲は Vite が解決するため、@fluentui 側で同種の ESM 破綻が起きても
+    // テストでは検知できなくなる。上記コマンドが撤去可否と破綻検知を兼ねる。
+    server: {
+      deps: {
+        inline: [/@fluentui\//, "tabster"],
+      },
+    },
   },
 });
