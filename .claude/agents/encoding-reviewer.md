@@ -18,9 +18,9 @@ tools: Read, Grep, Glob, Bash
 3. フォールバック → Shift_JIS
 
 ### NFKC 正規化
-- **TS 側**: `ghostDatabase.ts` の `normalizeForKey()` で `value.normalize("NFKC").toLowerCase()` を適用
-- **用途**: 検索クエリ、`_lower` カラム、`ghost_identity_key` の構成
-- **Rust 側**: エンコーディングのデコードのみ。NFKC 正規化は行わない
+- **TS 側**: `ghostDatabase.ts` の `normalizeForKey()` が検索クエリを NFKC+lowercase に正規化する
+- **Rust 側**: `commands/ghost/store.rs` の正規化関数が `_lower` カラムと `ghost_identity_key(source, directory_name)` を NFKC+lowercase で算出する（書込側の単一権威）
+- 両側の結果一致は `ghostDatabase.test.ts` の「normalizeForKey パリティ（共有 fixture）」が縛る。片側だけ変えて fixture を据え置いていないかを見る
 
 ### パス正規化
 - **Rust**: `path.to_string_lossy().replace('\\', "/").to_lowercase()`
