@@ -13,10 +13,10 @@ tools: Read, Grep, Glob, Bash
 ## プロジェクト固有の前提
 
 - ghosts.db はキャッシュ DB（再スキャンで復旧可能）
-- 書き込み: rusqlite 経由の差分 UPSERT（`store_ghosts` in `store.rs`）
+- 書き込み: DB アクター（`actor/`）専有スレッドが rusqlite で行う差分書込（`store_ghosts_delta` in `commands/ghost/store.rs`）
 - 読み込み: tauri-plugin-sql（sqlx）経由の SELECT（`ghostDatabase.ts`）
-- PRAGMA: WAL モード、busy_timeout、synchronous=NORMAL（rusqlite 側）、optimize=0x10002（sqlx 側）
-- マイグレーション: sqlx ベース。既存マイグレーション SQL は絶対に編集不可（SHA-384 チェックサム検証）
+- PRAGMA: rusqlite 書込接続の `configure_connection`（WAL・busy_timeout・synchronous=NORMAL 等）。`PRAGMA optimize`／条件付き VACUUM はアクターの `Job::Maintenance`。JS `loadDb()` は busy_timeout のみ
+- スキーマ: ghosts.db はマイグレーションを持たない使い捨てスキーマ（`cache_schema.rs` の `CACHE_SCHEMA`。ハッシュ不一致で起動時に全 DROP+CREATE）。user-data.db は `launch_history::ensure_schema` の追加式のみ。詳細は `src-tauri/CLAUDE.md`「SQLite」節
 
 ## チェック項目
 
@@ -36,16 +36,15 @@ tools: Read, Grep, Glob, Bash
 - WAL モードの前提が壊れる変更がないか
 - `busy_timeout` が適切か（並行アクセスのデッドロック回避）
 
-### 4. マイグレーション安全性
-- 新規マイグレーションの SQL 構文が正しいか
-- `DEFAULT` 値にリテラルのみ使用しているか（関数は不可）
-- 既存マイグレーションを変更していないか（チェックサム不一致でクラッシュ）
-- `\n` で改行を明示しているか（raw 改行 + インデントは禁止）
+### 4. スキーマ変更の安全性
+- ghosts.db の DDL 変更が `CACHE_SCHEMA` の直接編集で行われているか（アクター外・別経路の DDL を足していないか）
+- `CACHE_SCHEMA` の変更は全ユーザーのキャッシュ破棄＋フルスキャン再投入を伴う。そのコストが変更に見合うか
+- user-data.db（永続）への変更に `DROP`／`DELETE FROM` が混入していないか（追加式のみ）
 
 ### 5. 差分 UPSERT パターン
-- `store_ghosts` の INSERT/UPDATE/DELETE 最小化ロジックが壊れていないか
+- `store_ghosts_delta` の INSERT/UPDATE/DELETE 最小化ロジックが壊れていないか
 - `ghost_identity_key` の構成（NFKC(source) + `\x1f` + NFKC(directory_name)）が変更されていないか
-- `row_fingerprint`（9 フィールドの SHA-256）の対象フィールドに変更がないか
+- `row_fingerprint` の対象フィールドに変更がないか（算出関数は `store.rs` が単一権威）
 
 ## 出力形式
 

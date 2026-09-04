@@ -17,15 +17,13 @@ tools: Read, Grep, Glob, Bash
 - 引数変換: Tauri が camelCase → snake_case に自動変換（`sspPath` → `ssp_path`）
 - 戻り値: Rust struct のフィールド名がそのまま JS へ渡る（snake_case のまま）
 
-## 現在のコマンド一覧
+## コマンド一覧の取得
 
-| コマンド | Rust ファイル | 戻り値型 |
-|---------|-------------|---------|
-| `scan_and_store` | `commands/ghost/mod.rs` | `ScanStoreResult` (生成型) |
-| `launch_ghost` | `commands/ssp.rs` | `()` |
-| `validate_ssp_path` | `commands/ssp.rs` | `()` |
-| `reset_ghost_db` | `commands/db.rs` | `()` |
-| `read_user_locale` | `commands/locale.rs` | `Option<String>` |
+コマンドの現状はコードが単一権威。検査前に次で列挙する（一覧をここへ写さない）:
+
+```bash
+grep -rn -A2 '#\[tauri::command\]' src-tauri/src | grep -E 'fn '
+```
 
 ## チェック項目
 

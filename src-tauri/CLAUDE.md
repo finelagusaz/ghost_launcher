@@ -14,9 +14,9 @@
 
 ## SQLite
 
-> マイグレーション関連のミスはアプリ起動不能につながる。以下を必ず守る。
+> ghosts.db（使い捨て）と user-data.db（永続）で守るべき制約が異なる。混同すると永続データの喪失かキャッシュの不整合を招く。
 
-**使い捨てスキーマ（`cache_schema.rs`）**: ghosts.db はマイグレーションを持たない。`CACHE_SCHEMA`（`src-tauri/src/cache_schema.rs`）が単一権威の定数文字列で、そのハッシュ（FNV-1a）を `PRAGMA user_version` に刻む。起動時に `ensure_cache_schema` が現在の `user_version` とハッシュを比較し、不一致（＝スキーマ本文の変更）なら単一トランザクションで全テーブルを DROP+CREATE して作り直す。手動 bump が存在しないため「bump 忘れで既存ユーザーだけ壊れる」クラスが構造的に存在しない。**スキーマを変更したら `CACHE_SCHEMA` を直接編集してよい**（かつての追記式マイグレーションのような不変性の制約はない）。変更すれば次回起動で全ユーザーのキャッシュが自動リビルドされ、フルスキャンで再投入される（受容済みトレードオフ）。検索派生列 `search_text` は `CACHE_SCHEMA` 内の**生成列**（導出式がスキーマ定数の単一権威・書込側は関与しない）。user-data.db（永続）はこの機構の対象外（`launch_history::ensure_schema` の追加式のみ）。
+**使い捨てスキーマ（`cache_schema.rs`）**: ghosts.db はマイグレーションを持たない。`CACHE_SCHEMA`（`src-tauri/src/cache_schema.rs`）が単一権威の定数文字列で、そのハッシュ（FNV-1a）を `PRAGMA user_version` に刻む。起動時に `ensure_cache_schema` が現在の `user_version` とハッシュを比較し、不一致（＝スキーマ本文の変更）なら単一トランザクションで全テーブルを DROP+CREATE して作り直す。手動 bump が存在しないため「bump 忘れで既存ユーザーだけ壊れる」クラスが構造的に存在しない。**スキーマを変更したら `CACHE_SCHEMA` を直接編集してよい**（定数文字列に不変性の制約はない）。変更すれば次回起動で全ユーザーのキャッシュが自動リビルドされ、フルスキャンで再投入される（受容済みトレードオフ）。検索派生列 `search_text` は `CACHE_SCHEMA` 内の**生成列**（導出式がスキーマ定数の単一権威・書込側は関与しない）。user-data.db（永続）はこの機構の対象外（`launch_history::ensure_schema` の追加式のみ）。
 
 **DB 初期化 PRAGMA**: JS `loadDb()` は `busy_timeout` のみを設定する読み取り専用スコープ。`journal_mode=WAL`／`journal_size_limit` は rusqlite 書き込み接続の `configure_connection` が設定し、`PRAGMA optimize`／条件付き VACUUM は DB アクターの `Job::Maintenance`（起動直後の自己投入ジョブ・失敗してもログのみで続行）が担う。詳細は `SPEC.md` §8.1.1 を参照。
 

@@ -15,7 +15,7 @@ description: コード変更（機能追加・バグ修正・リファクタリ�
 ## ステップ 2: ブランチ確認
 
 - `git status` が clean であることを確認する
-- main 上にいる場合は `{prefix}/{issue番号}-{英語で内容の説明}` の作業ブランチを先に切る（プレフィックス: `feature/` `fix/` `hotfix/` `release/` `test/` `docs/` `refactor/`）
+- main 上にいる場合は作業ブランチを先に切る（命名規則とプレフィックス一覧はルート CLAUDE.md「ブランチ戦略」が単一権威）
 - issue 起点の作業なら `/start-issue` の利用を案内する
 
 ## ステップ 3: 調査

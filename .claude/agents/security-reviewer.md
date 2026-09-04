@@ -15,7 +15,7 @@ tools: Read, Grep, Glob, Bash
 ### 1. SQL インジェクション
 - `db.execute()` / `db.select()` の引数が必ずパラメータバインディング（`?` プレースホルダ）を使用しているか
 - 文字列連結やテンプレートリテラルで SQL を組み立てていないか
-- `IN (...)` 句のプレースホルダ生成が安全か（`buildInClausePlaceholders` パターン）
+- `IN (...)` 句が要素数ぶんの `?` を生成し、値そのものを SQL 文字列へ連結していないか
 
 ### 2. コマンドインジェクション
 - `Command::new()` や `std::process::Command` でユーザー入力が引数に渡される箇所

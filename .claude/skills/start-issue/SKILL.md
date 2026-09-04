@@ -38,7 +38,7 @@ git pull origin main --ff-only
 git switch -c <prefix>/<N>-<english-description>
 ```
 
-プレフィックスは issue の性質から選ぶ: `feature/` `fix/` `hotfix/` `release/` `test/` `docs/` `refactor/`
+プレフィックスは issue の性質から選ぶ（一覧はルート CLAUDE.md「ブランチ戦略」が単一権威）
 
 ## ステップ 5: 調査と方針提示
 
