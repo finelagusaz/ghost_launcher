@@ -36,7 +36,7 @@ npx playwright test -c playwright.tauri.config.ts
 ## ステップ 3: 結果の解釈
 
 - **正常水準は failed 0・skipped 1**。その skip は SSP 設定済み環境では観測できない「SSP 未設定時の空状態」テスト（`i18n.e2e.ts`）で正当。それ以外の skip は次項の要因か確かめ、failed は退行として扱う（`e2e/CLAUDE.md`）。
-- ゴースト依存テスト（一覧 / 検索 / スクロール）は fingerprint キャッシュが冷えている環境では初回スキャンが `waitForGhosts`(15s) に間に合わず skip しうる。**skip は失敗ではない**が、passed が観測できないときはキャッシュが温まった 2 回目の実行で確認する。
+- ゴースト依存テスト（一覧 / 検索 / スクロール）は fingerprint キャッシュが無い環境（コールドスタート）では初回スキャンが `waitForGhosts`(15s) に間に合わず skip しうる。**skip は失敗ではない**が、passed が観測できないときはキャッシュ構築後の 2 回目の実行で確認する。
 - 間欠 flake の修正検証は `--repeat-each=N` で連続 pass を確認する（単発 pass は運の可能性がある）。
 
 ## ステップ 4: 報告
