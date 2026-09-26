@@ -41,6 +41,6 @@
     "selenium-webdriver": "^4.44.0",
     "typescript": "^7.0.2",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^5.0.2"
   }
 }
