@@ -9,7 +9,7 @@ description: キャッシュ・状態遷移の整合性を検証する。キャ�
 
 ## 前提となる構造
 
-- **ghosts.db** — 揮発キャッシュ。書き込みは GhostDbActor（rusqlite）経由のみ・JS/sqlx は読み取り専用。使い捨てスキーマ: `CACHE_SCHEMA` のハッシュを `user_version` に刻み、不一致なら起動時に全 DROP+CREATE で**自動リビルド**（フルスキャンで再投入）
+- **ghosts.db** — 揮発キャッシュ。書き込みは DB アクター（`actor/`・rusqlite）経由のみ・JS/sqlx は読み取り専用。使い捨てスキーマ: `CACHE_SCHEMA` のハッシュを `user_version` に刻み、不一致なら起動時に全 DROP+CREATE で**自動リビルド**（フルスキャンで再投入）
 - **user-data.db** — 永続データ（Rust 専有・rusqlite 単一接続）。起動履歴 `ghost_launches` の唯一の住処。JS からアクセスしない
 - **localStorage** — 設定・キャッシュ寿命管理
 - 詳細は `src-tauri/CLAUDE.md`「SQLite」節と `SPEC.md` §4.5/§6.6 を参照
