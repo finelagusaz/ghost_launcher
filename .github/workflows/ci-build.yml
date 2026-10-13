@@ -51,6 +51,9 @@ jobs:
       - name: Test UI guideline checks
         run: npm run test:ui-guidelines-check
 
+      - name: Test doc path checks
+        run: npm run test:doc-paths-check
+
       - name: Test Rust crates
         run: cargo test --workspace
 
