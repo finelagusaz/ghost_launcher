@@ -143,6 +143,12 @@ pub(crate) fn compute_fingerprint_hash(tokens: &[String]) -> String {
         hasher.update(token.as_bytes());
         hasher.update(b"\n"); // トークン間の区切り（境界混同防止）
     }
+    finalize_hex(hasher)
+}
+
+/// SHA-256 ダイジェストを小文字・ゼロ埋めの hex 文字列にする（fingerprint 系 hex 化の単一権威）。
+/// ghosts.db に永続化された値と一致させ続けるため、書式を変えてはならない
+pub(crate) fn finalize_hex(hasher: Sha256) -> String {
     hasher
         .finalize()
         .iter()
@@ -168,4 +174,30 @@ pub(crate) fn build_fingerprint(
     }
 
     Ok(compute_fingerprint_hash(&tokens))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_fingerprint_hash;
+
+    // 期待値は実装に依存させず sha256sum で独立に算出した値。ghosts.db に永続化された
+    // fingerprint と一致し続けることを sha2 の版や hex 化の書き方に依らず固定する（#199）
+    #[test]
+    fn compute_fingerprint_hash_matches_reference_digest_for_empty_tokens() {
+        // SHA-256("")
+        assert_eq!(
+            compute_fingerprint_hash(&[]),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn compute_fingerprint_hash_sorts_tokens_and_zero_pads_hex() {
+        // SHA-256("a\nb\n")。ダイジェストに 0x0f を含むため 1 桁バイトのゼロ埋めも検証する
+        let tokens = vec!["b".to_string(), "a".to_string()];
+        assert_eq!(
+            compute_fingerprint_hash(&tokens),
+            "911169ddaaf146aff539f58c26c489af3b892dff0fe283c1c264c65ae5aa59a2"
+        );
+    }
 }

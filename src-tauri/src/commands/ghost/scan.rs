@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use ghost_meta::{AlphaMode, ThumbnailKind};
 
 use super::fingerprint::{
-    build_entry_token, compute_fingerprint_hash, metadata_modified_string,
+    build_entry_token, compute_fingerprint_hash, finalize_hex, metadata_modified_string,
     push_absent_parent_token, push_present_parent_token,
 };
 use super::path_utils::{normalize_path, unique_sorted_additional_folders};
@@ -73,7 +73,7 @@ fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
             hasher.update(fragment.as_bytes());
             hasher.update([0x1f]);
         }
-        format!("{:x}", hasher.finalize())
+        finalize_hex(hasher)
     };
 
     Ghost {
@@ -429,4 +429,31 @@ pub(crate) fn fingerprint_only_internal(
     additional_folders: &[String],
 ) -> Result<String, String> {
     Ok(scan_entries_with_fingerprint(ssp_path, additional_folders)?.1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ghost_from_meta;
+    use std::path::PathBuf;
+
+    #[test]
+    fn diff_fingerprint_matches_reference_digest() {
+        // 期待値は実装に依存させず sha256sum で独立に算出した
+        // SHA-256("n\x1fs\x1f\x1f\x1f\x1fp\x1f\x1f0\x1f\x1f")。各フラグメント + 0x1f の連結で、
+        // ダイジェストに 0x0a を含むため 1 桁バイトのゼロ埋めも検証する（#199）
+        let meta = ghost_meta::GhostMeta {
+            name: "n".to_string(),
+            sakura_name: Some("s".to_string()),
+            kero_name: None,
+            craftman: None,
+            craftmanw: None,
+            directory_name: "d".to_string(),
+            path: PathBuf::from("p"),
+            thumbnail: None,
+        };
+        assert_eq!(
+            ghost_from_meta(meta, "ssp".to_string()).diff_fingerprint,
+            "bf0a1cd9f7ca3cfc59fa591404e421ac63d9bcca8b7fa5ec6f7330bc8993c3c1"
+        );
+    }
 }
