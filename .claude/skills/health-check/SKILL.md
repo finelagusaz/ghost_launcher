@@ -12,11 +12,13 @@ disable-model-invocation: true
 
 ## 検査項目
 
+項目 2/3/5 の「言及するファイルパスが実在するか」は `npm run check:doc-paths`（`scripts/check-doc-paths.mjs`）が単一権威。アドホックな検査を書かない（短縮参照 `cache_schema.rs` 等を「実在しない」と誤判定する）。出力の MISSING（basename すら実在しない）と MISMATCH（basename は実在するがパスが食い違う）をそのまま根拠に使う。スクリプトはバックティック内のファイル参照のみを見る（ディレクトリ参照・コマンド内のパスは対象外）ため、それ以外は従来どおり目視で突き合わせる
+
 1. **SPEC.md と実装** — コマンド一覧・振る舞い・DB スキーマの記述が実装と一致するか（Tauri コマンドの増減、スキーマ定義（`CACHE_SCHEMA`/`ensure_schema`）、ソート仕様などを突き合わせる）
-2. **ルート CLAUDE.md** — 記載コマンドが実行可能か、言及するファイルパスが実在と一致するか（ルートは構成図を持たない。フォルダ構成は各フォルダの `CLAUDE.md` が単一権威）
-3. **フォルダ CLAUDE.md**（`src/` `src-tauri/` `e2e/`）— 記述が現在のコードと一致するか、移動・消失したファイルへの言及がないか
+2. **ルート CLAUDE.md** — 記載コマンドが実行可能か、言及するファイルパスが実在と一致するか（`check:doc-paths`。ルートは構成図を持たない。フォルダ構成は各フォルダの `CLAUDE.md` が単一権威）
+3. **フォルダ CLAUDE.md**（`src/` `src-tauri/` `e2e/`）— 記述が現在のコードと一致するか、移動・消失したファイルへの言及がないか（`check:doc-paths`）
 4. **docs/** — `ui-guidelines.md`・`locale-customization.md` の規約が実装と一致するか
-5. **スキルの化石検出** — 各 `.claude/skills/*/SKILL.md` 内のコマンド・パス・バージョン表記・モデル名が現在も有効か
+5. **スキルの化石検出** — 各 `.claude/skills/*/SKILL.md` 内のコマンド・パス（`check:doc-paths`）・バージョン表記・モデル名が現在も有効か
 6. **CI とチェックリスト** — `.github/workflows/` 配下**全ワークフロー**のステップと `/commit` のチェックリストが整合するか（CI にあってローカルに無いチェック、またはその逆）。`ci-build.yml` だけを見ると、意図的に切り出したワークフロー（`ci-bench-profile.yml` 等）の記述が化石化しても気付けない
 7. **生成型** — `src/types/generated/` にコミット漏れ・実装に対応しない孤児ファイルがないか（`cargo test --workspace` 後に `git status --porcelain src/types/generated/` で確認）
 8. **RETROSPECTIVE.md** — ネクストアクションが issue 化または消化されているか（`gh issue list` と突き合わせる）

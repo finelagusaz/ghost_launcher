@@ -10,6 +10,8 @@
     "test:watch": "vitest",
     "check:ui-guidelines": "node scripts/check-ui-guidelines.mjs",
     "test:ui-guidelines-check": "node --test scripts/check-ui-guidelines.test.mjs",
+    "check:doc-paths": "node scripts/check-doc-paths.mjs",
+    "test:doc-paths-check": "node --test scripts/check-doc-paths.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "e2e:setup": "cargo install tauri-driver --locked && npx tauri build --no-bundle",
