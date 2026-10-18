@@ -296,13 +296,18 @@ pub(crate) fn cleanup_old_ghost_caches(
                 "SELECT request_key, MAX(updated_at) < datetime('now', ?1) FROM ghosts GROUP BY request_key ORDER BY MAX(updated_at) DESC",
             )
             .map_err(|e| format!("世代 SELECT 準備エラー: {e}"))?;
-        stmt.query_map([format!("-{ttl_days} days")], |r| Ok((r.get(0)?, r.get(1)?)))
-            .map_err(|e| format!("世代 SELECT エラー: {e}"))?
-            .filter_map(Result::ok)
-            .collect()
+        stmt.query_map([format!("-{ttl_days} days")], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .map_err(|e| format!("世代 SELECT エラー: {e}"))?
+        .filter_map(Result::ok)
+        .collect()
     };
-    let keep_by_generation: std::collections::HashSet<&str> =
-        rows.iter().take(max_generations).map(|(k, _)| k.as_str()).collect();
+    let keep_by_generation: std::collections::HashSet<&str> = rows
+        .iter()
+        .take(max_generations)
+        .map(|(k, _)| k.as_str())
+        .collect();
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| format!("cleanup 開始エラー: {e}"))?;
@@ -318,11 +323,13 @@ pub(crate) fn cleanup_old_ghost_caches(
             "DELETE FROM ghost_fingerprints WHERE request_key = ?1",
             "DELETE FROM ghost_scan_entries WHERE request_key = ?1",
         ] {
-            tx.execute(sql, [key]).map_err(|e| format!("cleanup DELETE エラー: {e}"))?;
+            tx.execute(sql, [key])
+                .map_err(|e| format!("cleanup DELETE エラー: {e}"))?;
         }
         deleted += 1;
     }
-    tx.commit().map_err(|e| format!("cleanup commit エラー: {e}"))?;
+    tx.commit()
+        .map_err(|e| format!("cleanup commit エラー: {e}"))?;
     Ok(deleted)
 }
 
@@ -604,7 +611,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(updated_at_1, updated_at_2, "メタ不変なら updated_at は bump しない");
+        assert_eq!(
+            updated_at_1, updated_at_2,
+            "メタ不変なら updated_at は bump しない"
+        );
 
         // row_fingerprint 変化 → UPDATE される
         alice.diff_fingerprint = "fp-changed".to_string();
@@ -646,7 +656,10 @@ mod tests {
             "rk1",
             &GhostDelta {
                 upserts: &[alice, bob],
-                scan_upserts: &[scan_row("sk-a", "tok-a", &ka), scan_row("sk-b", "tok-b", &kb)],
+                scan_upserts: &[
+                    scan_row("sk-a", "tok-a", &ka),
+                    scan_row("sk-b", "tok-b", &kb),
+                ],
                 ..GhostDelta::EMPTY
             },
             &FingerprintRow {
@@ -734,15 +747,22 @@ mod tests {
         let mut stmt = conn
             .prepare("SELECT DISTINCT request_key FROM ghosts ORDER BY request_key")
             .unwrap();
-        stmt.query_map([], |r| r.get(0)).unwrap().filter_map(Result::ok).collect()
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect()
     }
 
     /// SQLite の実クロックから相対日数を引いた日時文字列を得る（cleanup 実装と同じ
     /// `datetime('now', ...)` を使うことで、絶対日付を直書きした場合のテスト日付ドリフト
     /// （brief 記載の 2026-06/07 の固定値は実行日が進むと TTL 判定を誤って越えて赤化した）を避ける。
     fn days_ago(conn: &Connection, days: i64) -> String {
-        conn.query_row("SELECT datetime('now', ?1)", [format!("-{days} days")], |r| r.get(0))
-            .unwrap()
+        conn.query_row(
+            "SELECT datetime('now', ?1)",
+            [format!("-{days} days")],
+            |r| r.get(0),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -753,14 +773,29 @@ mod tests {
         seed_generation(&conn, "rk-new", &days_ago(&conn, 1));
         let deleted = cleanup_old_ghost_caches(&conn, "rk-new", 2, 30).unwrap();
         assert_eq!(deleted, 1);
-        assert_eq!(remaining_keys(&conn), vec!["rk-mid".to_string(), "rk-new".to_string()]);
+        assert_eq!(
+            remaining_keys(&conn),
+            vec!["rk-mid".to_string(), "rk-new".to_string()]
+        );
         let fp: i64 = conn
-            .query_row("SELECT COUNT(*) FROM ghost_fingerprints WHERE request_key='rk-old'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_fingerprints WHERE request_key='rk-old'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         let se: i64 = conn
-            .query_row("SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk-old'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk-old'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
-        assert_eq!((fp, se), (0, 0), "fingerprints/scan_entries も同時削除される");
+        assert_eq!(
+            (fp, se),
+            (0, 0),
+            "fingerprints/scan_entries も同時削除される"
+        );
     }
 
     #[test]
@@ -828,7 +863,10 @@ mod tests {
                 parent_mtimes: "mt-1",
             },
         );
-        assert!(result.is_ok(), "既存 identity への upsert が UNIQUE 衝突した: {result:?}");
+        assert!(
+            result.is_ok(),
+            "既存 identity への upsert が UNIQUE 衝突した: {result:?}"
+        );
         assert_eq!(count_ghosts(&conn, "rk1"), 1);
         assert_eq!(count_scan_entries(&conn, "rk1"), 1);
     }

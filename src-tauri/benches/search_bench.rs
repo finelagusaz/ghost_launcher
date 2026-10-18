@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion};
 use ghost_launcher_lib::bench_support::{
-    open_bench_db, order_by, seed_ghosts_db, select_cols_prefixed, Q_COMMON, Q_NONE, Q_RARE,
-    SEARCH_WHERE_PREFIXED,
+    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, seed_ghosts_db,
+    select_cols_prefixed,
 };
 use rusqlite::Connection;
 
@@ -47,12 +47,48 @@ fn dump_query_plans() {
     // EXPLAIN QUERY PLAN は未束縛 ? を嫌うため、リテラル値で組む（プランは値非依存で SCAN/index が判る）。
     let where_lit = where_c.replace("instr(g.search_text, ?)", "instr(g.search_text, 'さくら')");
     let shapes: Vec<(&str, String)> = vec![
-        ("empty+name", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50", order_by("name"))),
-        ("search+name", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50", order_by("name"))),
-        ("empty+recent", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50", order_by("recent"))),
-        ("search+recent", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50", order_by("recent"))),
-        ("empty+frequency", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50", order_by("frequency"))),
-        ("empty+random", format!("SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50", order_by("random"))),
+        (
+            "empty+name",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                order_by("name")
+            ),
+        ),
+        (
+            "search+name",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                order_by("name")
+            ),
+        ),
+        (
+            "empty+recent",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                order_by("recent")
+            ),
+        ),
+        (
+            "search+recent",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                order_by("recent")
+            ),
+        ),
+        (
+            "empty+frequency",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                order_by("frequency")
+            ),
+        ),
+        (
+            "empty+random",
+            format!(
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                order_by("random")
+            ),
+        ),
     ];
     println!("\n===== EXPLAIN QUERY PLAN (n=1000) =====");
     for (label, sql) in shapes {
@@ -79,7 +115,9 @@ fn bench_search(c: &mut Criterion) {
 
         let mut group = c.benchmark_group(format!("search_n{n}"));
         if n >= 100_000 {
-            group.sample_size(20).measurement_time(Duration::from_secs(15));
+            group
+                .sample_size(20)
+                .measurement_time(Duration::from_secs(15));
         }
 
         // 空クエリ × 各ソート（無名 ? 統一。params: [rk, limit]）
@@ -118,7 +156,11 @@ fn bench_search(c: &mut Criterion) {
         }
 
         // OFFSET 深度（空クエリ・sort=name。params: [rk, limit, offset]）
-        for (label, offset) in [("0", 0i64), ("mid", (n as i64) / 2), ("deep", (n as i64 - LIMIT).max(0))] {
+        for (label, offset) in [
+            ("0", 0i64),
+            ("mid", (n as i64) / 2),
+            ("deep", (n as i64 - LIMIT).max(0)),
+        ] {
             let sql = format!(
                 "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? ORDER BY {} LIMIT ? OFFSET ?",
                 order_by("name")
@@ -130,9 +172,8 @@ fn bench_search(c: &mut Criterion) {
 
         // COUNT + SELECT 併走（リセット時 1 回の実コスト・common クエリ）
         // count は前置きなし（本番 countGhostsByQuery）、params: [rk, q]
-        let count_sql = format!(
-            "SELECT COUNT(*) FROM ghosts WHERE request_key=? AND ({count_where})"
-        );
+        let count_sql =
+            format!("SELECT COUNT(*) FROM ghosts WHERE request_key=? AND ({count_where})");
         // select は g. 前置き（本番 searchGhosts）、params: [rk, q, limit]
         let select_sql = format!(
             "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? AND ({where_c}) \

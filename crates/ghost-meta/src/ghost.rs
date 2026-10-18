@@ -1,6 +1,6 @@
-use crate::descript::parse_descript;
-use crate::thumbnail::{resolve_thumbnail, ThumbnailInfo};
 use crate::GhostMetaError;
+use crate::descript::parse_descript;
+use crate::thumbnail::{ThumbnailInfo, resolve_thumbnail};
 #[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,10 +49,7 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
 
     // shell/master/descript.txt を 1 回だけパースし、resolve_thumbnail に渡す。
     // resolve_thumbnail 内での 2 回目のパースを省略する（I/O 削減）。
-    let shell_descript_path = ghost_root
-        .join("shell")
-        .join("master")
-        .join("descript.txt");
+    let shell_descript_path = ghost_root.join("shell").join("master").join("descript.txt");
     let shell_fields = parse_descript(&shell_descript_path).ok();
     let thumbnail = resolve_thumbnail(ghost_root, shell_fields.as_ref());
 

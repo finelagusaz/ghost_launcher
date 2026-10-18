@@ -43,7 +43,9 @@ fn bench_scan(c: &mut Criterion) {
 
         let mut group = c.benchmark_group(format!("scan_n{n}"));
         if n >= 100_000 {
-            group.sample_size(10).measurement_time(Duration::from_secs(30));
+            group
+                .sample_size(10)
+                .measurement_time(Duration::from_secs(30));
         } else {
             group.sample_size(20);
         }

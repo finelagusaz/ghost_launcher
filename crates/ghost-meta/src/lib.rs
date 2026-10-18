@@ -13,5 +13,5 @@ mod thumbnail;
 #[cfg(test)]
 pub(crate) mod testutil;
 
-pub use ghost::{read_ghost, GhostMeta};
+pub use ghost::{GhostMeta, read_ghost};
 pub use thumbnail::{AlphaMode, ThumbnailInfo, ThumbnailKind};
