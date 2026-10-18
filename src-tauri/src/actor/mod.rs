@@ -107,6 +107,19 @@ impl ActorHandle {
         self.tx.send(job).map_err(|_| "DB アクターが停止しています".to_string())
     }
 
+    /// reply 付きジョブを送り、アクターの応答を待つ（コマンド層の薄い皮の共通形）。
+    /// `make` は受け取った reply を詰めた Job を組み立てる。応答前に reply が drop された
+    /// （アクター側でジョブが失われた）場合はエラー文字列に写像する。
+    pub(crate) async fn request<T>(
+        &self,
+        make: impl FnOnce(oneshot::Sender<Result<T, String>>) -> Job,
+    ) -> Result<T, String> {
+        let (reply, rx) = oneshot::channel();
+        self.send(make(reply))?;
+        rx.await
+            .map_err(|_| "DB アクターから応答がありません".to_string())?
+    }
+
     #[cfg(test)]
     pub(crate) fn thread_handle_for_test(&self) -> std::thread::JoinHandle<()> {
         self.thread.lock().unwrap().take().expect("thread handle は 1 回だけ取得できる")
