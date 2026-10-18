@@ -10,7 +10,7 @@
 
 **公開面は消費者があるときだけ広げる**: ワークスペース内クレート（`ghost-meta` 含む）・モジュールは private 既定とし、公開面は厳選した `pub use` の再エクスポートに絞る。`pub`／`pub(crate)` を書くときは呼び出し元を 1 つ挙げられること。`pub mod` での素通し公開や、テスト専用シンボルの無条件 `pub` は rustc の dead_code lint を全面的に沈黙させ、デッドコードを検知不能にする（#173 で `ghost-meta` の未使用再エクスポート `resolve_thumbnail` がこの盲点で生存していた）。テスト専用の可視化は `#[cfg(test)]` で括り、feature 限定の露出は `#[cfg(feature = "…")]` で括る。
 
-**同型の隣接引数が 2 組以上になったら構造体へ集約する**: 同じ型の位置引数が隣り合うと、呼び出し側で取り違えてもコンパイラが検知できない。名前付きフィールドの構造体（借用でよい）にまとめ、取り違えを型で弾く（#174 で `store_ghosts_delta` の `deletes`／`scan_deletes`〈同型 `&[String]`〉・`fingerprint`／`parent_mtimes`〈同型 `&str`〉を `GhostDelta` に集約）。clippy の `too_many_arguments` を機械的に消すためでなく、この取り違え防止を動機に構造体化する。
+**同型の隣接引数が 2 組以上になったら構造体へ集約する**: 同じ型の位置引数が隣り合うと、呼び出し側で取り違えてもコンパイラが検知できない。名前付きフィールドの構造体（借用でよい）にまとめ、取り違えを型で弾く（#174 で `store_ghosts_delta` の `deletes`／`scan_deletes`〈同型 `&[String]`〉を `GhostDelta` に、#224 で `fingerprint`／`parent_mtimes`〈同型 `&str`〉を `FingerprintRow` に集約）。意味の異なる値の組は、1 つの構造体へまとめず型を分ける（`GhostDelta` は子単位の差分、`FingerprintRow` は `ghost_fingerprints` の 1 行）。clippy の `too_many_arguments` を機械的に消すためでなく、この取り違え防止を動機に構造体化する。
 
 ## SQLite
 
