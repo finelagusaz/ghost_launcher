@@ -120,10 +120,19 @@ impl GhostDelta<'_> {
     };
 }
 
+/// `ghost_fingerprints` の 1 行（request_key は呼び出し側が別引数で渡す）。
+/// 同型 `&str` の 2 値を名前付きフィールドにし、取り違え（Layer 1/2 が黙って外れる）を型で弾く。
+/// - `fingerprint`: Layer 2 の全エントリ fingerprint。
+/// - `parent_mtimes`: Layer 1 の親ディレクトリ mtime 列（`collect_parent_mtimes` の出力）。
+pub(crate) struct FingerprintRow<'a> {
+    pub fingerprint: &'a str,
+    pub parent_mtimes: &'a str,
+}
+
 /// delta 差分書き込み（1 トランザクション）。全行読み取りをせず、変更子だけを操作する。
 ///
 /// - `delta`: 差分ペイロード（各フィールドの意味は `GhostDelta` を参照）。
-/// - `fingerprint` / `parent_mtimes`: `ghost_fingerprints` を更新（0 子変更でも必ず書き、次回 Layer 1 を再 hit させる）。
+/// - `fingerprint_row`: `ghost_fingerprints` を更新（0 子変更でも必ず書き、次回 Layer 1 を再 hit させる）。
 /// - 集計列 `last_launched` / `launch_count` は不可侵（INSERT 時は既定値・UPDATE 時は無触）。commit 後に backfill する。
 ///
 /// 同一スキャン内の identity 衝突（NFKC 畳み込み）は呼び出し側の in-memory 一意性ガードが loud に
@@ -133,8 +142,7 @@ pub(crate) fn store_ghosts_delta(
     conn: &Connection,
     request_key: &str,
     delta: &GhostDelta,
-    fingerprint: &str,
-    parent_mtimes: &str,
+    fingerprint_row: &FingerprintRow,
 ) -> Result<usize, String> {
     let tx = conn
         .unchecked_transaction()
@@ -250,7 +258,11 @@ pub(crate) fn store_ghosts_delta(
         tx.execute(
             "INSERT OR REPLACE INTO ghost_fingerprints (request_key, fingerprint, parent_mtimes, updated_at)\
              VALUES (?1, ?2, ?3, datetime('now'))",
-            rusqlite::params![request_key, fingerprint, parent_mtimes],
+            rusqlite::params![
+                request_key,
+                fingerprint_row.fingerprint,
+                fingerprint_row.parent_mtimes
+            ],
         )
         .map_err(|e| format!("fingerprint 保存エラー: {e}"))?;
     }
@@ -356,8 +368,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk", "tok", &k)],
                 ..GhostDelta::EMPTY
             },
-            "fp-nfkc",
-            "",
+            &FingerprintRow {
+                fingerprint: "fp-nfkc",
+                parent_mtimes: "",
+            },
         )
         .unwrap();
 
@@ -384,8 +398,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk", "tok", &k)],
                 ..GhostDelta::EMPTY
             },
-            "fp-id",
-            "",
+            &FingerprintRow {
+                fingerprint: "fp-id",
+                parent_mtimes: "",
+            },
         )
         .unwrap();
 
@@ -404,7 +420,16 @@ mod tests {
     #[test]
     fn check_parent_mtimes_match_が一致時にtrueを返す() {
         let conn = setup_db();
-        store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-1", "c:/ssp/ghost:12345").unwrap();
+        store_ghosts_delta(
+            &conn,
+            "rk1",
+            &GhostDelta::EMPTY,
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "c:/ssp/ghost:12345",
+            },
+        )
+        .unwrap();
 
         assert!(super::super::fingerprint::check_parent_mtimes_match(
             &conn,
@@ -416,7 +441,16 @@ mod tests {
     #[test]
     fn check_parent_mtimes_match_が不一致時にfalseを返す() {
         let conn = setup_db();
-        store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-1", "c:/ssp/ghost:12345").unwrap();
+        store_ghosts_delta(
+            &conn,
+            "rk1",
+            &GhostDelta::EMPTY,
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "c:/ssp/ghost:12345",
+            },
+        )
+        .unwrap();
 
         assert!(!super::super::fingerprint::check_parent_mtimes_match(
             &conn,
@@ -500,8 +534,10 @@ mod tests {
                 ],
                 ..GhostDelta::EMPTY
             },
-            "fp-1",
-            "mt-1",
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "mt-1",
+            },
         )
         .unwrap();
 
@@ -532,8 +568,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a", &ka)],
                 ..GhostDelta::EMPTY
             },
-            "fp-1",
-            "mt-1",
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "mt-1",
+            },
         )
         .unwrap();
         let updated_at_1: String = conn
@@ -553,8 +591,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a-changed", &ka)],
                 ..GhostDelta::EMPTY
             },
-            "fp-2",
-            "mt-2",
+            &FingerprintRow {
+                fingerprint: "fp-2",
+                parent_mtimes: "mt-2",
+            },
         )
         .unwrap();
         let updated_at_2: String = conn
@@ -577,8 +617,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a-2", &ka)],
                 ..GhostDelta::EMPTY
             },
-            "fp-3",
-            "mt-3",
+            &FingerprintRow {
+                fingerprint: "fp-3",
+                parent_mtimes: "mt-3",
+            },
         )
         .unwrap();
         let name: String = conn
@@ -607,8 +649,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a", &ka), scan_row("sk-b", "tok-b", &kb)],
                 ..GhostDelta::EMPTY
             },
-            "fp-1",
-            "mt-1",
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "mt-1",
+            },
         )
         .unwrap();
 
@@ -621,8 +665,10 @@ mod tests {
                 scan_deletes: std::slice::from_ref(&"sk-b".to_string()),
                 ..GhostDelta::EMPTY
             },
-            "fp-2",
-            "mt-2",
+            &FingerprintRow {
+                fingerprint: "fp-2",
+                parent_mtimes: "mt-2",
+            },
         )
         .unwrap();
         assert_eq!(total, 1);
@@ -641,8 +687,16 @@ mod tests {
     #[test]
     fn store_ghosts_delta_が_0変更でもfingerprintとparent_mtimesを書く() {
         let conn = setup_db();
-        let total =
-            store_ghosts_delta(&conn, "rk1", &GhostDelta::EMPTY, "fp-only", "mt-only").unwrap();
+        let total = store_ghosts_delta(
+            &conn,
+            "rk1",
+            &GhostDelta::EMPTY,
+            &FingerprintRow {
+                fingerprint: "fp-only",
+                parent_mtimes: "mt-only",
+            },
+        )
+        .unwrap();
         assert_eq!(total, 0);
 
         let (fp, mt): (String, String) = conn
@@ -753,8 +807,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a", &ka)],
                 ..GhostDelta::EMPTY
             },
-            "fp-seed",
-            "mt-seed",
+            &FingerprintRow {
+                fingerprint: "fp-seed",
+                parent_mtimes: "mt-seed",
+            },
         )
         .unwrap();
 
@@ -767,8 +823,10 @@ mod tests {
                 scan_upserts: &[scan_row("sk-a", "tok-a-2", &ka)],
                 ..GhostDelta::EMPTY
             },
-            "fp-1",
-            "mt-1",
+            &FingerprintRow {
+                fingerprint: "fp-1",
+                parent_mtimes: "mt-1",
+            },
         );
         assert!(result.is_ok(), "既存 identity への upsert が UNIQUE 衝突した: {result:?}");
         assert_eq!(count_ghosts(&conn, "rk1"), 1);

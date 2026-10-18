@@ -8,7 +8,8 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{
-    configure_connection, ghost_identity_key, store_ghosts_delta, GhostDelta, ScanEntryRow,
+    configure_connection, ghost_identity_key, store_ghosts_delta, FingerprintRow, GhostDelta,
+    ScanEntryRow,
 };
 use crate::commands::ghost::{
     apply_scan_delta, check_parent_mtimes_match, collect_parent_mtimes,
@@ -78,8 +79,7 @@ fn delta_store_ghosts(
     conn: &Connection,
     request_key: &str,
     ghosts: &[Ghost],
-    fingerprint: &str,
-    parent_mtimes: &str,
+    fingerprint_row: &FingerprintRow,
 ) -> Result<usize, String> {
     let identities: Vec<String> = ghosts
         .iter()
@@ -103,8 +103,7 @@ fn delta_store_ghosts(
             scan_upserts: &scan_rows,
             scan_deletes: &[],
         },
-        fingerprint,
-        parent_mtimes,
+        fingerprint_row,
     )
 }
 
@@ -112,7 +111,15 @@ fn delta_store_ghosts(
 pub fn seed_ghosts_db(conn: &Connection, request_key: &str, n: usize) -> Result<(), String> {
     configure_connection(conn)?; // 書き込みは本番と同じ PRAGMA で高速化（読み取り計測とは別接続想定）
     let ghosts: Vec<Ghost> = (0..n).map(synth_ghost).collect();
-    delta_store_ghosts(conn, request_key, &ghosts, "bench-fp", "bench-mtimes")?;
+    delta_store_ghosts(
+        conn,
+        request_key,
+        &ghosts,
+        &FingerprintRow {
+            fingerprint: "bench-fp",
+            parent_mtimes: "bench-mtimes",
+        },
+    )?;
 
     // recent/frequency ソートの現実性: 25% に last_launched、一部に launch_count を付与
     conn.execute(
@@ -229,7 +236,15 @@ pub fn store_handle(
     h: &ScannedGhosts,
     fp: &str,
 ) -> Result<usize, String> {
-    delta_store_ghosts(conn, request_key, &h.ghosts, fp, "bench-mtimes")
+    delta_store_ghosts(
+        conn,
+        request_key,
+        &h.ghosts,
+        &FingerprintRow {
+            fingerprint: fp,
+            parent_mtimes: "bench-mtimes",
+        },
+    )
 }
 
 /// ハンドルを実際の親 mtime 付きで書き込む。これを使うと後続の layer1_hit が真に成立する
@@ -242,7 +257,15 @@ pub fn store_with_real_mtimes(
     ssp_path: &str,
 ) -> Result<usize, String> {
     let mtimes = collect_parent_mtimes(ssp_path, &[]);
-    delta_store_ghosts(conn, request_key, &h.ghosts, fp, &mtimes)
+    delta_store_ghosts(
+        conn,
+        request_key,
+        &h.ghosts,
+        &FingerprintRow {
+            fingerprint: fp,
+            parent_mtimes: &mtimes,
+        },
+    )
 }
 
 /// 走査差分の ScanEntry 群を外部ベンチに対して opaque に保持する（granular rescan 計測用）。
@@ -266,7 +289,15 @@ pub fn store_delta_entries(
     ssp_path: &str,
 ) -> Result<usize, String> {
     let mtimes = collect_parent_mtimes(ssp_path, &[]);
-    apply_scan_delta(conn, request_key, &h.entries, fp, &mtimes)
+    apply_scan_delta(
+        conn,
+        request_key,
+        &h.entries,
+        &FingerprintRow {
+            fingerprint: fp,
+            parent_mtimes: &mtimes,
+        },
+    )
 }
 
 /// フル走査を行い体数だけ返す（walk+parse コスト計測用）。

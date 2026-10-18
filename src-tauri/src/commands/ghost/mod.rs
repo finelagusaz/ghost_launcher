@@ -125,7 +125,15 @@ pub(crate) fn scan_and_store_blocking(
     }
 
     // Cache miss → delta 差分書き込み（前回 scan_entries と差分を取り、変更子だけ parse）
-    let total = apply_scan_delta(conn, &request_key, &entries, &fingerprint, &current_mtimes)?;
+    let total = apply_scan_delta(
+        conn,
+        &request_key,
+        &entries,
+        &store::FingerprintRow {
+            fingerprint: &fingerprint,
+            parent_mtimes: &current_mtimes,
+        },
+    )?;
 
     // healing: リビルド後の集計復元と record_launch bump 失敗の修復（cache miss 経路のみ・#156）
     let _ = crate::commands::launch_history::backfill_aggregates(conn, user_conn);
@@ -148,8 +156,7 @@ pub(crate) fn apply_scan_delta(
     conn: &rusqlite::Connection,
     request_key: &str,
     entries: &[scan::ScanEntry],
-    fingerprint: &str,
-    parent_mtimes: &str,
+    fingerprint_row: &store::FingerprintRow,
 ) -> Result<usize, String> {
     use rayon::prelude::*;
     use std::collections::HashSet;
@@ -252,13 +259,13 @@ pub(crate) fn apply_scan_delta(
             scan_upserts: &scan_upserts,
             scan_deletes: &scan_deletes,
         },
-        fingerprint,
-        parent_mtimes,
+        fingerprint_row,
     )
 }
 
 #[cfg(test)]
 mod tests {
+    use super::store::FingerprintRow;
     use crate::testutil::{create_ghost_dir_with_descript, TempDirGuard};
     use std::fs;
     use std::path::Path;
@@ -275,7 +282,6 @@ mod tests {
         assert!(super::ensure_request_key("").is_err());
         assert!(super::ensure_request_key("c:/ssp::").is_ok());
     }
-
 
     /// 移行取り残しの削除: ghosts に A,B,C・scan_entries 空の状態で C がディスクから消えた初回スキャン。
     /// scan-diff では検知できない取り残し C を set-difference（read_ghost_identities × present 差分）で削除する。
@@ -295,7 +301,15 @@ mod tests {
 
         // 初回シード: A,B,C を書き込む（scan_entries も seed される）
         let (entries_all, fp1) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        let total1 = super::apply_scan_delta(&conn, "rk1", &entries_all, &fp1, "mt-1")?;
+        let total1 = super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &entries_all,
+            &FingerprintRow {
+                fingerprint: &fp1,
+                parent_mtimes: "mt-1",
+            },
+        )?;
         assert_eq!(total1, 3);
 
         // 移行を模す: scan_entries を空にする（旧 DB は ghosts のみで scan_entries を持たない）
@@ -305,7 +319,15 @@ mod tests {
         // C をディスクから削除して再スキャン → walk は A,B のみを返す
         fs::remove_dir_all(ssp_ghost.join("c")).map_err(|e| format!("remove c: {e}"))?;
         let (entries_bc, fp2) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        let total2 = super::apply_scan_delta(&conn, "rk1", &entries_bc, &fp2, "mt-2")?;
+        let total2 = super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &entries_bc,
+            &FingerprintRow {
+                fingerprint: &fp2,
+                parent_mtimes: "mt-2",
+            },
+        )?;
 
         assert_eq!(total2, 2, "取り残し C が削除されていない（永久幽霊ゴースト）");
         let mut names: Vec<String> = {
@@ -337,12 +359,28 @@ mod tests {
 
         // 初回シード: Ａ を書き込む
         let (e1, fp1) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        super::apply_scan_delta(&conn, "rk1", &e1, &fp1, "mt-1")?;
+        super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &e1,
+            &FingerprintRow {
+                fingerprint: &fp1,
+                parent_mtimes: "mt-1",
+            },
+        )?;
 
         // 非 present の "a"（descript 無しディレクトリ）を追加 → 再スキャン
         fs::create_dir_all(ssp_ghost.join("a")).map_err(|e| format!("create a: {e}"))?;
         let (e2, fp2) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        let total = super::apply_scan_delta(&conn, "rk1", &e2, &fp2, "mt-2")?;
+        let total = super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &e2,
+            &FingerprintRow {
+                fingerprint: &fp2,
+                parent_mtimes: "mt-2",
+            },
+        )?;
 
         assert_eq!(
             total, 1,
@@ -529,7 +567,15 @@ mod tests {
 
         // 初回シード → DB name="Original"
         let (e1, fp1) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        super::apply_scan_delta(&conn, "rk1", &e1, &fp1, "mt-1")?;
+        super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &e1,
+            &FingerprintRow {
+                fingerprint: &fp1,
+                parent_mtimes: "mt-1",
+            },
+        )?;
 
         // 内容だけ書き換え、descript の mtime を元に戻して token を不変に保つ
         // （親 dir mtime は深い書込では変化しない・descript mtime のみ復元すれば token 不変）
@@ -544,7 +590,15 @@ mod tests {
 
         // 再スキャン → token 不変 → delta は alpha を再 parse しない
         let (e2, fp2) = super::scan::scan_entries_with_fingerprint(&ssp_path, &[])?;
-        super::apply_scan_delta(&conn, "rk1", &e2, &fp2, "mt-2")?;
+        super::apply_scan_delta(
+            &conn,
+            "rk1",
+            &e2,
+            &FingerprintRow {
+                fingerprint: &fp2,
+                parent_mtimes: "mt-2",
+            },
+        )?;
 
         let name: String = conn
             .query_row(
