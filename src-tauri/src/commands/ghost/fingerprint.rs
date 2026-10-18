@@ -178,7 +178,10 @@ pub(crate) fn build_fingerprint(
 
 #[cfg(test)]
 mod tests {
-    use super::compute_fingerprint_hash;
+    use super::super::scan::scan_ghosts_with_fingerprint_internal;
+    use super::{build_fingerprint, compute_fingerprint_hash};
+    use crate::testutil::{create_ghost_dir, TempDirGuard};
+    use std::fs;
 
     // 期待値は実装に依存させず sha256sum で独立に算出した値。ghosts.db に永続化された
     // fingerprint と一致し続けることを sha2 の版や hex 化の書き方に依らず固定する（#199）
@@ -199,5 +202,94 @@ mod tests {
             compute_fingerprint_hash(&tokens),
             "911169ddaaf146aff539f58c26c489af3b892dff0fe283c1c264c65ae5aa59a2"
         );
+    }
+
+    #[test]
+    fn build_fingerprint_is_order_independent_for_additional_folders() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_fingerprint_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir(&ssp_ghost, "base_ghost")?;
+
+        let additional_a = workspace.path().join("additional_a");
+        let additional_b = workspace.path().join("additional_b");
+        fs::create_dir_all(&additional_a)
+            .map_err(|error| format!("failed to create additional_a: {}", error))?;
+        fs::create_dir_all(&additional_b)
+            .map_err(|error| format!("failed to create additional_b: {}", error))?;
+        create_ghost_dir(&additional_a, "extra_ghost_a")?;
+        create_ghost_dir(&additional_b, "extra_ghost_b")?;
+
+        let ordered = vec![
+            additional_a.to_string_lossy().to_string(),
+            additional_b.to_string_lossy().to_string(),
+        ];
+        let reversed = vec![
+            additional_b.to_string_lossy().to_string(),
+            additional_a.to_string_lossy().to_string(),
+        ];
+
+        let fingerprint_ordered = build_fingerprint(&ssp_root.to_string_lossy(), &ordered)?;
+        let fingerprint_reversed = build_fingerprint(&ssp_root.to_string_lossy(), &reversed)?;
+
+        assert_eq!(fingerprint_ordered, fingerprint_reversed);
+        Ok(())
+    }
+
+    #[test]
+    fn fingerprint_with_missing_additional_folder_matches_scan_fingerprint() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_missing_folder_fp_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir(&ssp_ghost, "test_ghost")?;
+
+        // 存在しない追加フォルダ（missing ケース）
+        let nonexistent = workspace.path().join("nonexistent_folder");
+        // 存在するがファイル（not-directory ケース）
+        let not_a_dir = workspace.path().join("not_a_dir.txt");
+        fs::write(&not_a_dir, "").map_err(|error| format!("failed to create file: {}", error))?;
+
+        let additional_folders = vec![
+            nonexistent.to_string_lossy().to_string(),
+            not_a_dir.to_string_lossy().to_string(),
+        ];
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+
+        let standalone = build_fingerprint(&ssp_path, &additional_folders)?;
+        let (_, integrated) =
+            scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
+
+        assert_eq!(standalone, integrated);
+        Ok(())
+    }
+
+    #[test]
+    fn integrated_fingerprint_matches_standalone_build_fingerprint() -> Result<(), String> {
+        let workspace = TempDirGuard::new("ghost_launcher_fp_consistency_test");
+        let ssp_root = workspace.path().join("ssp");
+        let ssp_ghost = ssp_root.join("ghost");
+        fs::create_dir_all(&ssp_ghost)
+            .map_err(|error| format!("failed to create ssp ghost dir: {}", error))?;
+        create_ghost_dir(&ssp_ghost, "ghost_a")?;
+        create_ghost_dir(&ssp_ghost, "ghost_b")?;
+
+        let additional = workspace.path().join("additional");
+        fs::create_dir_all(&additional)
+            .map_err(|error| format!("failed to create additional: {}", error))?;
+        create_ghost_dir(&additional, "extra_ghost")?;
+
+        let additional_folders = vec![additional.to_string_lossy().to_string()];
+        let ssp_path = ssp_root.to_string_lossy().to_string();
+
+        let standalone = build_fingerprint(&ssp_path, &additional_folders)?;
+        let (_, integrated) =
+            scan_ghosts_with_fingerprint_internal(&ssp_path, &additional_folders)?;
+
+        assert_eq!(standalone, integrated);
+        Ok(())
     }
 }

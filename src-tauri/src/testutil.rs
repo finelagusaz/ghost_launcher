@@ -40,3 +40,21 @@ impl Drop for TempDirGuard {
         let _ = std::fs::remove_dir_all(&self.path);
     }
 }
+
+/// テスト用ゴーストを `{root}/{name}/ghost/master/descript.txt` に作る（既定の UTF-8 descript）。
+pub(crate) fn create_ghost_dir(root: &std::path::Path, name: &str) -> Result<(), String> {
+    create_ghost_dir_with_descript(root, name, "name,Test Ghost\ncharset,UTF-8\n")
+}
+
+/// テスト用ゴーストを任意の descript 内容で作る。
+pub(crate) fn create_ghost_dir_with_descript(
+    root: &std::path::Path,
+    name: &str,
+    descript: &str,
+) -> Result<(), String> {
+    let base = root.join(name).join("ghost").join("master");
+    std::fs::create_dir_all(&base)
+        .map_err(|error| format!("failed to create ghost dir {}: {}", base.display(), error))?;
+    std::fs::write(base.join("descript.txt"), descript)
+        .map_err(|error| format!("failed to write descript: {}", error))
+}

@@ -108,10 +108,9 @@ pub async fn record_launch(
     ghost_identity_key: String,
     actor: tauri::State<'_, crate::actor::ActorHandle>,
 ) -> Result<(), String> {
-    let (reply, rx) = tokio::sync::oneshot::channel();
-    actor.send(crate::actor::Job::RecordLaunch { ghost_identity_key, reply })?;
-    rx.await
-        .map_err(|_| "DB アクターから応答がありません".to_string())?
+    actor
+        .request(|reply| crate::actor::Job::RecordLaunch { ghost_identity_key, reply })
+        .await
 }
 
 // テストは旧世代 DB 再現・検証用に ghosts.db/user-data.db を直接開く（actor 経由と別の検証用接続）。
