@@ -1,0 +1,6 @@
+# git blame で追跡から外す、振る舞いを変えない一括変更のコミット。
+# GitHub の blame 表示は自動で読む。ローカルでは次を一度実行する:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# chore: rustfmt を workspace 全体に適用し、CI に cargo fmt --check を加える (#229)
+5b43dc377d9f945f0cadb139d1b033f69bb7f98e
