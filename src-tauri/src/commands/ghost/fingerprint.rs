@@ -157,7 +157,7 @@ pub(crate) fn finalize_hex(hasher: Sha256) -> String {
 }
 
 #[cfg(test)]
-pub(crate) fn build_fingerprint(
+fn build_fingerprint(
     ssp_path: &str,
     additional_folders: &[String],
 ) -> Result<String, String> {
