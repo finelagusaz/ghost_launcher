@@ -8,7 +8,7 @@
 mod db_path;
 
 use rusqlite::Connection;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use tokio::sync::{mpsc, oneshot};
 
 /// 起動配線（設計書 §2.1 の 5 ステップ・すべて setup スレッドで同期実行）。
@@ -52,7 +52,11 @@ fn sanitize(db_dir: &std::path::Path, ghosts_path: &std::path::Path) {
         return;
     }
     let ok = rusqlite::Connection::open(ghosts_path)
-        .and_then(|c| c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)))
+        .and_then(|c| {
+            c.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })
+        })
         .is_ok();
     if !ok {
         for filename in db_path::GHOST_DB_FILES {
@@ -90,7 +94,9 @@ pub(crate) enum Job {
     Maintenance,
     /// テスト専用: run_guarded の panic 隔離・接続健全性を検証するための故意 panic。
     #[cfg(test)]
-    PanicForTest { reply: oneshot::Sender<Result<(), String>> },
+    PanicForTest {
+        reply: oneshot::Sender<Result<(), String>>,
+    },
 }
 
 /// アクターへの送信ハンドル。`.manage()` で全コマンドに配られる。
@@ -104,7 +110,9 @@ pub(crate) struct ActorHandle {
 impl ActorHandle {
     /// 送信は非ブロッキング（unbounded）。アクター停止後はエラー文字列に写像する（panic しない）。
     pub(crate) fn send(&self, job: Job) -> Result<(), String> {
-        self.tx.send(job).map_err(|_| "DB アクターが停止しています".to_string())
+        self.tx
+            .send(job)
+            .map_err(|_| "DB アクターが停止しています".to_string())
     }
 
     /// reply 付きジョブを送り、アクターの応答を待つ（コマンド層の薄い皮の共通形）。
@@ -122,7 +130,11 @@ impl ActorHandle {
 
     #[cfg(test)]
     pub(crate) fn thread_handle_for_test(&self) -> std::thread::JoinHandle<()> {
-        self.thread.lock().unwrap().take().expect("thread handle は 1 回だけ取得できる")
+        self.thread
+            .lock()
+            .unwrap()
+            .take()
+            .expect("thread handle は 1 回だけ取得できる")
     }
 }
 
@@ -147,7 +159,11 @@ pub(crate) fn spawn_actor(ghosts_conn: Connection, user_conn: Connection) -> Act
 
 /// 受信ループ。チャネルクローズ（全 Sender drop）で終了する（設計書 §2.2）。
 /// ループ本体は panic フリーに保つ（ジョブ内の panic は run_guarded が隔離する）。
-fn run_loop(mut ghosts_conn: Connection, user_conn: Connection, mut rx: mpsc::UnboundedReceiver<Job>) {
+fn run_loop(
+    mut ghosts_conn: Connection,
+    user_conn: Connection,
+    mut rx: mpsc::UnboundedReceiver<Job>,
+) {
     while let Some(job) = rx.blocking_recv() {
         handle_job(&mut ghosts_conn, &user_conn, job);
     }
@@ -155,24 +171,44 @@ fn run_loop(mut ghosts_conn: Connection, user_conn: Connection, mut rx: mpsc::Un
 
 fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
     match job {
-        Job::RecordLaunch { ghost_identity_key, reply } => {
+        Job::RecordLaunch {
+            ghost_identity_key,
+            reply,
+        } => {
             let result = run_guarded(ghosts, |g| {
                 crate::commands::launch_history::record_launch_inner(user, g, &ghost_identity_key)
             });
             let _ = reply.send(result); // reply drop（呼び出し側キャンセル）は無視。ジョブは完走済み
         }
-        Job::Scan { ssp_path, additional_folders, request_key, cached_fingerprint, reply } => {
+        Job::Scan {
+            ssp_path,
+            additional_folders,
+            request_key,
+            cached_fingerprint,
+            reply,
+        } => {
             let result = run_guarded(ghosts, |g| {
                 crate::commands::ghost::scan_and_store_blocking(
-                    g, user, ssp_path, additional_folders, request_key, cached_fingerprint,
+                    g,
+                    user,
+                    ssp_path,
+                    additional_folders,
+                    request_key,
+                    cached_fingerprint,
                 )
             });
             let _ = reply.send(result);
         }
-        Job::CleanupCaches { current_request_key, reply } => {
+        Job::CleanupCaches {
+            current_request_key,
+            reply,
+        } => {
             let result = run_guarded(ghosts, |g| {
                 crate::commands::ghost::store::cleanup_old_ghost_caches(
-                    g, &current_request_key, CLEANUP_MAX_GENERATIONS, CLEANUP_TTL_DAYS,
+                    g,
+                    &current_request_key,
+                    CLEANUP_MAX_GENERATIONS,
+                    CLEANUP_TTL_DAYS,
                 )
             });
             let _ = reply.send(result);
@@ -186,7 +222,9 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
         }
         #[cfg(test)]
         Job::PanicForTest { reply } => {
-            let result = run_guarded(ghosts, |_| -> Result<(), String> { panic!("テスト用 panic") });
+            let result = run_guarded(ghosts, |_| -> Result<(), String> {
+                panic!("テスト用 panic")
+            });
             let _ = reply.send(result);
         }
     }
@@ -220,16 +258,13 @@ fn maintenance(conn: &Connection) -> Result<(), String> {
     let freelist = q("PRAGMA freelist_count");
     let page_size = {
         let v = q("PRAGMA page_size");
-        if v == 0 {
-            4096
-        } else {
-            v
-        }
+        if v == 0 { 4096 } else { v }
     };
     let free_bytes = freelist * page_size;
     let free_ratio = freelist as f64 / page_count as f64;
     if free_ratio >= VACUUM_FREE_RATIO && free_bytes >= VACUUM_FREE_BYTES {
-        conn.execute_batch("VACUUM").map_err(|e| format!("VACUUM エラー: {e}"))?;
+        conn.execute_batch("VACUUM")
+            .map_err(|e| format!("VACUUM エラー: {e}"))?;
     }
     Ok(())
 }
@@ -256,7 +291,10 @@ mod tests {
     fn send_record(handle: &ActorHandle, key: &str) -> Result<(), String> {
         let (reply, rx) = tokio::sync::oneshot::channel();
         handle
-            .send(Job::RecordLaunch { ghost_identity_key: key.to_string(), reply })
+            .send(Job::RecordLaunch {
+                ghost_identity_key: key.to_string(),
+                reply,
+            })
             .unwrap();
         rx.blocking_recv().unwrap()
     }
@@ -269,15 +307,26 @@ mod tests {
         // アクター所有と別の検証用接続で観測する
         let user = rusqlite::Connection::open(dir.path().join("user-data.db")).unwrap();
         let n: i64 = user
-            .query_row("SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key='sspg'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key='sspg'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(n, 1);
         // ghosts 側の集計列 bump も観測する（テスト名「両db」の約束を実態と一致させる）
         let ghosts = rusqlite::Connection::open(dir.path().join("ghosts.db")).unwrap();
         let count: i64 = ghosts
-            .query_row("SELECT launch_count FROM ghosts WHERE ghost_identity_key='sspg'", [], |r| r.get(0))
+            .query_row(
+                "SELECT launch_count FROM ghosts WHERE ghost_identity_key='sspg'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
-        assert_eq!(count, 1, "ghosts.db 側の launch_count が bump されているはず");
+        assert_eq!(
+            count, 1,
+            "ghosts.db 側の launch_count が bump されているはず"
+        );
     }
 
     #[test]
@@ -298,12 +347,17 @@ mod tests {
         let handle = spawn_test_actor(&dir);
         let (reply, rx) = tokio::sync::oneshot::channel();
         handle
-            .send(Job::RecordLaunch { ghost_identity_key: "dropped".to_string(), reply })
+            .send(Job::RecordLaunch {
+                ghost_identity_key: "dropped".to_string(),
+                reply,
+            })
             .unwrap();
         drop(rx); // 呼び出し側キャンセル
         send_record(&handle, "next").unwrap(); // 継続確認（前ジョブも DB には適用済み）
         let user = rusqlite::Connection::open(dir.path().join("user-data.db")).unwrap();
-        let n: i64 = user.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
+        let n: i64 = user
+            .query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n, 2, "reply drop されたジョブも完走している");
     }
 
@@ -340,9 +394,19 @@ mod tests {
             rx.blocking_recv().unwrap().unwrap();
         }
         let conn = rusqlite::Connection::open(dir.path().join("ghosts.db")).unwrap();
-        let ghosts: i64 = conn.query_row("SELECT COUNT(*) FROM ghosts WHERE request_key='rk'", [], |r| r.get(0)).unwrap();
+        let ghosts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ghosts WHERE request_key='rk'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         let entries: i64 = conn
-            .query_row("SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key='rk'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(ghosts, 1, "直列化後は 1 体（後勝ちの entries）のはず");
         assert_eq!(ghosts, entries, "ghosts と scan_entries が整合しているはず");

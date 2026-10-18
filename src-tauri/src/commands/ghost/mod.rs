@@ -10,8 +10,8 @@ mod types;
 pub(crate) use fingerprint::{check_parent_mtimes_match, collect_parent_mtimes};
 #[cfg(feature = "bench")]
 pub(crate) use scan::{
-    fingerprint_only_internal, scan_entries_with_fingerprint,
-    scan_ghosts_with_fingerprint_internal, ScanEntry,
+    ScanEntry, fingerprint_only_internal, scan_entries_with_fingerprint,
+    scan_ghosts_with_fingerprint_internal,
 };
 #[cfg(feature = "bench")]
 pub(crate) use types::Ghost;
@@ -57,7 +57,10 @@ pub async fn cleanup_ghost_caches(
     actor: tauri::State<'_, crate::actor::ActorHandle>,
 ) -> Result<u32, String> {
     actor
-        .request(|reply| crate::actor::Job::CleanupCaches { current_request_key, reply })
+        .request(|reply| crate::actor::Job::CleanupCaches {
+            current_request_key,
+            reply,
+        })
         .await
 }
 
@@ -266,7 +269,7 @@ pub(crate) fn apply_scan_delta(
 #[cfg(test)]
 mod tests {
     use super::store::FingerprintRow;
-    use crate::testutil::{create_ghost_dir_with_descript, TempDirGuard};
+    use crate::testutil::{TempDirGuard, create_ghost_dir_with_descript};
     use std::fs;
     use std::path::Path;
 
@@ -313,8 +316,11 @@ mod tests {
         assert_eq!(total1, 3);
 
         // 移行を模す: scan_entries を空にする（旧 DB は ghosts のみで scan_entries を持たない）
-        conn.execute("DELETE FROM ghost_scan_entries WHERE request_key = ?1", ["rk1"])
-            .unwrap();
+        conn.execute(
+            "DELETE FROM ghost_scan_entries WHERE request_key = ?1",
+            ["rk1"],
+        )
+        .unwrap();
 
         // C をディスクから削除して再スキャン → walk は A,B のみを返す
         fs::remove_dir_all(ssp_ghost.join("c")).map_err(|e| format!("remove c: {e}"))?;
@@ -329,7 +335,10 @@ mod tests {
             },
         )?;
 
-        assert_eq!(total2, 2, "取り残し C が削除されていない（永久幽霊ゴースト）");
+        assert_eq!(
+            total2, 2,
+            "取り残し C が削除されていない（永久幽霊ゴースト）"
+        );
         let mut names: Vec<String> = {
             let mut stmt = conn
                 .prepare("SELECT name FROM ghosts WHERE request_key = ?1")
@@ -347,7 +356,8 @@ mod tests {
     /// 巻き込まないこと。生の scan_key は別だが identity は衝突し、check_identity_uniqueness は present しか
     /// 見ないため非 present の "a" はガードを通り抜ける。DELETE の identity 保護フィルタで防ぐ（設計書 §4.2）。
     #[test]
-    fn apply_scan_delta_が非present兄弟のnfkc畳み込みで生存ゴーストを消さない() -> Result<(), String> {
+    fn apply_scan_delta_が非present兄弟のnfkc畳み込みで生存ゴーストを消さない() -> Result<(), String>
+    {
         let workspace = TempDirGuard::new("ghost_launcher_delta_fold_delete_test");
         let ssp_root = workspace.path().join("ssp");
         let ssp_ghost = ssp_root.join("ghost");
@@ -437,10 +447,7 @@ mod tests {
         Ok((seeded.fingerprint, identity))
     }
 
-    fn read_aggregates(
-        conn: &rusqlite::Connection,
-        identity: &str,
-    ) -> (i64, Option<String>) {
+    fn read_aggregates(conn: &rusqlite::Connection, identity: &str) -> (i64, Option<String>) {
         conn.query_row(
             "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = ?1",
             [identity],
@@ -457,8 +464,7 @@ mod tests {
         let ssp_root = workspace.path().join("ssp");
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let (fingerprint, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
+        let (fingerprint, identity) = seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // 親 mtime 不変 + cached_fingerprint あり → Layer 1 hit
         let result = super::scan_and_store_blocking(
@@ -469,10 +475,16 @@ mod tests {
             "rk1".to_string(),
             Some(fingerprint),
         )?;
-        assert!(result.cache_hit, "Layer 1 hit にならなかった（テスト前提の崩れ）");
+        assert!(
+            result.cache_hit,
+            "Layer 1 hit にならなかった（テスト前提の崩れ）"
+        );
 
         let (count, last) = read_aggregates(&conn, &identity);
-        assert_eq!(count, 0, "Layer 1 hit 経路で backfill が発行された（#156 の退行）");
+        assert_eq!(
+            count, 0,
+            "Layer 1 hit 経路で backfill が発行された（#156 の退行）"
+        );
         assert_eq!(last, None);
         Ok(())
     }
@@ -485,8 +497,7 @@ mod tests {
         let ssp_root = workspace.path().join("ssp");
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let (fingerprint, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
+        let (fingerprint, identity) = seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // parent_mtimes を欠損させ Layer 1 を外す → Layer 2 の fingerprint 等値判定で hit
         conn.execute(
@@ -502,10 +513,16 @@ mod tests {
             "rk1".to_string(),
             Some(fingerprint),
         )?;
-        assert!(result.cache_hit, "Layer 2 hit にならなかった（テスト前提の崩れ）");
+        assert!(
+            result.cache_hit,
+            "Layer 2 hit にならなかった（テスト前提の崩れ）"
+        );
 
         let (count, last) = read_aggregates(&conn, &identity);
-        assert_eq!(count, 0, "Layer 2 hit 経路で backfill が発行された（#156 の退行）");
+        assert_eq!(
+            count, 0,
+            "Layer 2 hit 経路で backfill が発行された（#156 の退行）"
+        );
         assert_eq!(last, None);
         Ok(())
     }
@@ -518,11 +535,14 @@ mod tests {
         let ssp_root = workspace.path().join("ssp");
         let conn = in_memory_ghost_db();
         let user_conn = in_memory_user_db();
-        let (fingerprint, identity) =
-            seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
+        let (fingerprint, identity) = seed_ghost_and_pending_launch(&conn, &user_conn, &ssp_root)?;
 
         // ゴースト追加で親 mtime も fingerprint も変える → cache miss
-        create_ghost_dir_with_descript(&ssp_root.join("ghost"), "bravo", "name,Bravo\ncharset,UTF-8\n")?;
+        create_ghost_dir_with_descript(
+            &ssp_root.join("ghost"),
+            "bravo",
+            "name,Bravo\ncharset,UTF-8\n",
+        )?;
         let result = super::scan_and_store_blocking(
             &conn,
             &user_conn,
@@ -531,10 +551,16 @@ mod tests {
             "rk1".to_string(),
             Some(fingerprint),
         )?;
-        assert!(!result.cache_hit, "cache miss にならなかった（テスト前提の崩れ）");
+        assert!(
+            !result.cache_hit,
+            "cache miss にならなかった（テスト前提の崩れ）"
+        );
 
         let (count, last) = read_aggregates(&conn, &identity);
-        assert_eq!(count, 1, "cache miss 経路の backfill（healing 責務）が失われた");
+        assert_eq!(
+            count, 1,
+            "cache miss 経路の backfill（healing 責務）が失われた"
+        );
         assert_eq!(last.as_deref(), Some("2026-01-01 00:00:00"));
         Ok(())
     }
@@ -579,7 +605,8 @@ mod tests {
 
         // 内容だけ書き換え、descript の mtime を元に戻して token を不変に保つ
         // （親 dir mtime は深い書込では変化しない・descript mtime のみ復元すれば token 不変）
-        fs::write(&descript, "name,Modified\ncharset,UTF-8\n").map_err(|e| format!("rewrite: {e}"))?;
+        fs::write(&descript, "name,Modified\ncharset,UTF-8\n")
+            .map_err(|e| format!("rewrite: {e}"))?;
         let f = fs::OpenOptions::new()
             .write(true)
             .open(&descript)

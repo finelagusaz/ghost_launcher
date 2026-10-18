@@ -84,10 +84,7 @@ pub(crate) fn build_entry_token(
 
 /// 各親ディレクトリの mtime を収集し、"path:mtime_nanos" 形式の文字列を返す。
 /// ソート済みで結合するため、フォルダ順序に依存しない。
-pub(crate) fn collect_parent_mtimes(
-    ssp_path: &str,
-    additional_folders: &[String],
-) -> String {
+pub(crate) fn collect_parent_mtimes(ssp_path: &str, additional_folders: &[String]) -> String {
     let mut entries: Vec<String> = Vec::new();
 
     // SSP の ghost/ ディレクトリ
@@ -100,7 +97,8 @@ pub(crate) fn collect_parent_mtimes(
     entries.push(format!("{}:{}", normalized, mtime));
 
     // 追加フォルダ（正規化・重複排除・ソート済み）
-    for (_, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+    for (_, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders)
+    {
         let mtime = fs::metadata(&folder_path)
             .as_ref()
             .map(metadata_modified_string)
@@ -157,10 +155,7 @@ pub(crate) fn finalize_hex(hasher: Sha256) -> String {
 }
 
 #[cfg(test)]
-fn build_fingerprint(
-    ssp_path: &str,
-    additional_folders: &[String],
-) -> Result<String, String> {
+fn build_fingerprint(ssp_path: &str, additional_folders: &[String]) -> Result<String, String> {
     use super::path_utils::unique_sorted_additional_folders;
     use super::scan::walk_parent;
 
@@ -180,7 +175,7 @@ fn build_fingerprint(
 mod tests {
     use super::super::scan::scan_ghosts_with_fingerprint_internal;
     use super::{build_fingerprint, compute_fingerprint_hash};
-    use crate::testutil::{create_ghost_dir, TempDirGuard};
+    use crate::testutil::{TempDirGuard, create_ghost_dir};
     use std::fs;
 
     // 期待値は実装に依存させず sha256sum で独立に算出した値。ghosts.db に永続化された

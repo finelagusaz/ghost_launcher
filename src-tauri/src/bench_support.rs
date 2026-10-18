@@ -8,12 +8,12 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 
 use crate::commands::ghost::store::{
-    configure_connection, ghost_identity_key, store_ghosts_delta, FingerprintRow, GhostDelta,
-    ScanEntryRow,
+    FingerprintRow, GhostDelta, ScanEntryRow, configure_connection, ghost_identity_key,
+    store_ghosts_delta,
 };
 use crate::commands::ghost::{
-    apply_scan_delta, check_parent_mtimes_match, collect_parent_mtimes,
-    scan_entries_with_fingerprint, scan_ghosts_with_fingerprint_internal, Ghost, ScanEntry,
+    Ghost, ScanEntry, apply_scan_delta, check_parent_mtimes_match, collect_parent_mtimes,
+    scan_entries_with_fingerprint, scan_ghosts_with_fingerprint_internal,
 };
 
 /// どの行にもマッチしない語（0 件）
@@ -58,8 +58,16 @@ fn synth_ghost(i: usize) -> Ghost {
     Ghost {
         diff_fingerprint: format!("fp-{i}"),
         name: format!("{base}{i}"),
-        sakura_name: if i.is_multiple_of(3) { format!("{base}の精") } else { String::new() },
-        kero_name: if i.is_multiple_of(5) { format!("相方{i}") } else { String::new() },
+        sakura_name: if i.is_multiple_of(3) {
+            format!("{base}の精")
+        } else {
+            String::new()
+        },
+        kero_name: if i.is_multiple_of(5) {
+            format!("相方{i}")
+        } else {
+            String::new()
+        },
         // i % 1000 == 777 の行だけ craftman が "作者777" → Q_RARE の選択率 ~0.1%
         craftman: format!("作者{}", i % 1000),
         craftmanw: String::new(),
@@ -140,7 +148,10 @@ pub fn select_cols_prefixed() -> String {
     const RAW: &str = include_str!("../../src/test/fixtures/ghost-view-columns.json");
     let cols: Vec<String> =
         serde_json::from_str(RAW).expect("ghost-view-columns.json をパースできること");
-    cols.iter().map(|c| format!("g.{c}")).collect::<Vec<_>>().join(", ")
+    cols.iter()
+        .map(|c| format!("g.{c}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// searchGhosts と同形の WHERE（g. 前置き）。真の権威は ghostDatabase.ts の
@@ -170,14 +181,25 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
 
     for i in 0..n {
         let g = synth_ghost(i);
-        let master = ghost_dir.join(&g.directory_name).join("ghost").join("master");
+        let master = ghost_dir
+            .join(&g.directory_name)
+            .join("ghost")
+            .join("master");
         fs::create_dir_all(&master).map_err(|e| format!("mkdir master: {e}"))?;
 
         let descript = format!(
             "name,{}\nsakura.name,{}\nkero.name,{}\ncraftman,{}\n",
             g.name,
-            if g.sakura_name.is_empty() { "" } else { &g.sakura_name },
-            if g.kero_name.is_empty() { "" } else { &g.kero_name },
+            if g.sakura_name.is_empty() {
+                ""
+            } else {
+                &g.sakura_name
+            },
+            if g.kero_name.is_empty() {
+                ""
+            } else {
+                &g.kero_name
+            },
             g.craftman
         );
         let descript_path = master.join("descript.txt");
@@ -193,7 +215,10 @@ pub fn generate_ghost_tree(ssp_root: &Path, n: usize) -> Result<PathBuf, String>
 
         // 一部に surface0.png を置き thumbnail 解決を発生させる
         if i.is_multiple_of(3) {
-            let shell_master = ghost_dir.join(&g.directory_name).join("shell").join("master");
+            let shell_master = ghost_dir
+                .join(&g.directory_name)
+                .join("shell")
+                .join("master");
             fs::create_dir_all(&shell_master).map_err(|e| format!("mkdir shell: {e}"))?;
             fs::write(shell_master.join("surface0.png"), b"")
                 .map_err(|e| format!("write png: {e}"))?;
@@ -492,7 +517,12 @@ mod tests {
 
         // 各体に descript.txt が存在する
         for entry in std::fs::read_dir(&ghost_dir).unwrap() {
-            let d = entry.unwrap().path().join("ghost").join("master").join("descript.txt");
+            let d = entry
+                .unwrap()
+                .path()
+                .join("ghost")
+                .join("master")
+                .join("descript.txt");
             assert!(d.exists(), "descript missing: {}", d.display());
         }
     }
@@ -580,7 +610,10 @@ mod tests {
         // 1 体追加 → 体数 +1、layer1 ミス
         add_one_ghost(&ssp_str, 1).unwrap();
         assert_eq!(full_scan_count(&ssp_str).unwrap(), 21);
-        assert!(!layer1_hit(&conn, "rk", &ssp_str), "追加で親 mtime が変わり miss のはず");
+        assert!(
+            !layer1_hit(&conn, "rk", &ssp_str),
+            "追加で親 mtime が変わり miss のはず"
+        );
     }
 
     // キャッシュ mtime 信頼性テスト（Task 5）: entry.metadata()（find-data 由来・syscall
@@ -650,7 +683,10 @@ mod tests {
         store_with_real_mtimes(&conn, "rk", &handle, &fp, &ssp_str).unwrap();
 
         // 実 mtimes を保存したので、無変更のまま再照合すれば hit（Layer 1 高速パス成立）
-        assert!(layer1_hit(&conn, "rk", &ssp_str), "実 mtimes 保存後は hit のはず");
+        assert!(
+            layer1_hit(&conn, "rk", &ssp_str),
+            "実 mtimes 保存後は hit のはず"
+        );
     }
 
     #[test]
@@ -666,6 +702,9 @@ mod tests {
 
         // store_handle は parent_mtimes を "bench-mtimes" 固定で保存するため、
         // 実 mtimes（"path:nanos" 形式）とは決して一致せず miss になる
-        assert!(!layer1_hit(&conn, "rk", &ssp_str), "bench-mtimes 固定後は miss のはず");
+        assert!(
+            !layer1_hit(&conn, "rk", &ssp_str),
+            "bench-mtimes 固定後は miss のはず"
+        );
     }
 }

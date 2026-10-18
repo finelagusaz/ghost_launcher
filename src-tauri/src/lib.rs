@@ -1,10 +1,10 @@
 mod actor;
-mod commands;
-mod cache_schema;
-#[cfg(test)]
-pub(crate) mod testutil;
 #[cfg(feature = "bench")]
 pub mod bench_support;
+mod cache_schema;
+mod commands;
+#[cfg(test)]
+pub(crate) mod testutil;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

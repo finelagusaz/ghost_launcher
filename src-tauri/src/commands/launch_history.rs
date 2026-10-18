@@ -109,7 +109,10 @@ pub async fn record_launch(
     actor: tauri::State<'_, crate::actor::ActorHandle>,
 ) -> Result<(), String> {
     actor
-        .request(|reply| crate::actor::Job::RecordLaunch { ghost_identity_key, reply })
+        .request(|reply| crate::actor::Job::RecordLaunch {
+            ghost_identity_key,
+            reply,
+        })
         .await
 }
 
@@ -137,12 +140,20 @@ mod tests {
         record_launch_inner(&user_conn, &ghosts_conn, "sspg").unwrap();
 
         let launches: i64 = user_conn
-            .query_row("SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key = 'sspg'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM ghost_launches WHERE ghost_identity_key = 'sspg'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(launches, 2);
 
         let (count, last): (i64, Option<String>) = ghosts_conn
-            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(count, 2);
         assert!(last.is_some(), "last_launched が設定されること");
@@ -161,7 +172,11 @@ mod tests {
             )
             .unwrap();
         // user-data に A の起動 3 回（時刻昇順）
-        for at in ["2026-01-01 00:00:00", "2026-01-02 00:00:00", "2026-01-03 00:00:00"] {
+        for at in [
+            "2026-01-01 00:00:00",
+            "2026-01-02 00:00:00",
+            "2026-01-03 00:00:00",
+        ] {
             user_conn
                 .execute("INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES ('sspg', ?1)", rusqlite::params![at])
                 .unwrap();
@@ -170,13 +185,21 @@ mod tests {
         backfill_aggregates(&ghosts_conn, &user_conn).unwrap();
 
         let (count, last): (i64, Option<String>) = ghosts_conn
-            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspg'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(count, 3);
         assert_eq!(last.as_deref(), Some("2026-01-03 00:00:00"));
 
         let (bcount, blast): (i64, Option<String>) = ghosts_conn
-            .query_row("SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspb'", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT launch_count, last_launched FROM ghosts WHERE ghost_identity_key = 'sspb'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .unwrap();
         assert_eq!(bcount, 0);
         assert_eq!(blast, None);
@@ -190,7 +213,11 @@ mod tests {
         )
         .unwrap();
         for (key, at) in rows {
-            conn.execute("INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, ?2)", rusqlite::params![key, at]).unwrap();
+            conn.execute(
+                "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, ?2)",
+                rusqlite::params![key, at],
+            )
+            .unwrap();
         }
         conn
     }
@@ -199,13 +226,18 @@ mod tests {
     fn migrate_legacyは旧履歴を複写し二度目は複写しない() {
         let user_conn = Connection::open_in_memory().unwrap();
         ensure_schema(&user_conn).unwrap();
-        let ghosts_conn = ghosts_conn_with_legacy_launches(&[("sspg", "2026-01-01 00:00:00"), ("sspg", "2026-01-02 00:00:00")]);
+        let ghosts_conn = ghosts_conn_with_legacy_launches(&[
+            ("sspg", "2026-01-01 00:00:00"),
+            ("sspg", "2026-01-02 00:00:00"),
+        ]);
 
         migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
         // 冪等: 二度目は user-data が非空なので何もしない
         migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
 
-        let total: i64 = user_conn.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
+        let total: i64 = user_conn
+            .query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(total, 2, "重複複写されないこと");
     }
 
@@ -215,7 +247,9 @@ mod tests {
         ensure_schema(&user_conn).unwrap();
         let ghosts_conn = Connection::open_in_memory().unwrap(); // ghost_launches なし
         migrate_legacy_launch_history(&ghosts_conn, &user_conn).unwrap();
-        let total: i64 = user_conn.query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0)).unwrap();
+        let total: i64 = user_conn
+            .query_row("SELECT COUNT(*) FROM ghost_launches", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(total, 0);
     }
 
@@ -286,7 +320,10 @@ mod tests {
                     |r| r.get(0),
                 )
                 .unwrap();
-            assert_eq!(has_legacy, 0, "リビルドで旧テーブルは消える（移送済みなので安全）");
+            assert_eq!(
+                has_legacy, 0,
+                "リビルドで旧テーブルは消える（移送済みなので安全）"
+            );
         }
 
         // 再スキャン相当: 行再投入 + backfill → 集計が移送済み履歴から復元される

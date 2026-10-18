@@ -19,16 +19,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # 整形のずれを 1 件でも許さない。ビルドもキャッシュも要らないため、npm・cargo のキャッシュ復元より前に置く（#227）。
+      - name: Rustfmt (workspace, check)
+        run: cargo fmt --all -- --check
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
       # cargo registry と target/ の依存ぶんをキャッシュする。既定のキャッシュキーは
       # github.job を含むため、ci-bench-profile.yml（別プロファイル）とは自動的に分かれる。

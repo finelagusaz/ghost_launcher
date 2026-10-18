@@ -34,6 +34,7 @@ npm run test:ui-guidelines-check
 npm run test:doc-paths-check
 
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
+cargo fmt --all -- --check
 cargo test --workspace
 cargo test -p ghost-meta --features thumbnail,serde
 cargo clippy --workspace --all-targets -- -D warnings

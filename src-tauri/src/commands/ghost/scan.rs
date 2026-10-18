@@ -35,20 +35,19 @@ fn is_scannable_dir(entry: &fs::DirEntry) -> bool {
 
 /// GhostMeta から Ghost 構造体へ変換するヘルパー
 fn ghost_from_meta(meta: ghost_meta::GhostMeta, source: String) -> Ghost {
-    let (thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind) = meta.thumbnail.map_or(
-        (String::new(), false, String::new()),
-        |info| {
-            let kind = match info.kind {
-                ThumbnailKind::Surface => "surface".to_string(),
-                ThumbnailKind::Thumbnail => "thumbnail".to_string(),
-            };
-            (
-                info.path.to_string_lossy().into_owned(),
-                info.alpha == AlphaMode::SelfAlpha,
-                kind,
-            )
-        },
-    );
+    let (thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind) =
+        meta.thumbnail
+            .map_or((String::new(), false, String::new()), |info| {
+                let kind = match info.kind {
+                    ThumbnailKind::Surface => "surface".to_string(),
+                    ThumbnailKind::Thumbnail => "thumbnail".to_string(),
+                };
+                (
+                    info.path.to_string_lossy().into_owned(),
+                    info.alpha == AlphaMode::SelfAlpha,
+                    kind,
+                )
+            });
     let name = meta.name;
     let sakura_name = meta.sakura_name.unwrap_or_default();
     let kero_name = meta.kero_name.unwrap_or_default();
@@ -224,9 +223,17 @@ pub(crate) fn scan_ghosts_with_fingerprint_internal(
     let mut tokens = vec!["fingerprint-version|1".to_string()];
     let mut ghosts: Vec<Ghost> = Vec::new();
 
-    walk_parent(&ghost_dir, "ssp", true, &mut tokens, Some(("ssp", &mut ghosts)))?;
+    walk_parent(
+        &ghost_dir,
+        "ssp",
+        true,
+        &mut tokens,
+        Some(("ssp", &mut ghosts)),
+    )?;
 
-    for (source, folder_path, normalized_folder) in unique_sorted_additional_folders(additional_folders) {
+    for (source, folder_path, normalized_folder) in
+        unique_sorted_additional_folders(additional_folders)
+    {
         walk_parent(
             &folder_path,
             &normalized_folder,
@@ -434,7 +441,7 @@ pub(crate) fn fingerprint_only_internal(
 #[cfg(test)]
 mod tests {
     use super::{ghost_from_meta, scan_ghosts_with_fingerprint_internal};
-    use crate::testutil::{create_ghost_dir_with_descript, TempDirGuard};
+    use crate::testutil::{TempDirGuard, create_ghost_dir_with_descript};
     use std::fs;
     use std::path::PathBuf;
 
@@ -665,7 +672,10 @@ mod tests {
             super::scan_entries_with_fingerprint(&ssp_path, &additional_folders)?;
 
         // fingerprint がバイト一致（2 walk 実装の drift ガード）
-        assert_eq!(full_fp, delta_fp, "delta walk の fingerprint が production walk と不一致");
+        assert_eq!(
+            full_fp, delta_fp,
+            "delta walk の fingerprint が production walk と不一致"
+        );
 
         // present エントリ数 = ghost 数（no_descript は present=false のため除外）
         let present = entries.iter().filter(|e| e.is_present).count();
@@ -690,8 +700,7 @@ mod tests {
         fs::create_dir_all(&ssp_ghost).map_err(|e| format!("ssp ghost dir: {e}"))?;
         create_ghost_dir_with_descript(&ssp_ghost, "alpha", "name,Alpha\ncharset,UTF-8\n")?;
 
-        let (entries, _) =
-            super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
+        let (entries, _) = super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
         let entry = entries
             .iter()
             .find(|e| e.is_present)
@@ -719,8 +728,7 @@ mod tests {
         create_ghost_dir_with_descript(&ssp_ghost, "Ａ", "name,Fullwidth\ncharset,UTF-8\n")?;
         create_ghost_dir_with_descript(&ssp_ghost, "a", "name,Ascii\ncharset,UTF-8\n")?;
 
-        let (entries, _) =
-            super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
+        let (entries, _) = super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
         assert!(
             super::check_identity_uniqueness(&entries).is_err(),
             "NFKC 衝突が loud に弾かれていない（サイレント消失＋path 振動への退行）"
@@ -737,8 +745,7 @@ mod tests {
         create_ghost_dir_with_descript(&ssp_ghost, "alpha", "name,Alpha\ncharset,UTF-8\n")?;
         create_ghost_dir_with_descript(&ssp_ghost, "bravo", "name,Bravo\ncharset,UTF-8\n")?;
 
-        let (entries, _) =
-            super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
+        let (entries, _) = super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
         assert!(super::check_identity_uniqueness(&entries).is_ok());
         Ok(())
     }

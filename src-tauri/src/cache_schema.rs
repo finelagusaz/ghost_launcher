@@ -43,7 +43,9 @@ pub(crate) fn ensure_cache_schema(conn: &mut Connection) -> Result<(), String> {
     // sqlite_% 内部テーブル（sqlite_sequence・sqlite_stat1 等）は DROP 不可のため除外する
     let tables: Vec<String> = {
         let mut stmt = tx
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            )
             .map_err(|e| format!("テーブル列挙エラー: {e}"))?;
         stmt.query_map([], |r| r.get(0))
             .map_err(|e| format!("テーブル列挙エラー: {e}"))?
@@ -58,7 +60,8 @@ pub(crate) fn ensure_cache_schema(conn: &mut Connection) -> Result<(), String> {
         .map_err(|e| format!("スキーマ作成エラー: {e}"))?;
     tx.execute_batch(&format!("PRAGMA user_version = {}", cache_schema_version()))
         .map_err(|e| format!("user_version 設定エラー: {e}"))?;
-    tx.commit().map_err(|e| format!("リビルド commit エラー: {e}"))
+    tx.commit()
+        .map_err(|e| format!("リビルド commit エラー: {e}"))
 }
 
 /// ghosts.db を開き、PRAGMA 設定とスキーマ確定まで行って返す。失敗時は DB ファイル一式
@@ -80,8 +83,8 @@ pub(crate) fn open_with_recovery(ghosts_path: &std::path::Path) -> Result<Connec
 // open_with_recovery からのみ呼ばれる bootstrap 専用ヘルパー。ghosts.db を直接開く正当な入口（設計書 §2.3）。
 #[allow(clippy::disallowed_methods)]
 fn open_and_ensure(ghosts_path: &std::path::Path) -> Result<Connection, String> {
-    let mut conn = Connection::open(ghosts_path)
-        .map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
+    let mut conn =
+        Connection::open(ghosts_path).map_err(|e| format!("ghosts.db オープンエラー: {e}"))?;
     crate::commands::ghost::store::configure_connection(&conn)?;
     ensure_cache_schema(&mut conn)?;
     Ok(conn)
@@ -102,7 +105,8 @@ mod tests {
     use super::*;
 
     fn user_version(conn: &rusqlite::Connection) -> i32 {
-        conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap()
+        conn.query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap()
     }
 
     #[test]
@@ -134,7 +138,11 @@ mod tests {
         .unwrap();
         ensure_cache_schema(&mut conn).unwrap(); // 2 回目は no-op
         let fp: String = conn
-            .query_row("SELECT fingerprint FROM ghost_fingerprints WHERE request_key='rk'", [], |r| r.get(0))
+            .query_row(
+                "SELECT fingerprint FROM ghost_fingerprints WHERE request_key='rk'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(fp, "fp");
     }
@@ -178,7 +186,11 @@ mod tests {
         )
         .unwrap();
         let st: String = conn
-            .query_row("SELECT search_text FROM ghosts WHERE request_key='rk'", [], |r| r.get(0))
+            .query_row(
+                "SELECT search_text FROM ghosts WHERE request_key='rk'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         // 連結順は name, sakura, kero, craftman, craftmanw, directory。区切りは \x1f
         assert_eq!(st, "n\u{1f}s\u{1f}k\u{1f}c\u{1f}w\u{1f}d");
@@ -254,7 +266,10 @@ mod tests {
         for (label, sql, index) in cases {
             let p = plan(&conn, &sql);
             assert!(p.contains(index), "{label} が {index} を使わない: {p}");
-            assert!(!p.contains("USE TEMP B-TREE"), "{label} に TEMP B-TREE が残る: {p}");
+            assert!(
+                !p.contains("USE TEMP B-TREE"),
+                "{label} に TEMP B-TREE が残る: {p}"
+            );
         }
     }
 

@@ -13,9 +13,7 @@ fn read_locale_from_dir(dir: &Path, lang: &str) -> Result<Option<String>, String
     // ファイルサイズ確認（TOCTOU 対策のため metadata を open 前に取得）
     let metadata = std::fs::metadata(&locale_path).map_err(|e| e.to_string())?;
     if metadata.len() > MAX_LOCALE_BYTES {
-        return Err(format!(
-            "言語ファイルが大きすぎます（最大 1 MB）: {lang}"
-        ));
+        return Err(format!("言語ファイルが大きすぎます（最大 1 MB）: {lang}"));
     }
 
     let content = std::fs::read_to_string(&locale_path).map_err(|e| e.to_string())?;
@@ -66,7 +64,10 @@ mod tests {
 
         let result = read_locale_from_dir(dir.path(), "ja");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(r#"{"card.launch":"起動"}"#.to_string()));
+        assert_eq!(
+            result.unwrap(),
+            Some(r#"{"card.launch":"起動"}"#.to_string())
+        );
     }
 
     #[test]

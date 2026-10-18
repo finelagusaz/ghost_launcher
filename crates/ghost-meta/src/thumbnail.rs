@@ -124,10 +124,7 @@ fn seriko_alpha_from_fields(fields: &HashMap<String, String>) -> AlphaMode {
 /// shell/master/descript.txt から seriko.use_self_alpha を読み取る。
 /// 値が "1" なら SelfAlpha、それ以外または欠落なら KeyColor。
 fn read_seriko_use_self_alpha(ghost_root: &Path) -> AlphaMode {
-    let shell_descript = ghost_root
-        .join("shell")
-        .join("master")
-        .join("descript.txt");
+    let shell_descript = ghost_root.join("shell").join("master").join("descript.txt");
     if let Ok(fields) = parse_descript(&shell_descript)
         && fields.get("seriko.use_self_alpha").map(|v| v.as_str()) == Some("1")
     {
@@ -141,9 +138,9 @@ fn read_seriko_use_self_alpha(ghost_root: &Path) -> AlphaMode {
 /// （全ピクセル展開はしない）。feature が無効な場合は常に false を返す。
 #[cfg(feature = "thumbnail")]
 fn png_has_alpha_channel(path: &Path) -> bool {
-    use image::codecs::png::PngDecoder;
     use image::ColorType;
     use image::ImageDecoder;
+    use image::codecs::png::PngDecoder;
 
     let Ok(file) = fs::File::open(path) else {
         return false;
