@@ -12,8 +12,6 @@
 
 **同型の隣接引数が 2 組以上になったら構造体へ集約する**: 同じ型の位置引数が隣り合うと、呼び出し側で取り違えてもコンパイラが検知できない。名前付きフィールドの構造体（借用でよい）にまとめ、取り違えを型で弾く（#174 で `store_ghosts_delta` の `deletes`／`scan_deletes`〈同型 `&[String]`〉を `GhostDelta` に、#224 で `fingerprint`／`parent_mtimes`〈同型 `&str`〉を `FingerprintRow` に集約）。意味の異なる値の組は、1 つの構造体へまとめず型を分ける（`GhostDelta` は子単位の差分、`FingerprintRow` は `ghost_fingerprints` の 1 行）。clippy の `too_many_arguments` を機械的に消すためでなく、この取り違え防止を動機に構造体化する。
 
-**rustfmt は repo 全体には適用されていない**: CI に `cargo fmt --check` はなく、既存ファイルには rustfmt と食い違う箇所が残っている（2024 edition の import 並び順など）。ファイル全体へ `cargo fmt` をかけると、変更と無関係な差分が混ざる。スクリプトでの一括置換やテストの移動の後は、変更したファイルを子モジュールごと一時ディレクトリへ写して `rustfmt --edition 2024 --check` にかけ、自分の変更行に関わる差分だけを直す（#226 で、#225 のテスト移動が残した二重の空行をこの方法で拾った）。
-
 ## SQLite
 
 > ghosts.db（使い捨て）と user-data.db（永続）で守るべき制約が異なる。混同すると永続データの喪失かキャッシュの不整合を招く。
