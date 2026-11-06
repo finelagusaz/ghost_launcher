@@ -118,6 +118,57 @@ describe("useSearch", () => {
     expect(result.current.loadedStart).toBe(0);
   });
 
+  // 先読みページは表示中の行を必ず含む。同内容の行を新オブジェクトで差し替えると
+  // memo 化された GhostCard が可視行ぶん全再描画されるため、既存の参照を保つ
+  it("マージ時、重複区間で内容が等しい行は既存オブジェクトの参照を保つ", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(3);
+    // DB から再取得した行は内容が同じでも別オブジェクトになる
+    vi.mocked(searchGhosts).mockResolvedValueOnce([{ ...marisa }, alice]);
+
+    const { result, rerender } = renderHook(
+      ({ offset }) => useSearch("rk1", "", 2, offset, 1),
+      { initialProps: { offset: 0 } }
+    );
+    await waitFor(() => {
+      expect(result.current.ghosts).toHaveLength(2);
+    });
+
+    rerender({ offset: 1 });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.ghosts).toHaveLength(3);
+    });
+
+    expect(result.current.ghosts[0]).toBe(reimu);
+    expect(result.current.ghosts[1]).toBe(marisa);
+    expect(result.current.ghosts[2]).toBe(alice);
+  });
+
+  it("マージ時、重複区間で内容が変わった行は新しいオブジェクトへ差し替える", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(3);
+    // refreshTrigger 前にスキャンが DB を書き換えた隙間のページ取得を模す
+    const renamed = { ...marisa, craftman: "新しい作者" };
+    vi.mocked(searchGhosts).mockResolvedValueOnce([renamed, alice]);
+
+    const { result, rerender } = renderHook(
+      ({ offset }) => useSearch("rk1", "", 2, offset, 1),
+      { initialProps: { offset: 0 } }
+    );
+    await waitFor(() => {
+      expect(result.current.ghosts).toHaveLength(2);
+    });
+
+    rerender({ offset: 1 });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.ghosts).toHaveLength(3);
+    });
+
+    expect(result.current.ghosts[1]).toBe(renamed);
+  });
+
   it("query 変更時はバッファがクリアされる", async () => {
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(2).mockResolvedValueOnce(1);
