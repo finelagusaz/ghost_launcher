@@ -7,7 +7,10 @@ export const MAX_BUFFER_SIZE = 2000;
 
 // 行の浅い等値判定。DB 行は SELECT 列だけを持つフラットなプリミティブの集まりなので
 // 浅い比較で内容一致を判定できる。path だけで同一視しないのは、refreshTrigger 前に
-// スキャンが DB を書き換えた隙間のページ取得で、古いフィールドを固定しないため
+// スキャンが DB を書き換えた隙間のページ取得で、古いフィールドを固定しないため。
+// キー数の一致を前提にするので、マージ対象の両側（searchGhostsInitialPage / searchGhosts）は
+// 同じ射影（GHOST_SELECT_COLUMNS_PREFIXED）を保つこと。片側だけ列が増えると全行が
+// 不一致になり、参照保持が黙って無効化される
 function isSameRow(a: GhostView, b: GhostView): boolean {
   if (a === b) return true;
   const keys = Object.keys(a) as (keyof GhostView)[];
