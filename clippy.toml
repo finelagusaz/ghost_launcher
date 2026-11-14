@@ -1,4 +1,4 @@
-# ghosts.db への writer 混入ガード（設計書 §2.3）: 接続は actor モジュールだけが開く。
+# ghosts.db への writer 混入ガード（docs/superpowers/specs/2026-07-16-ghost-db-actor-design.md §2.3）: 接続は actor モジュールだけが開く。
 [[disallowed-methods]]
 path = "rusqlite::Connection::open"
 reason = "ghosts.db/user-data.db の接続は actor::bootstrap と spawn_actor 経由のみ。テストは #[allow(clippy::disallowed_methods)] を付ける"

@@ -9,7 +9,7 @@ description: ユーザーが「コミットして」「/commit」と言ったと
 
 ## ステップ 1: 変更内容の把握
 
-以下の 3 コマンドを**並列で**実行する:
+以下を**並列で**実行する:
 
 ```bash
 git status                     # 変更ファイル一覧
@@ -19,9 +19,11 @@ git log --oneline -5           # 直近のコミットメッセージスタイ�
 
 **中断条件**: 変更がない（`nothing to commit, working tree clean`）場合は「コミットする変更がありません。」と伝えて終了する。
 
+**main 上にいる場合**: コミットの前に作業ブランチを切る（命名規則はルート CLAUDE.md「ブランチ戦略」が単一権威）。`/implement` を経ずに来る経路（`/deps-update`・`/retrospective` 等）はここが唯一の関門で、`/pr` は main 以外を前提とする。
+
 ## ステップ 2: コミット前チェックリスト
 
-> **docs-only の免除**: 変更が `*.md` ファイルのみに閉じている場合、下記のコード系ゲートは検証対象（`src/`・`src-tauri/`・`crates/`）が不変のため非該当。実行を省き、その旨をコミットメッセージに記す。`.md` 以外（`package.json`・CI 設定・コード等）が 1 つでも含まれるなら全ゲートを実行する。
+> **docs-only の免除**: 変更が `*.md` ファイルのみに閉じている場合、下記のコード系ゲートは検証対象（`src/`・`src-tauri/`・`crates/`）が不変のため非該当。`npm run check:doc-paths`（文書そのものを検査するゲート）だけを実行し、ほかは省いてその旨をコミットメッセージに記す。`.md` 以外（`package.json`・CI 設定・コード等）が 1 つでも含まれるなら全ゲートを実行する。
 
 以下を**可能な限り並列で**実行する:
 
@@ -32,6 +34,8 @@ npm test
 npm run check:ui-guidelines
 npm run test:ui-guidelines-check
 npm run test:doc-paths-check
+npm run check:doc-paths
+npm run test:hooks
 
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
 cargo fmt --all -- --check
@@ -44,13 +48,13 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 > **CI のみのゲート（意図的非対称）**: bench ハーネス系（`cargo check --features bench --benches`・`cargo test --features bench --lib bench_support`・`cargo clippy --features bench --all-targets -- -D warnings`）は `ci-build.yml` の CI 専用ステップで、本チェックリストには含めない（bench コードの変更頻度が低く、毎コミットのローカル実行コストに見合わないため）。bench 関連ファイルを変更したときのみ手動で実行する。
 >
-> bench プロファイルのコンパイルゲート（`cargo bench --no-run` を 2 本順次）は `ci-bench-profile.yml` が単一権威。`Cargo.toml`・`Cargo.lock`・`benches/` の変更で自動発火し、加えて main への push・週次・`workflow_dispatch` でも走るため、ローカルでの手動実行もこのチェックリストへの追加も不要（release 継承プロファイルのフルビルドを伴い CI 時間をおよそ倍にしたため #209 で `ci-build.yml` から切り出した）。
+> bench プロファイルのコンパイルゲート（`cargo bench --no-run` を bench ごとに順次）は `ci-bench-profile.yml` が単一権威。`Cargo.toml`・`Cargo.lock`・`benches/` の変更で自動発火し、加えて main への push・週次・`workflow_dispatch` でも走るため、ローカルでの手動実行もこのチェックリストへの追加も不要（release 継承プロファイルのフルビルドを伴い CI 時間をおよそ倍にしたため #209 で `ci-build.yml` から切り出した）。
 
 ### 追加の確認事項
 
 - **新規テストファイルを追加した場合**: `ci-build.yml` で実行されるか・`tsconfig.json` の `exclude` に追加が必要か・`vitest.config.ts` の `include` が検出するかを確認する
 - **UI 操作・言語表示・フォーム入力に関わる変更の場合**: E2E テスト（`/e2e`）の手動実行を済ませたか確認する（E2E は CI に含まれない）
-- **生成型の照合（CI の「Verify generated types are committed」と同一ゲート）**: `cargo test --workspace` 後に `git status --porcelain src/types/generated/` を確認し、差分・未追跡ファイルが出たらコミットに含める
+- **生成型の照合（CI の「Verify generated types are committed」に対応するローカル側の確認）**: `cargo test --workspace` 後に `git status --porcelain src/types/generated/` を確認し、差分・未追跡ファイルが出たらコミットに含める
 
 ### チェック失敗時の対応
 

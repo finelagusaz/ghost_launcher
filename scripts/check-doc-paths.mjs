@@ -10,6 +10,7 @@ export const DOC_PATHSPECS = [
   "src-tauri/CLAUDE.md",
   "e2e/CLAUDE.md",
   ":(glob).claude/skills/*/SKILL.md",
+  ":(glob).claude/agents/*.md",
   "SPEC.md",
   ":(glob)docs/*.md",
   "RETROSPECTIVE.md",

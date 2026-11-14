@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash
 
 # SQLite チューニングレビュー
 
-`git diff main..HEAD` で変更されたファイルを読み、DB 関連の変更を分析する。
+`git diff $(git merge-base main HEAD)`（分岐点からの変更。コミット済みと未コミットの両方が出る）と `git status --porcelain`（未追跡の新規ファイル）で変更されたファイルを特定して読み、DB 関連の変更を分析する。
 
 ## プロジェクト固有の前提
 

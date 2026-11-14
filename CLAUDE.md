@@ -9,7 +9,7 @@
 
 Ghost Launcher は、伺か/SSP ゴーストを検出して起動するための Tauri 2 デスクトップアプリです。SSP のインストールディレクトリと追加のカスタムフォルダを走査し、`descript.txt`（Shift_JIS/UTF-8）からゴーストのメタデータを解析して、検索可能なランチャー UI を提供します。
 
-UI テキストはすべて日本語です。Rust ファイル内のコードコメントも日本語です。
+UI 文言は `src/locales/` の i18n リソースで多言語対応です（日本語はその 1 つ）。コードコメント・規約・コミットメッセージは日本語で書きます。
 
 **コミット・PR は即実行**（ハーネス既定の事前確認を上書きする）: コミットや PR 作成の指示は確認なしで実行する。
 
@@ -34,7 +34,7 @@ cargo sweep -t 30 .
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
-**Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。
+**Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。**モデルへ届く出力は `hookSpecificOutput.additionalContext` だけ**で、exit 0 の素の標準出力は誰にも届かない——入力の読み取りと通知は `scripts/hooks/_lib.sh` を通す。`timeout` の単位は**秒**。フックを足したら、発火する編集を実際に行い通知が届くことで較正する（スクリプト単体が正しく出力しても、届いている証拠にはならない）。
 
 ## 判断の勘所
 
