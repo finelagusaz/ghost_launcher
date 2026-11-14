@@ -12,7 +12,7 @@ Ghost Launcher の開発に必要な環境構築・ビルド・テストの手�
 ## 開発環境
 
 - OS: Windows
-- Node.js: 20 系推奨（npm は Node.js 同梱版で可）
+- Node.js: CI と同じ系列（`.github/workflows/ci-build.yml` の `node-version` が単一権威。npm は Node.js 同梱版で可）
 - Rust: stable
 - Tauri v2 の前提ツール（Visual Studio C++ Build Tools など）
 
@@ -40,11 +40,8 @@ npm run dev
 # フロントエンドのユニットテスト（vitest。単一ファイルは npx vitest run <path>）
 npm test
 
-# Rust バックエンドのテスト
-cargo test --manifest-path src-tauri/Cargo.toml
-
-# ghost-meta クレートのテスト
-cargo test --manifest-path crates/ghost-meta/Cargo.toml
+# Rust のテスト（cargo workspace 全体）
+cargo test --workspace
 
 # UI ガイドライン静的チェック
 npm run check:ui-guidelines
@@ -72,7 +69,8 @@ npm run e2e
 
 ## CI/CD（GitHub Actions）
 
-- `main` への push: Windows 上でビルド検証（`.github/workflows/ci-build.yml`）
+- `main` 向けの pull request と `main` への push: Windows 上でビルド・テスト・lint を検証（`.github/workflows/ci-build.yml`）
+- bench プロファイルのコンパイル検証（`.github/workflows/ci-bench-profile.yml`。発火条件は同ファイルを参照）
 - `v*` タグ push: リリースビルド実行後、GitHub Release と自動リリースノートを作成（`.github/workflows/release.yml`）
 
 ## 関連ドキュメント

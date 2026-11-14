@@ -38,7 +38,8 @@ async function fileExists(targetPath: string): Promise<boolean> {
 
 function getAppBinaryPath(): string {
   const defaultName = process.platform === "win32" ? "ghost-launcher.exe" : "ghost-launcher";
-  return process.env.GHOST_LAUNCHER_E2E_APP ?? path.resolve(process.cwd(), "src-tauri", "target", "release", defaultName);
+  // cargo workspace のため、ビルド出力は src-tauri/target でなくリポジトリ直下の target/ に集約される。
+  return process.env.GHOST_LAUNCHER_E2E_APP ?? path.resolve(process.cwd(), "target", "release", defaultName);
 }
 
 function getTauriDriverPath(): string {

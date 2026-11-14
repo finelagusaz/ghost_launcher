@@ -18,9 +18,8 @@ npm run e2e:setup
 # テスト実行（事前に npm run tauri build が必要）
 npm run e2e
 
-# cargo workspace のためビルド出力はリポジトリ直下 target/release/ に集約される。
-# harness の既定パスは src-tauri/target を指すため、GHOST_LAUNCHER_E2E_APP で明示指定する
-# GHOST_LAUNCHER_E2E_APP='<repo>/target/release/ghost-launcher.exe' npm run e2e
+# 検証対象は既定でリポジトリ直下 target/release/ のバイナリ（cargo workspace の出力先）。
+# 別のバイナリを検証するときだけ GHOST_LAUNCHER_E2E_APP で差し替える
 ```
 
 **テストのみの変更は再ビルド不要**: `*.e2e.ts`（テストコード）だけの変更はアプリ本体を変えないため、直近の `target/release/` バイナリに対してそのまま実行できる（`tauri build` の再実行は不要）。間欠 flake の修正検証は `--repeat-each=N` で連続 pass を確認する（単発 pass は運の可能性があるため）。

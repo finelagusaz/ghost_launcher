@@ -59,7 +59,8 @@ export const checks = [
   },
   {
     id: "scan-error-actionable",
-    dir: "src",
+    // 文言の所在に絞る。src 全体を見ると、テストやコメントに「再読込」があるだけで通ってしまう
+    file: "src/lib/ghostScanUtils.ts",
     message: "スキャン失敗時は再操作が分かる文言を含めてください。",
     test: (source) => /再読込/.test(source),
   },
