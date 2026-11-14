@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-migration-edit.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-cache-schema-edit.sh\""
           },
           {
             "type": "command",
