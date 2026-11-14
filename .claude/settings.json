@@ -7,29 +7,24 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-ts-types.sh\"",
-            "timeout": 30000
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-rust-clippy.sh\"",
-            "timeout": 60000
+            "timeout": 120
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-migration-edit.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
+          },
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn-generated-edit.sh\""

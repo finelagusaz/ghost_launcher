@@ -34,7 +34,7 @@ cargo sweep -t 30 .
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
-**Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。
+**Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。**モデルへ届く出力は `hookSpecificOutput.additionalContext` だけ**で、exit 0 の素の標準出力は誰にも届かない——入力の読み取りと通知は `scripts/hooks/_lib.sh` を通す。`timeout` の単位は**秒**。フックを足したら、発火する編集を実際に行い通知が届くことで較正する（スクリプト単体が正しく出力しても、届いている証拠にはならない）。
 
 ## 判断の勘所
 

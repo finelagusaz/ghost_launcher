@@ -58,6 +58,17 @@ jobs:
       - name: Test doc path checks
         run: npm run test:doc-paths-check
 
+      # 上の単体テストはチェッカー自身を検査するだけで、文書の参照パスは検査しない。
+      # 本体を走らせないと、ファイルの移動・削除で化石化した参照が通り抜ける。
+      - name: Check doc paths
+        run: npm run check:doc-paths
+
+      # Claude Code フック（scripts/hooks/）の出力契約を検査する。フックは bash + jq で動くため
+      # 既定の pwsh でなく bash で走らせる（pwsh からの `bash` 解決に依存しない）。
+      - name: Test Claude Code hooks
+        shell: bash
+        run: npm run test:hooks
+
       - name: Test Rust crates
         run: cargo test --workspace
 

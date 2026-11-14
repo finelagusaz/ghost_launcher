@@ -21,7 +21,7 @@ git log --oneline -5           # 直近のコミットメッセージスタイ�
 
 ## ステップ 2: コミット前チェックリスト
 
-> **docs-only の免除**: 変更が `*.md` ファイルのみに閉じている場合、下記のコード系ゲートは検証対象（`src/`・`src-tauri/`・`crates/`）が不変のため非該当。実行を省き、その旨をコミットメッセージに記す。`.md` 以外（`package.json`・CI 設定・コード等）が 1 つでも含まれるなら全ゲートを実行する。
+> **docs-only の免除**: 変更が `*.md` ファイルのみに閉じている場合、下記のコード系ゲートは検証対象（`src/`・`src-tauri/`・`crates/`）が不変のため非該当。`npm run check:doc-paths`（文書そのものを検査するゲート）だけを実行し、ほかは省いてその旨をコミットメッセージに記す。`.md` 以外（`package.json`・CI 設定・コード等）が 1 つでも含まれるなら全ゲートを実行する。
 
 以下を**可能な限り並列で**実行する:
 
@@ -32,6 +32,8 @@ npm test
 npm run check:ui-guidelines
 npm run test:ui-guidelines-check
 npm run test:doc-paths-check
+npm run check:doc-paths
+npm run test:hooks
 
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
 cargo fmt --all -- --check

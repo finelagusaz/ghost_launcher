@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash
 
 # IPC 境界チェック
 
-`git diff main..HEAD` で変更されたファイルを読み、Tauri `invoke()` の TS ↔ Rust 間の整合性を検証する。
+`git diff $(git merge-base main HEAD)`（分岐点からの変更。コミット済みと未コミットの両方が出る）と `git status --porcelain`（未追跡の新規ファイル）で変更されたファイルを特定して読み、Tauri `invoke()` の TS ↔ Rust 間の整合性を検証する。
 
 ## プロジェクト固有の前提
 

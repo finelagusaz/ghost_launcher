@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash
 
 # UX レビュー
 
-`git diff main..HEAD` で変更されたファイルを読み、`docs/ui-guidelines.md` に照らしてレビューする。
+`git diff $(git merge-base main HEAD)`（分岐点からの変更。コミット済みと未コミットの両方が出る）と `git status --porcelain`（未追跡の新規ファイル）で変更されたファイルを特定して読み、`docs/ui-guidelines.md` に照らしてレビューする。
 
 ## 前提
 
