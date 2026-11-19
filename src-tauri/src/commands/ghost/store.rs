@@ -98,7 +98,7 @@ pub(crate) fn read_scan_entries(
 /// 隣接する位置引数だと取り違えをコンパイラが検知できないため、名前付きフィールドで構造的に防ぐ。
 ///
 /// - `upserts`: 変更子（parse 成功）。`ON CONFLICT … DO UPDATE … WHERE row_fingerprint 相違` で、
-///   新規は INSERT・メタ変化は UPDATE・不変は no-op（updated_at を bump しない）。初回/移行時
+///   新規は INSERT・メタ変化は UPDATE・不変は no-op（行も index も書き換えない）。初回/移行時
 ///   （ghosts 既存・scan_entries 空）でも UNIQUE 衝突せず UPDATE で吸収する。
 /// - `deletes`: DELETE 対象 `ghost_identity_key`（削除子＋parse 失敗子）。upsert より先に適用する。
 /// - `scan_upserts` / `scan_deletes`: `ghost_scan_entries` の差分（変更子を UPSERT・削除子を DELETE）。
@@ -173,12 +173,10 @@ pub(crate) fn store_ghosts_delta(
                         directory_name, path, source,\
                         name_lower, sakura_name_lower, kero_name_lower,\
                         craftman_lower, craftmanw_lower, directory_name_lower,\
-                        thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind,\
-                        updated_at\
+                        thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind\
                     ) VALUES (\
                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,\
-                        ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,\
-                        datetime('now')\
+                        ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20\
                     ) ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET \
                         row_fingerprint = excluded.row_fingerprint,\
                         name = excluded.name, sakura_name = excluded.sakura_name,\
@@ -191,7 +189,7 @@ pub(crate) fn store_ghosts_delta(
                         directory_name_lower = excluded.directory_name_lower,\
                         thumbnail_path = excluded.thumbnail_path,\
                         thumbnail_use_self_alpha = excluded.thumbnail_use_self_alpha,\
-                        thumbnail_kind = excluded.thumbnail_kind, updated_at = datetime('now')\
+                        thumbnail_kind = excluded.thumbnail_kind \
                     WHERE ghosts.row_fingerprint != excluded.row_fingerprint",
                 )
                 .map_err(|e| format!("UPSERT 準備エラー: {e}"))?;
@@ -281,8 +279,16 @@ pub(crate) fn store_ghosts_delta(
     Ok(total as usize)
 }
 
+/// 世代（request_key）を新しい順に列挙し、TTL 超過かどうかを添える（?1 は "-N days"）。
+/// 世代の台帳は ghost_fingerprints（世代ごとに 1 行・`store_ghosts_delta` が ghosts と同一
+/// トランザクションで書く）。新しさの基準はその updated_at＝その世代へ最後に書き込んだ時刻で、
+/// ghosts を世代ごとに集計しない（全行ぶんの index 走査と、そのためだけの index を避ける）。
+/// updated_at は秒精度のため、同じ秒に書いた世代の順序を request_key で決める（上限の境界で
+/// どちらを残すかが実行ごとに変わらないように）。
+const CLEANUP_GENERATIONS_SQL: &str = "SELECT request_key, updated_at < datetime('now', ?1) FROM ghost_fingerprints ORDER BY updated_at DESC, request_key";
+
 /// 古い request_key 世代のキャッシュを削除する（JS cleanupOldGhostCaches の移植・設計書 §5.1）。
-/// 保持規則: 更新降順の上位 max_generations（TTL 未超過のもの）+ current は無条件。
+/// 保持規則: 最終書込の降順で上位 max_generations（TTL 未超過のもの）+ current は無条件。
 /// ghosts / ghost_fingerprints / ghost_scan_entries は運命共有のため同一トランザクションで消す。
 pub(crate) fn cleanup_old_ghost_caches(
     conn: &Connection,
@@ -292,9 +298,7 @@ pub(crate) fn cleanup_old_ghost_caches(
 ) -> Result<u32, String> {
     let rows: Vec<(String, bool)> = {
         let mut stmt = conn
-            .prepare(
-                "SELECT request_key, MAX(updated_at) < datetime('now', ?1) FROM ghosts GROUP BY request_key ORDER BY MAX(updated_at) DESC",
-            )
+            .prepare(CLEANUP_GENERATIONS_SQL)
             .map_err(|e| format!("世代 SELECT 準備エラー: {e}"))?;
         stmt.query_map([format!("-{ttl_days} days")], |r| {
             Ok((r.get(0)?, r.get(1)?))
@@ -563,8 +567,20 @@ mod tests {
     }
 
     #[test]
-    fn store_ghosts_delta_が変更子をupdateし不変子のupdated_atを保つ() {
+    fn store_ghosts_delta_が変更子をupdateし不変子を書き換えない() {
         let conn = setup_db();
+        // ghosts への UPDATE を数える（不変子の no-op を、行の中身でなく UPDATE の有無で観測する）
+        conn.execute_batch(
+            "CREATE TEMP TABLE ghost_updates (n INTEGER);\
+             INSERT INTO ghost_updates VALUES (0);\
+             CREATE TEMP TRIGGER count_ghost_updates AFTER UPDATE ON ghosts \
+             BEGIN UPDATE ghost_updates SET n = n + 1; END;",
+        )
+        .unwrap();
+        let update_count = |conn: &Connection| -> i64 {
+            conn.query_row("SELECT n FROM ghost_updates", [], |r| r.get(0))
+                .unwrap()
+        };
         let mut alice = make_ghost("Alice", "alice", "ssp");
         let ka = build_ghost_identity_key(&alice);
         store_ghosts_delta(
@@ -581,15 +597,9 @@ mod tests {
             },
         )
         .unwrap();
-        let updated_at_1: String = conn
-            .query_row(
-                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
-                ["rk1"],
-                |row| row.get(0),
-            )
-            .unwrap();
+        assert_eq!(update_count(&conn), 0, "新規は INSERT のみ");
 
-        // row_fingerprint 一致の再 upsert（メタ不変）→ WHERE で UPDATE されず updated_at 不変
+        // row_fingerprint 一致の再 upsert（メタ不変）→ WHERE で UPDATE されない
         store_ghosts_delta(
             &conn,
             "rk1",
@@ -604,17 +614,7 @@ mod tests {
             },
         )
         .unwrap();
-        let updated_at_2: String = conn
-            .query_row(
-                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
-                ["rk1"],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            updated_at_1, updated_at_2,
-            "メタ不変なら updated_at は bump しない"
-        );
+        assert_eq!(update_count(&conn), 0, "メタ不変なら行を書き換えない");
 
         // row_fingerprint 変化 → UPDATE される
         alice.diff_fingerprint = "fp-changed".to_string();
@@ -641,6 +641,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(name, "Alice-Updated");
+        assert_eq!(update_count(&conn), 1);
         assert_eq!(count_ghosts(&conn, "rk1"), 1);
     }
 
@@ -725,12 +726,9 @@ mod tests {
 
     // --- cleanup_old_ghost_caches ---
 
+    /// 世代を 1 つ seed する。updated_at は世代の台帳（ghost_fingerprints）の最終書込時刻。
     fn seed_generation(conn: &Connection, request_key: &str, updated_at: &str) {
-        conn.execute(
-            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES (?1, ?1 || 'g', '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', ?2)",
-            rusqlite::params![request_key, updated_at],
-        )
-        .unwrap();
+        crate::testutil::insert_ghost_row_in(conn, request_key, &format!("{request_key}g"));
         conn.execute(
             "INSERT INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES (?1, 'fp', ?2)",
             rusqlite::params![request_key, updated_at],
@@ -806,6 +804,81 @@ mod tests {
         let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
         assert_eq!(deleted, 1);
         assert_eq!(remaining_keys(&conn), vec!["rk-current".to_string()]);
+    }
+
+    /// 世代の列挙は ghost_fingerprints（世代ごとに 1 行）だけを読む。ghosts を世代ごとに
+    /// 集計すると、cache miss のたびに全行ぶんの index 走査になり、そのためだけの index
+    /// (request_key, updated_at) を全行の書込で維持することになる。
+    #[test]
+    fn cleanupの世代列挙はghostsを読まない() {
+        let conn = setup_db();
+        let mut stmt = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {CLEANUP_GENERATIONS_SQL}"))
+            .unwrap();
+        let plan: Vec<String> = stmt
+            .query_map(["-30 days"], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|row| row.expect("EXPLAIN QUERY PLAN の detail 列を読めること"))
+            .collect();
+        assert!(
+            plan.iter().any(|d| d.contains("ghost_fingerprints")),
+            "ghost_fingerprints を読んでいない: {plan:?}"
+        );
+        assert!(
+            !plan
+                .iter()
+                .any(|d| d.split_whitespace().any(|w| w == "ghosts")),
+            "ghosts を読んでいる: {plan:?}"
+        );
+    }
+
+    /// ゴーストが 0 体の世代（ghosts に行が無く fingerprint と scan_entries だけがある）も
+    /// 世代として数え、上限を超えたら消す。ghosts の集計からは見えず、残り続けていた。
+    #[test]
+    fn cleanupはゴースト0体の世代も削除する() {
+        let conn = setup_db();
+        for sql in [
+            "INSERT INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES ('rk-empty', 'fp', '2020-01-01 00:00:00')",
+            "INSERT INTO ghost_scan_entries (request_key, scan_key, token, ghost_identity_key) VALUES ('rk-empty', 'sk', 't', 'id')",
+        ] {
+            conn.execute(sql, []).unwrap();
+        }
+        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
+
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
+
+        assert_eq!(deleted, 1);
+        let left: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM ghost_fingerprints WHERE request_key = 'rk-empty') + (SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key = 'rk-empty')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "fingerprint と scan_entries が残っている");
+    }
+
+    #[test]
+    fn cleanupは同じ秒に書いた世代を_request_key_順で決定的に残す() {
+        let conn = setup_db();
+        let same_second = days_ago(&conn, 1);
+        for rk in ["rk-c", "rk-a", "rk-b"] {
+            seed_generation(&conn, rk, &same_second);
+        }
+        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
+
+        // 上限 3 = current + 同秒 3 世代のうち 2 世代。request_key 順で rk-a・rk-b を残す
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 3, 30).unwrap();
+
+        assert_eq!(deleted, 1);
+        assert_eq!(
+            remaining_keys(&conn),
+            vec![
+                "rk-a".to_string(),
+                "rk-b".to_string(),
+                "rk-current".to_string()
+            ]
+        );
     }
 
     #[test]

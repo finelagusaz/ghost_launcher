@@ -141,7 +141,6 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `name_lower`             | `TEXT`    | `name` の NFKC 正規化・小文字版（検索用）                |
 | `directory_name_lower`   | `TEXT`    | `directory_name` の NFKC 正規化・小文字版（検索用）      |
 | `request_key`            | `TEXT`    | SSP パスと追加フォルダからフロントエンドが生成した識別子  |
-| `updated_at`             | `TEXT`    | 行の最終更新日時（INSERT 時に `CURRENT_TIMESTAMP`）      |
 | `craftman`               | `TEXT`    | 作者名                                                   |
 | `thumbnail_path`         | `TEXT`    | サムネイル画像パス                                       |
 | `thumbnail_use_self_alpha` | `INTEGER` | 透過方式（1 = SelfAlpha, 0 = KeyColor）               |
@@ -179,7 +178,7 @@ Rust 専有の別ファイル `user-data.db` に分離されている（§4.4 �
 | ------------ | ------ | -------------------------------------- |
 | `request_key`| `TEXT` | PRIMARY KEY。スキャン対象を識別するキー |
 | `fingerprint`| `TEXT` | ディレクトリ構成のフィンガープリント     |
-| `updated_at` | `TEXT` | 最終更新日時                           |
+| `updated_at` | `TEXT` | その世代へ最後に書き込んだ日時（cache miss の書込ごとに更新。寿命管理の新しさ・TTL の基準、§8.5） |
 | `parent_mtimes` | `TEXT` | 親ディレクトリ mtime のスナップショット（Layer 1 高速差分判定用、§7.4） |
 
 #### ghost_scan_entries テーブル
@@ -428,6 +427,7 @@ JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以�
 | ----------------------------- | ---------------------------------------------------------- |
 | 世代保持数                    | 最新 5 世代                                                |
 | TTL                           | 30 日                                                      |
+| 新しさ・TTL の基準            | `ghost_fingerprints.updated_at`（その世代へ最後に書き込んだ日時）。世代の台帳は `ghost_fingerprints` で、ゴースト 0 体の世代も 1 世代として数える。cache hit（Layer 1/2）は書込を伴わないため基準を更新しない |
 | 削除条件                      | 世代超過 **または** TTL 超過                               |
 | `currentRequestKey` の保護    | TTL 切れでも削除対象から除外し、戻り値に必ず含める          |
 | fingerprint の同期削除        | `ghost_fingerprints` テーブルからも同一 `request_key` を削除 |

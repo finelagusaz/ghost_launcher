@@ -201,12 +201,7 @@ mod tests {
         ensure_schema(&user_conn).unwrap();
         let ghosts_conn = ghosts_conn_with_row("sspg");
         // 未起動の別ゴースト B も用意（0/NULL のままであること）
-        ghosts_conn
-            .execute(
-                "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', 'sspb', '', 'B', '', '', '', '', 'b', '/b', 'ssp', 'b', '', '', '', '', 'b', '', 0, '', '')",
-                [],
-            )
-            .unwrap();
+        insert_ghost_row_in(&ghosts_conn, "rk1", "sspb");
         // user-data に A の起動 3 回（時刻昇順）
         for at in [
             "2026-01-01 00:00:00",
