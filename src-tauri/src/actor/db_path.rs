@@ -22,10 +22,6 @@ pub(super) fn ghost_db_dir<R: tauri::Runtime>(
         .map_err(|e| format!("アプリ設定ディレクトリの取得に失敗: {e}"))
 }
 
-/// user-data.db（永続ユーザーデータ）本体のフルパス。ghosts.db と同じ app_config_dir 基準。
+/// user-data.db（永続ユーザーデータ）本体のファイル名。ghosts.db と同じディレクトリに置く。
 /// user-data.db は永続ストアであり、sanitize（ghosts.db の破損検査）の削除対象に含めない。
-pub(super) fn user_data_db_path<R: tauri::Runtime>(
-    manager: &impl Manager<R>,
-) -> Result<std::path::PathBuf, String> {
-    Ok(ghost_db_dir(manager)?.join("user-data.db"))
-}
+pub(super) const USER_DATA_DB_FILE: &str = "user-data.db";
