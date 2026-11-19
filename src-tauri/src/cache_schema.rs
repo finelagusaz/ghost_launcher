@@ -104,6 +104,56 @@ fn remove_db_files(ghosts_path: &std::path::Path) {
 mod tests {
     use super::*;
 
+    /// JS の検索 COUNT（`GHOST_SEARCH_COUNT_SQL`。共有 fixture で同期）は、プランナが最小の
+    /// UNIQUE index を選んで行ごとに本体を読むのを避けるため、search_text 同乗 index を
+    /// INDEXED BY で明示している。その index が現行スキーマに実在し（無ければ prepare が
+    /// 失敗する）、search_text を持ち、実際に選ばれることを縛る。
+    #[test]
+    fn 検索countが明示するindexは実在しsearch_textを持つ() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/search-sql-shapes.json"
+        );
+        let raw = std::fs::read_to_string(path).expect("fixture を読めること");
+        let shapes: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let sql = shapes["searchCount"].as_str().expect("searchCount がある");
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(CACHE_SCHEMA).unwrap();
+
+        let index = shapes["searchCountIndex"]
+            .as_str()
+            .expect("searchCountIndex がある");
+        assert!(
+            sql.contains(&format!("INDEXED BY {index} ")),
+            "searchCount が searchCountIndex を明示していない: {sql}"
+        );
+        let columns: Vec<String> = conn
+            .prepare(&format!("PRAGMA index_info({index})"))
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(2))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert!(
+            columns.iter().any(|c| c == "search_text"),
+            "{index} が search_text を持たない: {columns:?}"
+        );
+
+        let mut stmt = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .expect("検索 COUNT がスキーマ上で準備できること");
+        let plan: Vec<String> = stmt
+            .query_map(["rk", "q"], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert!(
+            plan.iter().any(|d| d.contains(index)),
+            "{index} が選ばれていない: {plan:?}"
+        );
+    }
+
     fn user_version(conn: &rusqlite::Connection) -> i32 {
         conn.query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap()

@@ -124,6 +124,18 @@ describe("ghostDatabase - instr 述語（search_text 生成列）", () => {
     expect(sql).not.toContain("LIKE");
     expect(params).toEqual(["rk1", "alice"]);
   });
+
+  it("countGhostsByQuery の非空クエリは search_text 同乗 index を明示して数える", async () => {
+    // プランナは件数だけの集計に最小の UNIQUE index を選び、行ごとに本体を読んで
+    // search_text を評価する。同乗 index なら index 上で述語が完結する
+    mockSelect.mockResolvedValue([{ count: 1 }]);
+    const { countGhostsByQuery, GHOST_SEARCH_COUNT_INDEX, GHOST_SEARCH_COUNT_SQL } = await import("./ghostDatabase");
+    await countGhostsByQuery("rk1", "alice");
+
+    const [sql] = mockSelect.mock.calls[0] as [string, unknown[]];
+    expect(sql).toBe(GHOST_SEARCH_COUNT_SQL);
+    expect(sql).toContain(`INDEXED BY ${GHOST_SEARCH_COUNT_INDEX} `);
+  });
 });
 
 describe("ghostDatabase - searchGhosts クエリ発行規律", () => {

@@ -112,6 +112,14 @@ export const GHOST_SEARCH_WHERE_PREFIXED = "instr(g.search_text, ?) > 0";
 // 非前置き版（countGhostsByQuery 用）は前置き版から導出し、両変体の乖離を防ぐ
 const GHOST_SEARCH_WHERE = GHOST_SEARCH_WHERE_PREFIXED.replace("g.", "");
 
+// 検索語つきの件数。プランナは件数だけの集計に最小の UNIQUE index を選び、行ごとに本体を
+// 読んで search_text を評価するため、search_text 同乗 index を INDEXED BY で明示して
+// index 上で述語を完結させる（10 万体で約 4 倍速い）。index の実在・search_text の所持・
+// 選ばれることは Rust 側テストが共有 fixture（search-sql-shapes.json）経由でスキーマと照合する
+export const GHOST_SEARCH_COUNT_INDEX = "idx_ghosts_request_key_name_search";
+export const GHOST_SEARCH_COUNT_SQL =
+  `SELECT COUNT(*) as count FROM ghosts INDEXED BY ${GHOST_SEARCH_COUNT_INDEX} WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`;
+
 const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
   GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");
 
@@ -172,10 +180,7 @@ export async function countGhostsByQuery(requestKey: string, query: string): Pro
       [requestKey]
     );
   } else {
-    countResult = await db.select<{ count: number }[]>(
-      `SELECT COUNT(*) as count FROM ghosts WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`,
-      [requestKey, normalizedQuery]
-    );
+    countResult = await db.select<{ count: number }[]>(GHOST_SEARCH_COUNT_SQL, [requestKey, normalizedQuery]);
   }
 
   return countResult.length > 0 ? countResult[0].count : 0;

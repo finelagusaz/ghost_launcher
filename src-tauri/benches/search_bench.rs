@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion};
 use ghost_launcher_lib::bench_support::{
-    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, seed_ghosts_db,
-    select_cols_prefixed,
+    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, search_count_sql,
+    seed_ghosts_db, select_cols_prefixed,
 };
 use rusqlite::Connection;
 
@@ -108,8 +108,8 @@ fn bench_search(c: &mut Criterion) {
     // 本番 GHOST_SELECT_COLUMNS_PREFIXED と同形の投影（fixture 連動・materialize コストを再現）
     let select_cols = select_cols_prefixed();
     let where_c = SEARCH_WHERE_PREFIXED;
-    // COUNT は本番 countGhostsByQuery と同形（前置きなし）
-    let count_where = where_c.replace("g.", "");
+    // COUNT は本番 countGhostsByQuery と同形（共有 fixture から読む）
+    let count_sql = search_count_sql();
     for &n in &[1_000usize, 10_000, 100_000] {
         let (_g, conn) = seeded_readonly_db(&format!("n{n}"), n);
 
@@ -171,9 +171,7 @@ fn bench_search(c: &mut Criterion) {
         }
 
         // COUNT + SELECT 併走（リセット時 1 回の実コスト・common クエリ）
-        // count は前置きなし（本番 countGhostsByQuery）、params: [rk, q]
-        let count_sql =
-            format!("SELECT COUNT(*) FROM ghosts WHERE request_key=? AND ({count_where})");
+        // count は本番 countGhostsByQuery と同形（上で fixture から取得）、params: [rk, q]
         // select は g. 前置き（本番 searchGhosts）、params: [rk, q, limit]
         let select_sql = format!(
             "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? AND ({where_c}) \
