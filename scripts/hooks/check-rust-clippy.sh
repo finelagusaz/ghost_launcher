@@ -12,8 +12,17 @@ case "$HOOK_FILE_PATH" in
   *) exit 0 ;;
 esac
 
+# ハーネスの打ち切り（.claude/settings.json の timeout 120 秒）より手前で自分で打ち切り、打ち切ったことを
+# モデルへ知らせる。ハーネスに打ち切られたときにモデルへ何が届くかは確かめておらず、届く保証が無いため。
+# 値は試験で縮められるよう環境変数で上書きできる。
+timeout_seconds="${GHOST_HOOK_CLIPPY_TIMEOUT:-100}"
+
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 1
-if ! output=$(cargo clippy --workspace --all-targets --quiet -- -D warnings 2>&1); then
+output=$(timeout "$timeout_seconds" cargo clippy --workspace --all-targets --quiet -- -D warnings 2>&1)
+status=$?
+if [ "$status" -eq 124 ]; then
+  hook_emit_context PostToolUse "cargo clippy が ${timeout_seconds} 秒で終わらず、打ち切りました。clippy の結果は確かめていません。必要なら cargo clippy --workspace --all-targets -- -D warnings を手で実行してください。"
+elif [ "$status" -ne 0 ]; then
   hook_emit_context PostToolUse "cargo clippy --workspace --all-targets -- -D warnings が失敗しました（末尾 30 行）:
 $(printf '%s\n' "$output" | tail -30)"
 fi
