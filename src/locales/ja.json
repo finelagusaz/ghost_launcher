@@ -47,5 +47,13 @@
   "sort.frequency": "起動回数順",
   "sort.random": "ランダム",
   "header.randomLaunch": "ランダム起動",
-  "header.randomLaunch.empty": "起動できるゴーストがありません"
+  "header.randomLaunch.empty": "起動できるゴーストがありません",
+  "error.detail": "（詳細: {{detail}}）",
+  "error.scanFailed": "ゴースト一覧の取得に失敗しました。SSPフォルダと追加フォルダを確認して「$t(header.refresh)」を実行してください。{{detail}}",
+  "error.sspExeNotFound": "ssp.exe が見つかりません: {{path}}",
+  "error.sspLaunchFailed": "SSP を起動できませんでした: {{detail}}",
+  "error.ghostFolderNotFound": "ghost フォルダが見つかりません: {{path}}",
+  "error.ghostFolderNotDirectory": "ghost フォルダがフォルダではありません: {{path}}",
+  "error.ghostFolderUnreadable": "フォルダを読み取れませんでした: {{path}}（{{detail}}）",
+  "error.ghostIdentityCollision": "表記の違い（全角・半角、大文字・小文字、丸数字など）を除くと同じ名前になるフォルダがあります。どちらかの名前を変えてください: {{first}} / {{second}}"
 }

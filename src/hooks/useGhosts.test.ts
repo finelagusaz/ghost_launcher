@@ -47,11 +47,11 @@ describe("useGhosts", () => {
     await act(async () => { resolveScan?.({ skipped: false }); });
   });
 
-  it("スキャン失敗でエラーメッセージが設定される", async () => {
+  it("スキャン失敗で生のエラーが保持される", async () => {
     mockRefreshGhostCatalog.mockRejectedValue(new Error("boom"));
     const { result } = renderHook(() => useGhosts("C:/ssp", []));
     await waitFor(() => expect(result.current.error).not.toBeNull());
-    expect(result.current.error).toContain("boom");
+    expect(result.current.error?.cause).toEqual(new Error("boom"));
   });
 
   it("sspPath が null なら refresh せず loading が収束する", async () => {

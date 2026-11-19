@@ -97,7 +97,9 @@ pub(crate) enum Job {
         additional_folders: Vec<String>,
         request_key: String,
         cached_fingerprint: Option<String>,
-        reply: oneshot::Sender<Result<crate::commands::ghost::ScanStoreResult, String>>,
+        reply: oneshot::Sender<
+            Result<crate::commands::ghost::ScanStoreResult, crate::commands::error::CommandError>,
+        >,
     },
     CleanupCaches {
         current_request_key: String,
@@ -130,15 +132,16 @@ impl ActorHandle {
 
     /// reply 付きジョブを送り、アクターの応答を待つ（コマンド層の薄い皮の共通形）。
     /// `make` は受け取った reply を詰めた Job を組み立てる。応答前に reply が drop された
-    /// （アクター側でジョブが失われた）場合はエラー文字列に写像する。
-    pub(crate) async fn request<T>(
+    /// （アクター側でジョブが失われた）場合はエラー文字列に写像する。エラー型 `E` は
+    /// ジョブごとに選べる（UI へ種別を返す Scan は `CommandError`、他は `String`）。
+    pub(crate) async fn request<T, E: From<String>>(
         &self,
-        make: impl FnOnce(oneshot::Sender<Result<T, String>>) -> Job,
-    ) -> Result<T, String> {
+        make: impl FnOnce(oneshot::Sender<Result<T, E>>) -> Job,
+    ) -> Result<T, E> {
         let (reply, rx) = oneshot::channel();
         self.send(make(reply))?;
         rx.await
-            .map_err(|_| "DB アクターから応答がありません".to_string())?
+            .map_err(|_| E::from("DB アクターから応答がありません".to_string()))?
     }
 
     #[cfg(test)]
@@ -246,12 +249,12 @@ fn handle_job(ghosts: &mut Connection, user: &Connection, job: Job) {
 /// DB 作業を panic から隔離して実行する（Mutex poison 回復の後継・設計書 §3.1）。
 /// panic はエラー応答へ変換し、捕捉後に is_autocommit を検査して開きっぱなしの
 /// トランザクションを ROLLBACK する（アクター生存 ≠ 接続健全のギャップを塞ぐ）。
-fn run_guarded<T>(
+fn run_guarded<T, E: From<String>>(
     conn: &mut Connection,
-    f: impl FnOnce(&mut Connection) -> Result<T, String>,
-) -> Result<T, String> {
+    f: impl FnOnce(&mut Connection) -> Result<T, E>,
+) -> Result<T, E> {
     let result = catch_unwind(AssertUnwindSafe(|| f(&mut *conn)))
-        .unwrap_or_else(|_| Err("DB ジョブが panic しました".to_string()));
+        .unwrap_or_else(|_| Err(E::from("DB ジョブが panic しました".to_string())));
     if !conn.is_autocommit() {
         let _ = conn.execute_batch("ROLLBACK");
     }

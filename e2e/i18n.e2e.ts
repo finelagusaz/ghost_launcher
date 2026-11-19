@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import { By, until, type WebDriver } from "selenium-webdriver";
 import { test, expect } from "./helpers/test";
 import { SPECIAL_GHOSTS } from "./helpers/fixture";
@@ -98,6 +100,27 @@ test.describe("初回起動（設定ファイルなし）", () => {
 
     const openSettingsBtn = await driver.findElement(By.css("[data-testid='open-settings-button']"));
     expect(await openSettingsBtn.isDisplayed()).toBe(true);
+  });
+});
+
+test.describe("スキャン失敗（ghost フォルダの無い SSP）", () => {
+  // 存在しない場所を SSP に設定する。スキャンは ghost フォルダの不在で失敗する
+  const missingSsp = path.join(os.tmpdir(), "ghost-launcher-e2e-no-such-ssp");
+  test.use({ settings: { ssp_path: missingSsp, language: "en" } });
+
+  test("英語の UI ではスキャン失敗の文言も詳細も英語で出る", async ({ harness }) => {
+    const { driver } = harness;
+    await waitForAppReady(driver);
+
+    const alert = await driver.wait(until.elementLocated(By.css("[role='alert']")), 15_000);
+    const text = await alert.getText();
+    // 定型文は再読込ボタンの名前を案内し、詳細は Rust の種別から英語で組み立てる
+    // （reject 値が種別つきのオブジェクトで届かないと、詳細が [object Object] や日本語になる）
+    expect(text).toContain("Failed to load the ghost list");
+    expect(text).toContain('"Reload"');
+    expect(text).toContain("ghost folder not found");
+    expect(text).toContain(path.join(missingSsp, "ghost"));
+    expect(text).not.toMatch(/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u);
   });
 });
 

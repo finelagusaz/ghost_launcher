@@ -14,6 +14,7 @@ import {
 import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
 import { SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 import { validateSspPath } from "../lib/sspClient";
+import { describeError, type CaughtError } from "../lib/errorMessages";
 
 interface Props {
   sspPath: string | null;
@@ -93,7 +94,9 @@ export function SettingsPanel({
 }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
-  const [validationError, setValidationError] = useState<string | null>(null);
+  // 文言は描画時に組み立てる（このダイアログ内で言語を切り替えても、表示中のエラーが追従する）
+  const [validationError, setValidationError] = useState<CaughtError | null>(null);
+  const validationMessage = validationError ? describeError(validationError.cause, t) : undefined;
   const [validating, setValidating] = useState(false);
 
   const handleSelectFolder = async () => {
@@ -113,7 +116,7 @@ export function SettingsPanel({
       onPathChange(selected);
       setValidationError(null);
     } catch (e) {
-      setValidationError(e instanceof Error ? e.message : String(e));
+      setValidationError({ cause: e });
     } finally {
       setValidating(false);
     }
@@ -172,7 +175,7 @@ export function SettingsPanel({
         <Field
           label={t("settings.ssp.label")}
           validationState={validationError ? "error" : undefined}
-          validationMessage={validationError ?? undefined}
+          validationMessage={validationMessage}
         >
           <Input readOnly value={sspPath ?? t("settings.ssp.unset")} />
         </Field>

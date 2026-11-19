@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { refreshGhostCatalog } from "../lib/ghostCatalogService";
-import { requestKeyFromSettings, buildScanErrorMessage } from "../lib/ghostScanUtils";
+import { requestKeyFromSettings } from "../lib/ghostScanUtils";
+import type { CaughtError } from "../lib/errorMessages";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
@@ -8,7 +9,7 @@ interface RefreshOptions {
 
 export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CaughtError | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
 
@@ -50,7 +51,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       }
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
-        setError(buildScanErrorMessage(e));
+        setError({ cause: e });
       }
     } finally {
       if (requestSeq === requestSeqRef.current) {
