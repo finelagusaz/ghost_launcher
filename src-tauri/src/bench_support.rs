@@ -23,6 +23,19 @@ pub const Q_RARE: &str = "作者777";
 /// 約 10% にマッチ（name が "さくら…" の行 = i % 10 == 0）
 pub const Q_COMMON: &str = "さくら";
 
+/// 一覧の 1 ページの件数。本番の一覧と同じ値を、単一権威の src/config/ghost-list.json から読む
+/// （1 ページの取り出しコストは件数で変わるため、本番とずれると読み取り経路の計測が本番を映さない）。
+pub fn page_limit() -> i64 {
+    let config: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../src/config/ghost-list.json"
+    )))
+    .expect("src/config/ghost-list.json が JSON であること");
+    config["pageLimit"]
+        .as_i64()
+        .expect("src/config/ghost-list.json に整数の pageLimit があること")
+}
+
 /// 本番読み取り接続（loadDb, ghostDatabase.ts）と同じ PRAGMA で一時 DB を開く。
 /// ensure_cache_schema は version 一致なら no-op のため、同一ファイルへの二度目の open でも安全。
 /// 書き込み用 configure_connection の大 cache は引かない。
@@ -406,6 +419,11 @@ mod tests {
     use super::*;
 
     use crate::testutil::TempDirGuard;
+
+    #[test]
+    fn ページの件数を共有の設定から読める() {
+        assert!(page_limit() > 0);
+    }
 
     #[test]
     fn seed_ghosts_db_が_n_行を投入する() {

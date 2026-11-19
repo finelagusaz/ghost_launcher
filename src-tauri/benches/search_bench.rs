@@ -8,13 +8,12 @@ use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion};
 use ghost_launcher_lib::bench_support::{
-    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, search_count_sql,
-    seed_ghosts_db, select_cols_prefixed,
+    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, page_limit,
+    search_count_sql, seed_ghosts_db, select_cols_prefixed,
 };
 use rusqlite::Connection;
 
 const RK: &str = "bench-rk";
-const LIMIT: i64 = 50;
 
 /// seed 済み一時 DB を本番読み取り PRAGMA で開き直して返す（seed 接続の書き込み PRAGMA を継がない）。
 /// tag は N ごとに一意化してディレクトリ名衝突を避ける。
@@ -40,6 +39,7 @@ fn run_select<P: rusqlite::Params>(conn: &Connection, sql: &str, params: P) -> u
 }
 
 fn dump_query_plans() {
+    let limit = page_limit();
     let (_g, conn) = seeded_readonly_db("plan", 1000);
     // 本番 GHOST_SELECT_COLUMNS_PREFIXED と同形の投影（fixture 連動・materialize コストを再現）
     let select_cols = select_cols_prefixed();
@@ -50,42 +50,42 @@ fn dump_query_plans() {
         (
             "empty+name",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT {limit}",
                 order_by("name")
             ),
         ),
         (
             "search+name",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT {limit}",
                 order_by("name")
             ),
         ),
         (
             "empty+recent",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT {limit}",
                 order_by("recent")
             ),
         ),
         (
             "search+recent",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' AND ({where_lit}) ORDER BY {} LIMIT {limit}",
                 order_by("recent")
             ),
         ),
         (
             "empty+frequency",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT {limit}",
                 order_by("frequency")
             ),
         ),
         (
             "empty+random",
             format!(
-                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT 50",
+                "SELECT {select_cols} FROM ghosts g WHERE g.request_key='{RK}' ORDER BY {} LIMIT {limit}",
                 order_by("random")
             ),
         ),
@@ -105,6 +105,7 @@ fn dump_query_plans() {
 }
 
 fn bench_search(c: &mut Criterion) {
+    let limit = page_limit();
     // 本番 GHOST_SELECT_COLUMNS_PREFIXED と同形の投影（fixture 連動・materialize コストを再現）
     let select_cols = select_cols_prefixed();
     let where_c = SEARCH_WHERE_PREFIXED;
@@ -127,7 +128,7 @@ fn bench_search(c: &mut Criterion) {
                 order_by(sort)
             );
             group.bench_with_input(BenchmarkId::new("empty_sort", sort), &sql, |b, sql| {
-                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, LIMIT]));
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, limit]));
             });
         }
 
@@ -139,7 +140,7 @@ fn bench_search(c: &mut Criterion) {
                 order_by("name")
             );
             group.bench_with_input(BenchmarkId::new("search", label), &sql, |b, sql| {
-                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, limit]));
             });
         }
 
@@ -151,7 +152,7 @@ fn bench_search(c: &mut Criterion) {
                 order_by("recent")
             );
             group.bench_with_input(BenchmarkId::new("search_recent", label), &sql, |b, sql| {
-                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, LIMIT]));
+                b.iter(|| run_select(&conn, sql, rusqlite::params![RK, q, limit]));
             });
         }
 
@@ -159,14 +160,14 @@ fn bench_search(c: &mut Criterion) {
         for (label, offset) in [
             ("0", 0i64),
             ("mid", (n as i64) / 2),
-            ("deep", (n as i64 - LIMIT).max(0)),
+            ("deep", (n as i64 - limit).max(0)),
         ] {
             let sql = format!(
                 "SELECT {select_cols} FROM ghosts g WHERE g.request_key=? ORDER BY {} LIMIT ? OFFSET ?",
                 order_by("name")
             );
             group.bench_with_input(BenchmarkId::new("offset", label), &offset, |b, &offset| {
-                b.iter(|| run_select(&conn, &sql, rusqlite::params![RK, LIMIT, offset]));
+                b.iter(|| run_select(&conn, &sql, rusqlite::params![RK, limit, offset]));
             });
         }
 
@@ -183,14 +184,14 @@ fn bench_search(c: &mut Criterion) {
                 let _c: i64 = conn
                     .query_row(&count_sql, rusqlite::params![RK, Q_COMMON], |r| r.get(0))
                     .unwrap();
-                run_select(&conn, &select_sql, rusqlite::params![RK, Q_COMMON, LIMIT]);
+                run_select(&conn, &select_sql, rusqlite::params![RK, Q_COMMON, limit]);
             });
         });
 
         // スクロールページの実コスト（COUNT なし・Phase 1 の select-only 形状）
         group.bench_function("select_only_common", |b| {
             b.iter(|| {
-                run_select(&conn, &select_sql, rusqlite::params![RK, Q_COMMON, LIMIT]);
+                run_select(&conn, &select_sql, rusqlite::params![RK, Q_COMMON, limit]);
             });
         });
 
