@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
@@ -102,30 +102,80 @@ test("全フック: tool 入力を読めないときは黙って通さず、非 
   }
 });
 
-// 本物の cargo の代わりに、PATH の先頭へ置いた偽の cargo を走らせる（body は bash の本文）
-function withFakeCargo(body, fn) {
-  const dir = mkdtempSync(join(tmpdir(), "hook-fake-cargo-"));
+// 検査系フックの試験用の場。PATH の先頭へ偽の cargo を置き、git のプロジェクト（project）と
+// そのワークツリー（worktree）、別のリポジトリ（other）を作る。CLAUDE_PROJECT_DIR は project を指す。
+// ワークツリーのセッションでも CLAUDE_PROJECT_DIR は元のチェックアウトを指すため、その状況を再現する。
+function withProject(cargoBody, fn) {
+  const root = mkdtempSync(join(tmpdir(), "hook-project-"));
+  const git = (cwd, ...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd, encoding: "utf8" });
+    assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+  };
+  const repo = (name) => {
+    const dir = join(root, name);
+    mkdirSync(join(dir, "src"), { recursive: true });
+    git(root, "init", "-q", name);
+    git(dir, "commit", "-q", "--allow-empty", "-m", "init");
+    return dir;
+  };
   try {
-    writeFileSync(join(dir, "cargo"), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
-    return fn({ PATH: `${dir}${delimiter}${process.env.PATH}`, CLAUDE_PROJECT_DIR: dir });
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "cargo"), `#!/bin/bash\n${cargoBody}\n`, { mode: 0o755 });
+    const project = repo("project");
+    const other = repo("other");
+    const worktree = join(root, "worktree");
+    git(project, "worktree", "add", "-q", "--detach", worktree);
+    mkdirSync(join(worktree, "src"), { recursive: true });
+    return fn({
+      env: { PATH: `${bin}${delimiter}${process.env.PATH}`, CLAUDE_PROJECT_DIR: project },
+      file: {
+        project: join(project, "src", "lib.rs"),
+        worktree: join(worktree, "src", "lib.rs"),
+        other: join(other, "src", "lib.rs"),
+      },
+      worktree,
+    });
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 }
 
+// 偽の cargo が、実行された場所（作業ツリーの根）を出して失敗する
+const REPORT_CWD = 'echo "cwd=$(pwd -W 2>/dev/null || pwd)"; exit 101';
+
 test("check-rust-clippy: clippy の失敗を additionalContext で知らせる", () => {
-  withFakeCargo('echo "error: unused variable"; exit 101', (env) => {
-    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), env);
+  withProject('echo "error: unused variable"; exit 101', ({ env, file }) => {
+    const result = runHook("check-rust-clippy.sh", edit(file.project), env);
     assert.equal(result.status, 0);
     assert.match(contextOf(result, "PostToolUse"), /unused variable/);
   });
 });
 
+test("check-rust-clippy: ワークツリーで編集したら、元のチェックアウトでなくそのワークツリーを検査する", () => {
+  withProject(REPORT_CWD, ({ env, file, worktree }) => {
+    const result = runHook("check-rust-clippy.sh", edit(file.worktree), env);
+    assert.equal(result.status, 0);
+    const context = contextOf(result, "PostToolUse").replaceAll("\\", "/").toLowerCase();
+    assert.ok(context.includes(`cwd=${worktree.replaceAll("\\", "/").toLowerCase()}`), context);
+  });
+});
+
+test("check-rust-clippy: プロジェクトの外（別のリポジトリ・リポジトリ外）のファイルは検査しない", () => {
+  withProject(REPORT_CWD, ({ env, file }) => {
+    for (const path of [file.other, "C:/no/such/repo/lib.rs"]) {
+      const result = runHook("check-rust-clippy.sh", edit(path), env);
+      assert.equal(result.status, 0, path);
+      assert.equal(result.stdout, "", path);
+    }
+  });
+});
+
 test("check-rust-clippy: 時間内に終わらなければ自分で打ち切り、確かめていないことを知らせる", () => {
   // ハーネスに打ち切られると、何も届かないおそれがある。その手前で打ち切って知らせる
-  withFakeCargo("sleep 30", (env) => {
+  withProject("sleep 30", ({ env, file }) => {
     const started = Date.now();
-    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), {
+    const result = runHook("check-rust-clippy.sh", edit(file.project), {
       ...env,
       GHOST_HOOK_CLIPPY_TIMEOUT: "1",
     });
@@ -136,8 +186,16 @@ test("check-rust-clippy: 時間内に終わらなければ自分で打ち切り�
 });
 
 test("check-rust-clippy: clippy が通れば何も出さない", () => {
-  withFakeCargo("exit 0", (env) => {
-    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), env);
+  withProject("exit 0", ({ env, file }) => {
+    const result = runHook("check-rust-clippy.sh", edit(file.project), env);
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "");
+  });
+});
+
+test("check-ts-types: プロジェクトの外のファイルは検査しない", () => {
+  withProject("exit 0", ({ env, file }) => {
+    const result = runHook("check-ts-types.sh", edit(file.other.replace(/\.rs$/, ".ts")), env);
     assert.equal(result.status, 0);
     assert.equal(result.stdout, "");
   });

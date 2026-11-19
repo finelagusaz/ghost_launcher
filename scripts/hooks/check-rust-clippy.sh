@@ -17,7 +17,9 @@ esac
 # 値は試験で縮められるよう環境変数で上書きできる。
 timeout_seconds="${GHOST_HOOK_CLIPPY_TIMEOUT:-100}"
 
-cd "${CLAUDE_PROJECT_DIR:-.}" || exit 1
+# 編集したファイルの作業ツリーで検査する（ワークツリーのセッションでは CLAUDE_PROJECT_DIR と違う）
+hook_resolve_worktree || exit 0
+cd "$HOOK_WORKTREE" || exit 1
 output=$(timeout "$timeout_seconds" cargo clippy --workspace --all-targets --quiet -- -D warnings 2>&1)
 status=$?
 if [ "$status" -eq 124 ]; then

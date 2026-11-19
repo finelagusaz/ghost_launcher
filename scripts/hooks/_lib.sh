@@ -25,3 +25,24 @@ hook_emit_context() {
   jq -n --arg event "$1" --arg context "$2" \
     '{hookSpecificOutput: {hookEventName: $event, additionalContext: $context}}'
 }
+
+# 編集したファイルが属する作業ツリーの根を HOOK_WORKTREE に入れる。検査系のフックは、
+# CLAUDE_PROJECT_DIR でなくここで検査する。ワークツリーで作業するセッションでも
+# CLAUDE_PROJECT_DIR は元のチェックアウトを指すため、そこで検査すると、編集していない
+# ツリー（元のチェックアウト）を検査して「問題なし」と黙ってしまう。
+# 編集したファイルがこのプロジェクト（元のチェックアウトか、そのワークツリー。git の共通
+# ディレクトリが CLAUDE_PROJECT_DIR と同じもの）の外なら 1 を返す。呼び出し側は検査しない。
+hook_resolve_worktree() {
+  local dir common project_common
+  dir=$(dirname "$HOOK_FILE_PATH")
+  while [ ! -d "$dir" ]; do
+    local parent
+    parent=$(dirname "$dir")
+    [ "$parent" = "$dir" ] && return 1
+    dir="$parent"
+  done
+  HOOK_WORKTREE=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 1
+  common=$(git -C "$HOOK_WORKTREE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  project_common=$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  [ "$common" = "$project_common" ]
+}
