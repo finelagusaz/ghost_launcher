@@ -381,6 +381,44 @@ describe("useSearch", () => {
     expect(result.current.ghosts[0]).toBe(reimu);
   });
 
+  it("バッファと重ならない位置から先頭へ戻っても total を保ち COUNT を再発行しない（全置換分岐）", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(50);
+    vi.mocked(searchGhosts)
+      .mockResolvedValueOnce([alice]) // offset 10: 先頭バッファと重ならず全置換
+      .mockResolvedValueOnce([{ ...reimu }, { ...marisa }]); // offset 0: 再び重ならず全置換
+
+    const totals: number[] = [];
+    const { result, rerender } = renderHook(
+      ({ offset }) => {
+        const r = useSearch("rk1", "", 2, offset, 0);
+        totals.push(r.total);
+        return r;
+      },
+      { initialProps: { offset: 0 } }
+    );
+    await waitFor(() => {
+      expect(result.current.total).toBe(50);
+    });
+
+    rerender({ offset: 10 });
+    await waitFor(() => {
+      expect(result.current.loadedStart).toBe(10);
+    });
+    const totalsBeforeReturn = totals.length;
+
+    rerender({ offset: 0 });
+    await waitFor(() => {
+      expect(result.current.loadedStart).toBe(0);
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.ghosts).toHaveLength(2);
+    expect(searchGhostsInitialPage).toHaveBeenCalledTimes(1);
+    expect(countGhostsByQuery).toHaveBeenCalledTimes(1);
+    expect(totals.slice(totalsBeforeReturn).every((t) => t === 50)).toBe(true);
+  });
+
   it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5).mockResolvedValueOnce(5);
     vi.mocked(searchGhosts)
