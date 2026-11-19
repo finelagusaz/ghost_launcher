@@ -684,7 +684,8 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 
 - トリガー: `v*` タグ push
 - 実行環境: `windows-latest`
-- ステップ: 試験（`npm test`・`cargo test --workspace`）→ `npx tauri build --no-bundle` → ポータブル ZIP 作成 → GitHub Release 作成（自動リリースノート）。試験が落ちたら公開しない
+- ステップ: タグとアプリの版の照合（`npm run check:version -- --tag <タグ>`）→ 試験（`npm test`・`cargo test --workspace`）→ `npx tauri build --no-bundle` → ポータブル ZIP 作成 → GitHub Release 作成（自動リリースノート）。照合か試験が落ちたら公開しない
+- アプリの版: `package.json`・`package-lock.json`・`src-tauri/tauri.conf.json`・`src-tauri/Cargo.toml` が同じ版を持つ（`scripts/check-version.mjs` が対象の単一権威。CI が PR ごとに一致を確かめる）。リリースの手順は `docs/development.md`
 
 ### 11.3 E2E テスト（ローカル手動実行）
 

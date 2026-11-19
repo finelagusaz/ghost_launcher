@@ -35,6 +35,8 @@ npm run check:ui-guidelines
 npm run test:ui-guidelines-check
 npm run test:doc-paths-check
 npm run check:doc-paths
+npm run test:version-check
+npm run check:version
 npm run test:hooks
 
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）

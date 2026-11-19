@@ -63,6 +63,13 @@ jobs:
       - name: Check doc paths
         run: npm run check:doc-paths
 
+      # アプリの版を持つファイル同士が同じ版か（リリース時のタグとの照合は release.yml）
+      - name: Test version checks
+        run: npm run test:version-check
+
+      - name: Check versions
+        run: npm run check:version
+
       # Claude Code フック（scripts/hooks/）の出力契約を検査する。フックは bash + jq で動くため
       # 既定の pwsh でなく bash で走らせる（pwsh からの `bash` 解決に依存しない）。
       - name: Test Claude Code hooks

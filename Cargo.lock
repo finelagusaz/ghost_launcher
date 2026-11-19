@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "ghost-launcher"
-version = "0.1.0"
+version = "0.9.1"
 dependencies = [
  "criterion",
  "encoding_rs",

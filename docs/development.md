@@ -73,7 +73,13 @@ npm run e2e
 
 - `main` 向けの pull request と `main` への push: Windows 上でビルド・テスト・lint を検証（`.github/workflows/ci-build.yml`）
 - bench プロファイルのコンパイル検証（`.github/workflows/ci-bench-profile.yml`。発火条件は同ファイルを参照）
-- `v*` タグ push: 試験を通してからリリースビルドを実行し、GitHub Release と自動リリースノートを作成（`.github/workflows/release.yml`）
+- `v*` タグ push: タグとアプリの版を照合し、試験を通してからリリースビルドを実行し、GitHub Release と自動リリースノートを作成（`.github/workflows/release.yml`）
+
+### リリースの手順
+
+1. アプリの版を上げる PR を作り、マージする。対象のファイルは `scripts/check-version.mjs` が持つ一覧で、すべて同じ版にする（`npm run check:version` で一致を確かめられる。`package-lock.json` と `Cargo.lock` は `npm install` と `cargo check` で追従させる）
+2. マージ後の `main` に、版と同じタグ（例: 版が `0.9.2` なら `v0.9.2`）を打って push する
+3. `release.yml` がタグと版を照合する。一致しなければ公開しない
 
 ## 関連ドキュメント
 
