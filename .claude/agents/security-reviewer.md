@@ -19,7 +19,7 @@ tools: Read, Grep, Glob, Bash
 
 ### 2. コマンドインジェクション
 - `Command::new()` や `std::process::Command` でユーザー入力が引数に渡される箇所
-- `ssp.rs` の `launch_ghost` のように外部プロセスを起動する箇所で、引数がサニタイズされているか。webview 由来のパスは、ファイルシステムに触れる前に `src-tauri/src/local_path.rs` の `is_local_drive_path` で絞る（UNC は存在確認だけで SMB 接続を起こし、実行ファイルならリモート上の exe を起動させる）
+- `ssp.rs` の `launch_ghost` のように外部プロセスを起動する箇所で、引数がサニタイズされているか。SSP フォルダ（`launch_ghost`・`validate_ssp_path` の `ssp_path`）とサムネイルのパスは、ファイルシステムに触れる前に `src-tauri/src/local_path.rs` の `is_local_drive_path` で絞っている（UNC は存在確認だけで SMB 接続を起こし、実行ファイルならリモート上の exe を起動させる）。`launch_ghost` のゴースト指定引数（`ghost_source`・`ghost_directory_name`）と、スキャン系コマンドの `ssp_path`・`additional_folders` はまだ絞っていない（追加フォルダに UNC を使う利用者の扱いが未決）。新しく webview 由来のパスを受けるコマンドを足すときは、同じ判定を通すか、通さない理由を確かめる
 - シェル経由（`sh -c` / `cmd /c`）での実行がないか
 
 ### 3. パストラバーサル
