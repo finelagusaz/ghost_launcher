@@ -53,21 +53,21 @@ test("warn-protected-file-edit: 対象外のパスでは何も出さない", () 
   assert.equal(result.stdout, "");
 });
 
-test("warn-migration-edit: Edit でも Write でも DDL を含む CACHE_SCHEMA 編集を警告する", () => {
+test("warn-cache-schema-edit: Edit でも Write でも DDL を含む CACHE_SCHEMA 編集を警告する", () => {
   const path = "C:/repo/src-tauri/src/cache_schema.rs";
   for (const extra of [{ new_string: "CREATE INDEX idx_x ON ghosts(name)" }, { content: "CREATE TABLE ghosts (id)" }]) {
-    const result = runHook("warn-migration-edit.sh", edit(path, extra));
+    const result = runHook("warn-cache-schema-edit.sh", edit(path, extra));
     assert.equal(result.status, 0);
     assert.match(contextOf(result, "PreToolUse"), /CACHE_SCHEMA/);
   }
 });
 
-test("warn-migration-edit: DDL を含まない編集・別ファイルでは何も出さない", () => {
+test("warn-cache-schema-edit: DDL を含まない編集・別ファイルでは何も出さない", () => {
   for (const payload of [
     edit("C:/repo/src-tauri/src/cache_schema.rs", { new_string: "// コメントの修正" }),
     edit("C:/repo/src-tauri/src/lib.rs", { new_string: "CREATE TABLE x" }),
   ]) {
-    const result = runHook("warn-migration-edit.sh", payload);
+    const result = runHook("warn-cache-schema-edit.sh", payload);
     assert.equal(result.status, 0);
     assert.equal(result.stdout, "");
   }
@@ -85,7 +85,7 @@ test("全フック: tool 入力を読めないときは黙って通さず、非 
   for (const name of [
     "warn-generated-edit.sh",
     "warn-protected-file-edit.sh",
-    "warn-migration-edit.sh",
+    "warn-cache-schema-edit.sh",
     "check-ts-types.sh",
     "check-rust-clippy.sh",
   ]) {

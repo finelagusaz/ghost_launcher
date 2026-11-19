@@ -30,7 +30,7 @@ cargo sweep -t 30 .
 
 ## 横断パターン
 
-**Tauri コマンド呼び出し**: フロントエンドは `invoke()` で camelCase の引数名を使い、Rust 側では自動的に snake_case に変換されます（例: `sspPath` → `ssp_path`, `additionalFolders` → `additional_folders`）。
+**Tauri コマンド呼び出し**: フロントエンドは `invoke()` で camelCase の引数名を使い、Rust 側では自動的に snake_case に変換されます（例: `sspPath` → `ssp_path`, `additionalFolders` → `additional_folders`）。**戻り値のフィールド名は変換されず**、Rust の snake_case のまま JS へ渡ります。
 
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
@@ -58,7 +58,7 @@ KISS/DRY/SRP/YAGNI・既存パターン踏襲・根本原因まで詰める・�
 
 ## ブランチ戦略
 
-GitHub Flow。ブランチ名は `{prefix}/{issue番号}-{英語で内容の説明}`（プレフィックスは `feature/` `fix/` `hotfix/` `release/` `test/` `docs/` `refactor/` `chore/`。番号のみの `fix/15` は不可）。issue を起点としない作業（依存更新・振り返り等）は issue 番号を省き `{prefix}/{英語で内容の説明}` とする。着手・PR・マージ後の手順は `/start-issue`・`/commit`・`/pr`・`/post-merge-sync` が単一権威。
+GitHub Flow。ブランチ名は `{prefix}/{issue番号}-{英語で内容の説明}`（プレフィックスは `feature/` `fix/` `hotfix/` `release/` `test/` `docs/` `refactor/` `perf/` `chore/`。番号のみの `fix/15` は不可）。issue を起点としない作業（依存更新・振り返り等）は issue 番号を省き `{prefix}/{英語で内容の説明}` とする。着手・PR・マージ後の手順は `/start-issue`・`/commit`・`/pr`・`/post-merge-sync` が単一権威。
 
 - **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
 - 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
@@ -66,7 +66,8 @@ GitHub Flow。ブランチ名は `{prefix}/{issue番号}-{英語で内容の説�
 ## 参照ドキュメント
 
 - `SPEC.md` — 機能仕様書。振る舞いを変更する場合は実装と同期させる
-  - **裁定・仕様変更の反映は追記でなく横断同期**: 関連語で SPEC・設計書・コードコメントを grep し、全出現箇所を同一コミットで揃える（片側だけ直すと文書内・文書間の自己矛盾 drift が残る）
+  - **裁定・仕様変更の反映は追記でなく横断同期**: 関連語で SPEC・規約（各 `CLAUDE.md`・`.claude/skills/`・`.claude/agents/`）・コードコメントを grep し、全出現箇所を同一コミットで揃える（片側だけ直すと文書内・文書間の自己矛盾 drift が残る）
+  - **`docs/superpowers/` の設計書・計画は時点記録として凍結**し、後の裁定で書き換えない（当時の判断根拠を残す）。現行仕様と食い違うときは SPEC が正。進行中の計画駆動フローが参照している設計書だけは、そのサイクルが終わるまで同期の対象に含める
 - `docs/ui-guidelines.md` — UI デザインガイドライン
 - `docs/locale-customization.md` — ユーザー言語カスタマイズ仕様
 - `RETROSPECTIVE.md` — 過去の振り返り（デバッグ教訓・アーキテクチャ上の学び）。更新タイミング・上書き運用・教訓の抽出順序は `/retrospective` が単一権威

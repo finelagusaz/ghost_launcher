@@ -32,7 +32,7 @@
 
 **ts-rs による自動生成**: IPC 境界を越える Rust struct には `#[cfg_attr(test, derive(TS))]` + `#[cfg_attr(test, ts(export))]` を付与する。`cargo test` 実行時に `src/types/generated/` へ TypeScript 型定義が自動生成される。手書きで TS 型を定義しない。
 
-**戻り値のフィールド名**: Tauri の `invoke()` は引数名を camelCase → snake_case に自動変換するが、**戻り値のフィールド名は変換しない**。`#[derive(Serialize)]` がそのまま JS に渡るため、TS 型は Rust のフィールド名（snake_case）と完全一致させる。`#[serde(rename_all = "camelCase")]` を使わない限り、JS 側で camelCase を期待してはならない。
+**戻り値のフィールド名**: 引数名と違い変換されない（規則はルート `CLAUDE.md`「Tauri コマンド呼び出し」）。`#[derive(Serialize)]` がそのまま JS に渡るため、TS 型は Rust のフィールド名（snake_case）と完全一致させる。`#[serde(rename_all = "camelCase")]` を使わない限り、JS 側で camelCase を期待してはならない。
 
 ## その他
 
