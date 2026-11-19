@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -8,9 +10,13 @@ const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
 // フックを実際の呼び出し形（stdin に tool 入力の JSON）で走らせる。
 // payload を文字列で渡した場合はそのまま stdin へ流す（壊れた入力の検査用）。
-function runHook(name, payload) {
+function runHook(name, payload, env = undefined) {
   const input = typeof payload === "string" ? payload : JSON.stringify(payload);
-  const result = spawnSync("bash", [join(HOOKS_DIR, name)], { input, encoding: "utf8" });
+  const result = spawnSync("bash", [join(HOOKS_DIR, name)], {
+    input,
+    encoding: "utf8",
+    env: env ? { ...process.env, ...env } : undefined,
+  });
   assert.equal(result.error, undefined, `bash を起動できない: ${String(result.error)}`);
   return result;
 }
@@ -94,4 +100,45 @@ test("全フック: tool 入力を読めないときは黙って通さず、非 
     assert.notEqual(result.status, 2, `${name}: exit 2 はツール呼び出しを止めてしまう`);
     assert.notEqual(result.stderr, "", name);
   }
+});
+
+// 本物の cargo の代わりに、PATH の先頭へ置いた偽の cargo を走らせる（body は bash の本文）
+function withFakeCargo(body, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "hook-fake-cargo-"));
+  try {
+    writeFileSync(join(dir, "cargo"), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+    return fn({ PATH: `${dir}${delimiter}${process.env.PATH}`, CLAUDE_PROJECT_DIR: dir });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("check-rust-clippy: clippy の失敗を additionalContext で知らせる", () => {
+  withFakeCargo('echo "error: unused variable"; exit 101', (env) => {
+    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), env);
+    assert.equal(result.status, 0);
+    assert.match(contextOf(result, "PostToolUse"), /unused variable/);
+  });
+});
+
+test("check-rust-clippy: 時間内に終わらなければ自分で打ち切り、確かめていないことを知らせる", () => {
+  // ハーネスに打ち切られると、何も届かないおそれがある。その手前で打ち切って知らせる
+  withFakeCargo("sleep 30", (env) => {
+    const started = Date.now();
+    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), {
+      ...env,
+      GHOST_HOOK_CLIPPY_TIMEOUT: "1",
+    });
+    assert.ok(Date.now() - started < 20_000, "打ち切り時間で止まっていない");
+    assert.equal(result.status, 0);
+    assert.match(contextOf(result, "PostToolUse"), /打ち切/);
+  });
+});
+
+test("check-rust-clippy: clippy が通れば何も出さない", () => {
+  withFakeCargo("exit 0", (env) => {
+    const result = runHook("check-rust-clippy.sh", edit("C:/repo/src-tauri/src/lib.rs"), env);
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "");
+  });
 });
