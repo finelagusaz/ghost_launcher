@@ -25,7 +25,7 @@ vi.mock("./hooks/useSettings", () => ({
 // useGhosts / useSearch の戻り値はテストごとに差し替える。GhostContent が受け取る
 // props を捕捉し、App の合成ロジック（requestKey ゲート・エラー抑制）を検証する
 const mocks = vi.hoisted(() => ({
-  ghostsState: { loading: true, error: null as string | null, refresh: () => {} },
+  ghostsState: { loading: true, error: null as { cause: unknown } | null, refresh: () => {} },
   searchState: {
     ghosts: [] as unknown[],
     total: 0,
@@ -118,7 +118,7 @@ describe("App - 起動時のキャッシュ即時表示", () => {
 
 describe("App - スキャンエラー時のキャッシュ保持（SPEC 9 エラーハンドリング）", () => {
   it("キャッシュ表示中（ゴーストあり）はスキャンエラーを抑制する", () => {
-    mocks.ghostsState = { loading: false, error: "scan failed", refresh: () => {} };
+    mocks.ghostsState = { loading: false, error: { cause: new Error("scan failed") }, refresh: () => {} };
     mocks.searchState = {
       ghosts: [makeGhost("Reimu"), makeGhost("Marisa")],
       total: 2,
@@ -134,13 +134,15 @@ describe("App - スキャンエラー時のキャッシュ保持（SPEC 9 エラ
   });
 
   it("キャッシュなし（ゴースト空）ではスキャンエラーを表示する", () => {
-    mocks.ghostsState = { loading: false, error: "scan failed", refresh: () => {} };
+    mocks.ghostsState = { loading: false, error: { cause: new Error("scan failed") }, refresh: () => {} };
     mocks.searchState = { ghosts: [], total: 0, loadedStart: 0, loading: false, dbError: null };
 
     render(<App />);
 
     const props = mocks.ghostContentSpy.mock.calls.at(-1)?.[0];
-    expect(props?.error).toBe("scan failed");
+    // 文言は App が描画時に t() で組み立てる（この試験の t はキーを返すスタブ。
+    // 文言の中身は errorMessages.test.ts が実リソースで確かめる）
+    expect(props?.error).toBe("error.scanFailed");
   });
 });
 

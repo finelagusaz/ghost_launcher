@@ -47,5 +47,13 @@
   "sort.frequency": "启动次数",
   "sort.random": "随机",
   "header.randomLaunch": "随机启动",
-  "header.randomLaunch.empty": "没有可启动的幽灵"
+  "header.randomLaunch.empty": "没有可启动的幽灵",
+  "error.detail": "（详细信息：{{detail}}）",
+  "error.scanFailed": "获取幽灵列表失败。请检查SSP文件夹和附加文件夹，然后点击「$t(header.refresh)」。{{detail}}",
+  "error.sspExeNotFound": "找不到 ssp.exe：{{path}}",
+  "error.sspLaunchFailed": "无法启动SSP：{{detail}}",
+  "error.ghostFolderNotFound": "找不到 ghost 文件夹：{{path}}",
+  "error.ghostFolderNotDirectory": "ghost 不是文件夹：{{path}}",
+  "error.ghostFolderUnreadable": "无法读取文件夹：{{path}}（{{detail}}）",
+  "error.ghostIdentityCollision": "有两个文件夹的名称仅在大小写或全角/半角上不同。请重命名其中一个：{{first}} / {{second}}"
 }

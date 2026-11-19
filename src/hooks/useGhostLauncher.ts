@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { launchGhost } from "../lib/sspClient";
-import { formatErrorDetail } from "../lib/ghostScanUtils";
+import { formatErrorDetail } from "../lib/errorMessages";
 import { useLauncherToasts } from "./useLauncherToasts";
 import type { GhostView } from "../types";
 
@@ -19,7 +19,7 @@ export function useGhostLauncher(sspPath: string | null) {
         await launchGhost(sspPath, ghost);
         notifySuccess(t("card.launchSuccess", { name: ghost.name }));
       } catch (e) {
-        notifyError(t("card.launchError", { detail: formatErrorDetail(e) }));
+        notifyError(t("card.launchError", { detail: formatErrorDetail(e, t) }));
       }
     },
     [sspPath, t, notifySuccess, notifyError],

@@ -47,5 +47,13 @@
   "sort.frequency": "По частоте запуска",
   "sort.random": "Случайно",
   "header.randomLaunch": "Случайный запуск",
-  "header.randomLaunch.empty": "Нет доступных духов для запуска"
+  "header.randomLaunch.empty": "Нет доступных духов для запуска",
+  "error.detail": " (Подробности: {{detail}})",
+  "error.scanFailed": "Не удалось получить список духов. Проверьте папку SSP и дополнительные папки, затем нажмите «$t(header.refresh)».{{detail}}",
+  "error.sspExeNotFound": "ssp.exe не найден: {{path}}",
+  "error.sspLaunchFailed": "Не удалось запустить SSP: {{detail}}",
+  "error.ghostFolderNotFound": "Папка ghost не найдена: {{path}}",
+  "error.ghostFolderNotDirectory": "ghost не является папкой: {{path}}",
+  "error.ghostFolderUnreadable": "Не удалось прочитать папку: {{path}} ({{detail}})",
+  "error.ghostIdentityCollision": "Есть папки, имена которых отличаются только регистром или полноширинными/полуширинными символами. Переименуйте одну из них: {{first}} / {{second}}"
 }

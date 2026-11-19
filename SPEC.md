@@ -78,6 +78,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `commands/ssp.rs`   | SSP 連携: ゴースト起動（launch_ghost）・SSP パス検証（validate_ssp_path）                 |
 | `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・キャッシュ再構築（cache miss）後の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
+| `commands/error.rs` | UI へ届くコマンドエラー `CommandError`（種別 `kind` + 引数。ts-rs で TS 型を生成）。文言は持たず、フロントエンドが種別から i18n で組み立てる（§13） |
 
 **`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
 
@@ -267,7 +268,7 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | 戻り値 | `ScanStoreResult { cache_hit: bool, total: usize, fingerprint: String, request_key: String }`（ts-rs により TS 型を自動生成・CI で照合） |
 | 処理   | SSP の `ghost/` ディレクトリと追加フォルダを走査し、ゴーストをスキャンして SQLite に直接書き込む。`cached_fingerprint` が一致すれば `cache_hit: true` を返し書き込みをスキップ。`request_key` はフロントエンド（`ghostScanUtils.ts` の `requestKeyFromSettings`）が唯一計算し値として渡す（Rust は受領値をそのまま使う） |
 | ソート | 表示順はフロントエンドの SQL `ORDER BY`（§8.6）が唯一の権威。scan 結果自体は順序を持たない。追加フォルダの正規化はロケール非依存のコードポイント順 |
-| エラー | SSP の `ghost/` フォルダ不在時にエラー。追加フォルダの不在・読取不能は無視して続行               |
+| エラー | `CommandError`（§13）。SSP の `ghost/` フォルダの不在・非ディレクトリ・読取不能、ゴースト identity の衝突は種別つきで返す。追加フォルダの不在・読取不能は無視して続行 |
 
 ### 6.2 `launch_ghost`
 
@@ -277,7 +278,7 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | 戻り値 | `()`                                                                                                                                                            |
 | 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
 | 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
-| エラー | `ssp.exe` 不在時・起動失敗時にエラー                                                                                                                            |
+| エラー | `CommandError`（§13）。`ssp.exe` 不在時は `sspExeNotFound`、起動失敗時は `sspLaunchFailed`                                                                     |
 
 ### 6.3 `validate_ssp_path`
 
@@ -286,7 +287,7 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | 引数   | `ssp_path: String`                                           |
 | 戻り値 | `()`                                                         |
 | 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
-| エラー | `ssp.exe` 不在時にエラーメッセージを返す                     |
+| エラー | `ssp.exe` 不在時に `CommandError` の `sspExeNotFound` を返す（設定画面が UI の言語の文言にして表示） |
 
 ### 6.4 `read_user_locale`
 
@@ -711,6 +712,8 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 ---
 
 ## 13. エラーハンドリング方針
+
+UI に出るエラー文言は、すべて UI の言語の i18n リソースから組み立てる。Rust のコマンドは、利用者が対処できる失敗を文言でなく `CommandError` の種別（`kind`）と引数（パス・OS のエラー文）で返し、フロントエンドが `error.{kind}` キーで文言にする。種別を持たない内部失敗（DB エラー等）は `internal` に生の詳細を載せ、定型文の「詳細」欄へそのまま出す。スキャン失敗の文言は描画時に組み立て、言語を切り替えると表示中のエラーも切り替わる。
 
 | 場面                                 | 挙動                                                     |
 | ------------------------------------ | -------------------------------------------------------- |

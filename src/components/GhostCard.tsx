@@ -14,7 +14,7 @@ import {
 } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
-import { formatErrorDetail } from "../lib/ghostScanUtils";
+import { formatErrorDetail } from "../lib/errorMessages";
 import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
 import { launchGhost } from "../lib/sspClient";
 import { useLauncherToasts } from "../hooks/useLauncherToasts";
@@ -239,7 +239,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
       await launchGhost(sspPath, ghost);
       notifySuccess(t("card.launchSuccess", { name: ghost.name }));
     } catch (e) {
-      setError(t("card.launchError", { detail: formatErrorDetail(e) }));
+      setError(t("card.launchError", { detail: formatErrorDetail(e, t) }));
     } finally {
       setLaunching(false);
     }

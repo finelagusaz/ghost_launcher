@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use crate::commands::error::CommandError;
+
 /// SSP へ渡すゴースト指定引数を構築する。
 /// SSP 内ゴースト（source == "ssp"）はディレクトリ名のみ、外部ゴーストはフルパス。
 fn build_ghost_arg(ghost_source: &str, ghost_directory_name: &str) -> String {
@@ -16,10 +18,12 @@ fn build_ghost_arg(ghost_source: &str, ghost_directory_name: &str) -> String {
 
 /// SSP フォルダのパスを検証する（ssp.exe の存在確認）
 #[tauri::command]
-pub fn validate_ssp_path(ssp_path: String) -> Result<(), String> {
+pub fn validate_ssp_path(ssp_path: String) -> Result<(), CommandError> {
     let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
     if !ssp_exe.exists() {
-        return Err(format!("ssp.exe が見つかりません: {}", ssp_exe.display()));
+        return Err(CommandError::SspExeNotFound {
+            path: ssp_exe.display().to_string(),
+        });
     }
     Ok(())
 }
@@ -30,11 +34,13 @@ pub fn launch_ghost(
     ssp_path: String,
     ghost_directory_name: String,
     ghost_source: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
 
     if !ssp_exe.exists() {
-        return Err(format!("ssp.exe が見つかりません: {}", ssp_exe.display()));
+        return Err(CommandError::SspExeNotFound {
+            path: ssp_exe.display().to_string(),
+        });
     }
 
     let ghost_arg = build_ghost_arg(&ghost_source, &ghost_directory_name);
@@ -44,14 +50,16 @@ pub fn launch_ghost(
         .arg(&ghost_arg)
         .current_dir(&ssp_path)
         .spawn()
-        .map_err(|e| format!("SSP の起動に失敗しました: {}", e))?;
+        .map_err(|e| CommandError::SspLaunchFailed {
+            detail: e.to_string(),
+        })?;
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_ghost_arg, validate_ssp_path};
+    use super::{CommandError, build_ghost_arg, validate_ssp_path};
 
     #[test]
     fn ssp内ゴーストはディレクトリ名のみを渡す() {
@@ -69,6 +77,6 @@ mod tests {
     #[test]
     fn validate_ssp_path_はssp_exe不在でエラーを返す() {
         let result = validate_ssp_path("C:\\__ghost_launcher_no_such_dir__".to_string());
-        assert!(result.is_err());
+        assert!(matches!(result, Err(CommandError::SspExeNotFound { .. })));
     }
 }

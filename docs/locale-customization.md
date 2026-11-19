@@ -89,6 +89,14 @@ locales/
 | `card.launching` | 起動中ボタン（押下後） | — |
 | `card.launchError` | 起動失敗時のエラーメッセージ | `{{detail}}` |
 | `card.launchSuccess` | ランダム起動成功のトースト通知 | `{{name}}` |
+| `error.detail` | エラー文言の末尾に添える詳細（括弧書き） | `{{detail}}` |
+| `error.scanFailed` | ゴースト一覧の取得失敗メッセージ（再読込ボタン名を `$t(header.refresh)` で参照） | `{{detail}}` |
+| `error.sspExeNotFound` | 選んだフォルダに ssp.exe が無い | `{{path}}` |
+| `error.sspLaunchFailed` | SSP のプロセス起動の失敗 | `{{detail}}` |
+| `error.ghostFolderNotFound` | SSP の ghost フォルダが無い | `{{path}}` |
+| `error.ghostFolderNotDirectory` | SSP の ghost がフォルダでない | `{{path}}` |
+| `error.ghostFolderUnreadable` | SSP の ghost フォルダを読み取れない | `{{path}}` `{{detail}}` |
+| `error.ghostIdentityCollision` | 全角・半角や大文字・小文字の違いだけで名前が重なるフォルダがある | `{{first}}` `{{second}}` |
 | `search.label` | 検索ボックスのラベル | — |
 | `search.placeholder` | 検索ボックスのプレースホルダ | — |
 | `search.clear` | 検索クリア（×）ボタンの aria-label | — |
@@ -105,6 +113,7 @@ locales/
 - ファイルサイズの上限は **1 MB** です
 - 文字コードは **UTF-8** で保存してください
 - フラットなキー・バリュー形式です（ネストは不可。値は文字列のみ）
+- 値の中の `$t(キー)` は、そのキーの訳文に置き換わります（例: `error.scanFailed` の `$t(header.refresh)` は再読込ボタンの名前）。`header.refresh` を上書きすれば、エラー文言の中のボタン名も揃って変わります
 - アプリ起動後に JSON を編集した場合は、設定パネルで言語を選び直すと反映されます（同じ言語のままの場合は、一度別の言語に切り替えてから戻してください）
 - **複数形のあるキー**（現在は `list.count` のみ）: 英語の内蔵翻訳は i18next の複数形サフィックス付きキー `list.count_one` / `list.count_other` を使っています。**英語（`en.json`）で件数表示を変更する場合はこの 2 キーを上書きしてください**（`list.count` を書いても効きません）。日本語・韓国語・中国語・ロシア語の内蔵翻訳はフラットな `list.count` です。なお、ロシア語のように複数形カテゴリを持つ言語では、サフィックス付きキー（例: `list.count_one` / `list.count_few` / `list.count_many`）を追加するとフラットキーより優先され、文法的に正しい複数形を定義できます
 
@@ -200,6 +209,14 @@ locales/
 | `card.launching` | Launch button after clicked | — |
 | `card.launchError` | Error message on launch failure | `{{detail}}` |
 | `card.launchSuccess` | Toast shown on random launch success | `{{name}}` |
+| `error.detail` | Details appended to an error message (parenthesized) | `{{detail}}` |
+| `error.scanFailed` | Message when loading the ghost list fails (refers to the reload button via `$t(header.refresh)`) | `{{detail}}` |
+| `error.sspExeNotFound` | ssp.exe is missing from the selected folder | `{{path}}` |
+| `error.sspLaunchFailed` | Starting the SSP process failed | `{{detail}}` |
+| `error.ghostFolderNotFound` | SSP's ghost folder is missing | `{{path}}` |
+| `error.ghostFolderNotDirectory` | SSP's ghost is not a folder | `{{path}}` |
+| `error.ghostFolderUnreadable` | SSP's ghost folder cannot be read | `{{path}}` `{{detail}}` |
+| `error.ghostIdentityCollision` | Two folders have names that differ only in case or full-width/half-width characters | `{{first}}` `{{second}}` |
 | `search.label` | Search box label | — |
 | `search.placeholder` | Search box placeholder | — |
 | `search.clear` | Aria-label for the clear (×) button | — |
@@ -216,5 +233,6 @@ locales/
 - Maximum file size is **1 MB**
 - Save the file in **UTF-8** encoding
 - Use flat key-value pairs only (no nesting; values must be strings)
+- `$t(key)` inside a value is replaced with that key's translation (e.g. `$t(header.refresh)` in `error.scanFailed` is the reload button's name). Overriding `header.refresh` also changes the button name inside the error message
 - If you edit the JSON while the app is running, re-select the language in the settings panel to apply changes (if already using that language, switch to another and back)
 - **Pluralized keys** (currently only `list.count`): the built-in English translation uses i18next plural-suffixed keys `list.count_one` / `list.count_other`. **To change the count display in English (`en.json`), override these two keys** — overriding `list.count` has no effect. The built-in Japanese, Korean, Chinese, and Russian translations use the flat `list.count` key. For languages with plural categories such as Russian, adding suffixed keys (e.g. `list.count_one` / `list.count_few` / `list.count_many`) takes precedence over the flat key and lets you define grammatically correct plurals

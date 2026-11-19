@@ -13,6 +13,7 @@ use super::fingerprint::{
 use super::path_utils::{normalize_path, unique_sorted_additional_folders};
 use super::store::ghost_identity_key;
 use super::types::Ghost;
+use crate::commands::error::CommandError;
 
 /// scan_key（走査差分の生の物理キー）のセパレータ。制御文字は Windows のファイル名に
 /// 使えないため、normalized_parent と生 directory_name の境界が名前と衝突しない。
@@ -105,25 +106,23 @@ pub(crate) fn walk_parent(
     required: bool,
     tokens: &mut Vec<String>,
     mut ghosts: Option<(&str, &mut Vec<Ghost>)>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let normalized_parent = normalize_path(parent_dir);
 
     if !parent_dir.exists() {
         if required {
-            return Err(format!(
-                "ghost フォルダが見つかりません: {}",
-                parent_dir.display()
-            ));
+            return Err(CommandError::GhostFolderNotFound {
+                path: parent_dir.display().to_string(),
+            });
         }
         push_absent_parent_token(tokens, parent_label, &normalized_parent, "missing");
         return Ok(());
     }
     if !parent_dir.is_dir() {
         if required {
-            return Err(format!(
-                "ghost フォルダがディレクトリではありません: {}",
-                parent_dir.display()
-            ));
+            return Err(CommandError::GhostFolderNotDirectory {
+                path: parent_dir.display().to_string(),
+            });
         }
         push_absent_parent_token(tokens, parent_label, &normalized_parent, "not-directory");
         return Ok(());
@@ -139,11 +138,10 @@ pub(crate) fn walk_parent(
         Ok(e) => e,
         Err(error) => {
             if required {
-                return Err(format!(
-                    "ディレクトリを読み取れませんでした ({}): {}",
-                    parent_dir.display(),
-                    error
-                ));
+                return Err(CommandError::GhostFolderUnreadable {
+                    path: parent_dir.display().to_string(),
+                    detail: error.to_string(),
+                });
             }
             tokens.push(format!(
                 "entries|{}|{}|unreadable",
@@ -218,7 +216,7 @@ pub(crate) fn walk_parent(
 pub(crate) fn scan_ghosts_with_fingerprint_internal(
     ssp_path: &str,
     additional_folders: &[String],
-) -> Result<(Vec<Ghost>, String), String> {
+) -> Result<(Vec<Ghost>, String), CommandError> {
     let ghost_dir = Path::new(ssp_path).join("ghost");
     let mut tokens = vec!["fingerprint-version|1".to_string()];
     let mut ghosts: Vec<Ghost> = Vec::new();
@@ -274,25 +272,23 @@ fn walk_parent_entries(
     required: bool,
     tokens: &mut Vec<String>,
     entries: &mut Vec<ScanEntry>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let normalized_parent = normalize_path(parent_dir);
 
     if !parent_dir.exists() {
         if required {
-            return Err(format!(
-                "ghost フォルダが見つかりません: {}",
-                parent_dir.display()
-            ));
+            return Err(CommandError::GhostFolderNotFound {
+                path: parent_dir.display().to_string(),
+            });
         }
         push_absent_parent_token(tokens, parent_label, &normalized_parent, "missing");
         return Ok(());
     }
     if !parent_dir.is_dir() {
         if required {
-            return Err(format!(
-                "ghost フォルダがディレクトリではありません: {}",
-                parent_dir.display()
-            ));
+            return Err(CommandError::GhostFolderNotDirectory {
+                path: parent_dir.display().to_string(),
+            });
         }
         push_absent_parent_token(tokens, parent_label, &normalized_parent, "not-directory");
         return Ok(());
@@ -308,11 +304,10 @@ fn walk_parent_entries(
         Ok(e) => e,
         Err(error) => {
             if required {
-                return Err(format!(
-                    "ディレクトリを読み取れませんでした ({}): {}",
-                    parent_dir.display(),
-                    error
-                ));
+                return Err(CommandError::GhostFolderUnreadable {
+                    path: parent_dir.display().to_string(),
+                    detail: error.to_string(),
+                });
             }
             tokens.push(format!(
                 "entries|{}|{}|unreadable",
@@ -374,7 +369,7 @@ fn walk_parent_entries(
 pub(crate) fn scan_entries_with_fingerprint(
     ssp_path: &str,
     additional_folders: &[String],
-) -> Result<(Vec<ScanEntry>, String), String> {
+) -> Result<(Vec<ScanEntry>, String), CommandError> {
     let ghost_dir = Path::new(ssp_path).join("ghost");
     let mut tokens = vec!["fingerprint-version|1".to_string()];
     let mut entries: Vec<ScanEntry> = Vec::new();
@@ -411,17 +406,18 @@ pub(crate) fn parse_entry(entry: &ScanEntry) -> Option<Ghost> {
 /// loud に弾かせる従来経路が働かなくなる（不変な既存ゴーストに新規が畳み込むケースは共処理されない）。
 /// walk が返す全 present エントリ（不変子も含む）上でここが単一権威として衝突を弾き、
 /// 「サイレントなゴースト消失＋path 振動」への退行を防ぐ（設計書 §4.2）。
-pub(crate) fn check_identity_uniqueness(entries: &[ScanEntry]) -> Result<(), String> {
+pub(crate) fn check_identity_uniqueness(entries: &[ScanEntry]) -> Result<(), CommandError> {
     use std::collections::HashMap;
-    let mut seen: HashMap<&str, &str> = HashMap::new();
+    let mut seen: HashMap<&str, &ScanEntry> = HashMap::new();
     for entry in entries.iter().filter(|e| e.is_present) {
-        if let Some(prev_scan_key) = seen.insert(&entry.identity_key, &entry.scan_key) {
+        if let Some(prev) = seen.insert(&entry.identity_key, entry) {
             // 同一 scan_key の再出現（同一物理ディレクトリ）は衝突でない。別物理ディレクトリのみ弾く。
-            if prev_scan_key != entry.scan_key {
-                return Err(format!(
-                    "ゴースト identity が衝突しています（NFKC 畳み込みで別ディレクトリが同一キーに）: {} / {}",
-                    prev_scan_key, entry.scan_key
-                ));
+            // 利用者が名前を変えて解消できるよう、内部キーでなく両ディレクトリのパスを返す。
+            if prev.scan_key != entry.scan_key {
+                return Err(CommandError::GhostIdentityCollision {
+                    first: prev.path.display().to_string(),
+                    second: entry.path.display().to_string(),
+                });
             }
         }
     }
@@ -440,7 +436,7 @@ pub(crate) fn fingerprint_only_internal(
 
 #[cfg(test)]
 mod tests {
-    use super::{ghost_from_meta, scan_ghosts_with_fingerprint_internal};
+    use super::{CommandError, ghost_from_meta, scan_ghosts_with_fingerprint_internal};
     use crate::testutil::{TempDirGuard, create_ghost_dir_with_descript};
     use std::fs;
     use std::path::PathBuf;
@@ -585,8 +581,10 @@ mod tests {
 
         let result = scan_ghosts_with_fingerprint_internal(&ssp_root.to_string_lossy(), &[]);
         assert!(result.is_err());
-        let error = result.err().ok_or_else(|| "expected error".to_string())?;
-        assert!(error.contains("ghost フォルダが見つかりません"));
+        assert!(matches!(
+            result,
+            Err(CommandError::GhostFolderNotFound { .. })
+        ));
         Ok(())
     }
 
@@ -729,10 +727,21 @@ mod tests {
         create_ghost_dir_with_descript(&ssp_ghost, "a", "name,Ascii\ncharset,UTF-8\n")?;
 
         let (entries, _) = super::scan_entries_with_fingerprint(&ssp_root.to_string_lossy(), &[])?;
-        assert!(
-            super::check_identity_uniqueness(&entries).is_err(),
-            "NFKC 衝突が loud に弾かれていない（サイレント消失＋path 振動への退行）"
-        );
+        let result = super::check_identity_uniqueness(&entries);
+        let Err(CommandError::GhostIdentityCollision { first, second }) = result else {
+            panic!(
+                "NFKC 衝突が loud に弾かれていない（サイレント消失＋path 振動への退行）: {result:?}"
+            );
+        };
+        // 利用者に見せる値なので、内部キーでなく実在するディレクトリのパスであること
+        let mut paths = [first, second];
+        paths.sort();
+        let mut expected = [
+            ssp_ghost.join("a").display().to_string(),
+            ssp_ghost.join("Ａ").display().to_string(),
+        ];
+        expected.sort();
+        assert_eq!(paths, expected);
         Ok(())
     }
 

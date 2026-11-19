@@ -1,14 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { refreshGhostCatalog } from "../lib/ghostCatalogService";
-import { requestKeyFromSettings, buildScanErrorMessage } from "../lib/ghostScanUtils";
+import { requestKeyFromSettings } from "../lib/ghostScanUtils";
 
 interface RefreshOptions {
   forceFullScan?: boolean;
 }
 
+/// スキャン失敗の生の値。文言は表示側が UI の言語で組み立てる（翻訳済みの文字列を持つと、
+/// 言語を切り替えても前の言語の文言が残る）。reject 値が falsy でも「失敗あり」を表せるよう包む。
+export interface ScanFailure {
+  cause: unknown;
+}
+
 export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ScanFailure | null>(null);
   const inFlightKeyRef = useRef<string | null>(null);
   const requestSeqRef = useRef(0);
 
@@ -50,7 +56,7 @@ export function useGhosts(sspPath: string | null, ghostFolders: string[]) {
       }
     } catch (e) {
       if (requestSeq === requestSeqRef.current) {
-        setError(buildScanErrorMessage(e));
+        setError({ cause: e });
       }
     } finally {
       if (requestSeq === requestSeqRef.current) {

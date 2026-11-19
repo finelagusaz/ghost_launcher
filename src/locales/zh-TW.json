@@ -47,5 +47,13 @@
   "sort.frequency": "啟動次數",
   "sort.random": "隨機",
   "header.randomLaunch": "隨機啟動",
-  "header.randomLaunch.empty": "沒有可啟動的幽靈"
+  "header.randomLaunch.empty": "沒有可啟動的幽靈",
+  "error.detail": "（詳細資訊：{{detail}}）",
+  "error.scanFailed": "取得幽靈清單失敗。請確認SSP資料夾與附加資料夾，然後點選「$t(header.refresh)」。{{detail}}",
+  "error.sspExeNotFound": "找不到 ssp.exe：{{path}}",
+  "error.sspLaunchFailed": "無法啟動SSP：{{detail}}",
+  "error.ghostFolderNotFound": "找不到 ghost 資料夾：{{path}}",
+  "error.ghostFolderNotDirectory": "ghost 不是資料夾：{{path}}",
+  "error.ghostFolderUnreadable": "無法讀取資料夾：{{path}}（{{detail}}）",
+  "error.ghostIdentityCollision": "有兩個資料夾的名稱僅在大小寫或全形/半形上不同。請重新命名其中一個：{{first}} / {{second}}"
 }

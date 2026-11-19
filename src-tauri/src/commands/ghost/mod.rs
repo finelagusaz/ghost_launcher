@@ -18,6 +18,8 @@ pub(crate) use types::Ghost;
 
 pub use types::ScanStoreResult;
 
+use crate::commands::error::CommandError;
+
 /// request_key が空なら Err を返す。JS 単一権威の信頼境界での最小防御。
 /// 空キーで書き込むと全ゴーストが request_key='' パーティションに同居する事故を防ぐ。
 fn ensure_request_key(request_key: &str) -> Result<(), String> {
@@ -37,7 +39,7 @@ pub async fn scan_and_store(
     request_key: String,
     cached_fingerprint: Option<String>,
     actor: tauri::State<'_, crate::actor::ActorHandle>,
-) -> Result<ScanStoreResult, String> {
+) -> Result<ScanStoreResult, CommandError> {
     actor
         .request(|reply| crate::actor::Job::Scan {
             ssp_path,
@@ -77,7 +79,7 @@ pub(crate) fn scan_and_store_blocking(
     additional_folders: Vec<String>,
     request_key: String,
     cached_fingerprint: Option<String>,
-) -> Result<ScanStoreResult, String> {
+) -> Result<ScanStoreResult, CommandError> {
     ensure_request_key(&request_key)?;
 
     // 親ディレクトリ mtime を 1 回だけ収集（Layer 1 / Layer 2 hit / cache miss で共用）

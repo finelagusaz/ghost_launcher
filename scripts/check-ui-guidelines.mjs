@@ -59,28 +59,54 @@ export const checks = [
   },
   {
     id: "scan-error-actionable",
-    // 文言の所在に絞る。src 全体を見ると、テストやコメントに「再読込」があるだけで通ってしまう
-    file: "src/lib/ghostScanUtils.ts",
-    message: "スキャン失敗時は再操作が分かる文言を含めてください。",
-    test: (source) => /再読込/.test(source),
+    // 文言の所在（各ロケールの error.scanFailed）に絞る。再操作の手段は再読込ボタンなので、
+    // ボタン名を直書きせず $t(header.refresh) で参照させる（ボタン名を変えても文言がずれない）
+    files: () => listLocaleFiles(),
+    message: "スキャン失敗の文言（error.scanFailed）は $t(header.refresh) で再読込ボタンを案内してください。",
+    test: (source) => {
+      const value = JSON.parse(source)["error.scanFailed"];
+      return typeof value === "string" && value.includes("$t(header.refresh)");
+    },
   },
 ];
+
+const LOCALES_DIR = "src/locales";
+
+// 同梱ロケールの全ファイル。ロケールを足したら自動で検査対象に入る
+function listLocaleFiles() {
+  return readdirSync(resolve(process.cwd(), LOCALES_DIR))
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => `${LOCALES_DIR}/${entry}`);
+}
 
 export function runChecks() {
   const failures = [];
 
   for (const check of checks) {
-    const target = check.dir ?? check.file;
-    let source = "";
+    let targets;
     try {
-      source = check.dir ? readDir(check.dir) : read(check.file);
+      targets = check.dir ? [check.dir] : check.files ? check.files() : [check.file];
     } catch (error) {
       failures.push(`[${check.id}] ${String(error)}`);
       continue;
     }
+    if (targets.length === 0) {
+      // 対象 0 件で素通りすると、検査が消えたことに気づけない
+      failures.push(`[${check.id}] 検査対象のファイルがありません`);
+      continue;
+    }
 
-    if (!check.test(source)) {
-      failures.push(`[${check.id}] ${target}: ${check.message}`);
+    for (const target of targets) {
+      let passed;
+      try {
+        passed = check.test(check.dir ? readDir(target) : read(target));
+      } catch (error) {
+        failures.push(`[${check.id}] ${target}: ${String(error)}`);
+        continue;
+      }
+      if (!passed) {
+        failures.push(`[${check.id}] ${target}: ${check.message}`);
+      }
     }
   }
 

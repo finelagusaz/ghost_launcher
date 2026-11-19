@@ -47,5 +47,13 @@
   "sort.frequency": "실행 횟수순",
   "sort.random": "랜덤",
   "header.randomLaunch": "랜덤 실행",
-  "header.randomLaunch.empty": "실행할 수 있는 고스트가 없습니다"
+  "header.randomLaunch.empty": "실행할 수 있는 고스트가 없습니다",
+  "error.detail": " (상세: {{detail}})",
+  "error.scanFailed": "고스트 목록을 가져오지 못했습니다. SSP 폴더와 추가 폴더를 확인한 후 '$t(header.refresh)'을(를) 실행해주세요.{{detail}}",
+  "error.sspExeNotFound": "ssp.exe를 찾을 수 없습니다: {{path}}",
+  "error.sspLaunchFailed": "SSP를 시작할 수 없습니다: {{detail}}",
+  "error.ghostFolderNotFound": "ghost 폴더를 찾을 수 없습니다: {{path}}",
+  "error.ghostFolderNotDirectory": "ghost가 폴더가 아닙니다: {{path}}",
+  "error.ghostFolderUnreadable": "폴더를 읽을 수 없습니다: {{path}} ({{detail}})",
+  "error.ghostIdentityCollision": "대소문자나 전각/반각 차이만 있는 이름의 폴더가 있습니다. 둘 중 하나의 이름을 바꿔주세요: {{first}} / {{second}}"
 }

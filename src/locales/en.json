@@ -48,5 +48,13 @@
   "sort.frequency": "Most launched",
   "sort.random": "Random",
   "header.randomLaunch": "Random launch",
-  "header.randomLaunch.empty": "No ghosts available to launch"
+  "header.randomLaunch.empty": "No ghosts available to launch",
+  "error.detail": " (Details: {{detail}})",
+  "error.scanFailed": "Failed to load the ghost list. Check the SSP folder and additional folders, then click \"$t(header.refresh)\".{{detail}}",
+  "error.sspExeNotFound": "ssp.exe not found: {{path}}",
+  "error.sspLaunchFailed": "Could not start SSP: {{detail}}",
+  "error.ghostFolderNotFound": "ghost folder not found: {{path}}",
+  "error.ghostFolderNotDirectory": "ghost folder is not a folder: {{path}}",
+  "error.ghostFolderUnreadable": "Could not read the folder: {{path}} ({{detail}})",
+  "error.ghostIdentityCollision": "Two folders have names that differ only in letter case or full-width/half-width characters. Rename one of them: {{first}} / {{second}}"
 }

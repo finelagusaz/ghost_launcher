@@ -14,6 +14,7 @@ import {
 import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
 import { SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 import { validateSspPath } from "../lib/sspClient";
+import { describeError } from "../lib/errorMessages";
 
 interface Props {
   sspPath: string | null;
@@ -113,7 +114,7 @@ export function SettingsPanel({
       onPathChange(selected);
       setValidationError(null);
     } catch (e) {
-      setValidationError(e instanceof Error ? e.message : String(e));
+      setValidationError(describeError(e, t));
     } finally {
       setValidating(false);
     }
