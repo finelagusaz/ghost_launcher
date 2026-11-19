@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   Badge,
   Button,
@@ -14,8 +13,9 @@ import {
 } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
-import { formatErrorDetail } from "../lib/ghostScanUtils";
+import { formatErrorDetail, type CaughtError } from "../lib/errorMessages";
 import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
+import { thumbnailUrl } from "../lib/thumbnailUrl";
 import { launchGhost } from "../lib/sspClient";
 import { useLauncherToasts } from "../hooks/useLauncherToasts";
 import type { GhostView } from "../types";
@@ -209,7 +209,8 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
   const { t } = useTranslation();
   const { notifySuccess } = useLauncherToasts();
   const [launching, setLaunching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 文言は描画時に組み立てる（言語を切り替えたら表示中のエラーも切り替わる）
+  const [error, setError] = useState<CaughtError | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceFolderLabel = ghost.source !== "ssp" ? getSourceFolderLabel(ghost.source) : null;
@@ -239,7 +240,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
       await launchGhost(sspPath, ghost);
       notifySuccess(t("card.launchSuccess", { name: ghost.name }));
     } catch (e) {
-      setError(t("card.launchError", { detail: formatErrorDetail(e) }));
+      setError({ cause: e });
     } finally {
       setLaunching(false);
     }
@@ -249,7 +250,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
     ? `${ghost.directory_name} | ${ghost.craftman}`
     : ghost.directory_name;
 
-  const thumbnailSrc = ghost.thumbnail_path ? convertFileSrc(ghost.thumbnail_path) : null;
+  const thumbnailSrc = ghost.thumbnail_path ? thumbnailUrl(ghost.thumbnail_path) : null;
 
   const overlayPositionStyle: React.CSSProperties = {
     bottom: ghost.thumbnail_kind === "surface" ? 0 : "20px",
@@ -299,11 +300,11 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
       </div>
       {error && (
         <Text role="alert" className={styles.error}>
-          {error}
+          {t("card.launchError", { detail: formatErrorDetail(error.cause, t) })}
         </Text>
       )}
       {showOverlay && thumbnailSrc && createPortal(
-        <div className={styles.overlay} style={overlayPositionStyle}>
+        <div className={styles.overlay} style={overlayPositionStyle} data-testid="thumbnail-overlay">
           {Boolean(ghost.thumbnail_use_self_alpha) ? (
             <img src={thumbnailSrc} alt="" className={roundedClass} style={overlayMaxSize} />
           ) : (

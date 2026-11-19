@@ -43,8 +43,9 @@ grep -rn -A2 '#\[tauri::command\]' src-tauri/src | grep -E 'fn '
 - `Option<T>` → `T | null` の対応が正しいか
 
 ### 4. エラー型（IPC エラー漏洩の一次担当）
-- `Result<T, String>` のエラーメッセージにユーザーのファイルシステム情報が過剰に含まれていないか（この観点は当エージェントに一本化。`security-reviewer` は重複検査しない）
-- フロントエンドでエラーが適切にキャッチされているか
+- エラーにユーザーのファイルシステム情報が過剰に含まれていないか。対象は `Result<T, CommandError>` の種別の引数と `internal` の詳細、`Result<T, String>` の文字列（この観点は当エージェントに一本化。`security-reviewer` は重複検査しない）
+- 利用者が対処できる失敗を、文字列でなく `CommandError`（`src-tauri/src/commands/error.rs`）の種別で返しているか。種別を足したら、`src/lib/errorMessages.ts` の対応表と全ロケールの `error.{kind}` キーが揃っているか
+- フロントエンドでエラーが適切にキャッチされているか。invoke の reject 値は `Error` でなく、Rust のエラー値そのもの（`CommandError` ならオブジェクト）である。`e.message`・`String(e)` で受けず、`describeError`・`formatErrorDetail` を通しているか
 
 ### 5. GhostView との整合
 - `GhostView`（手書き型）のフィールドが DB スキーマの SELECT 結果と一致しているか

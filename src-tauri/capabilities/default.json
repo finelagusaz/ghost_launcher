@@ -10,9 +10,6 @@
     "dialog:default",
     "store:default",
     "window-state:default",
-    "sql:default",
-    "sql:allow-execute",
-    "sql:allow-select",
-    "sql:allow-load"
+    "sql:allow-select"
   ]
 }

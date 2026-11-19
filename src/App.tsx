@@ -25,7 +25,8 @@ import { GhostContent } from "./components/GhostContent";
 import { ScanProgressBar } from "./components/ScanProgressBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import ghostListConfig from "./config/ghost-list.json";
-import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
+import { requestKeyFromSettings } from "./lib/ghostScanUtils";
+import { formatErrorDetail, buildScanErrorMessage } from "./lib/errorMessages";
 import { getRandomGhost, reseedRandomSort, sortDependsOnLaunchStats } from "./lib/ghostDatabase";
 import { subscribeLaunchRecorded } from "./lib/sspClient";
 import type { SortOrder } from "./types";
@@ -162,7 +163,7 @@ function App() {
       // getRandomGhost（DB アクセス）失敗時のみに来る
       await launch(ghost);
     } catch (e) {
-      notifyError(t("card.launchError", { detail: formatErrorDetail(e) }));
+      notifyError(t("card.launchError", { detail: formatErrorDetail(e, t) }));
     }
   }, [searchRequestKey, sspPath, launch, t, notifyError, notifyWarning]);
 
@@ -178,9 +179,10 @@ function App() {
   }, [setOffset]);
 
   // キャッシュ表示中（ゴーストあり）はスキャンエラーを抑制し、表示を維持する。
-  // キャッシュが無い場合のみエラーを表示する（SPEC 9 エラーハンドリング）
+  // キャッシュが無い場合のみエラーを表示する（SPEC 9 エラーハンドリング）。
+  // 文言は描画時に組み立てる（言語を切り替えたら表示中のエラーも切り替わる）
   const hasCachedDisplay = searchResultGhosts.length > 0 || searchTotal > 0;
-  const scanError = hasCachedDisplay ? null : error;
+  const scanError = hasCachedDisplay || error === null ? null : buildScanErrorMessage(error.cause, t);
 
   // 再スキャン中（既に一覧が見えている状態）のみ非確定バーを出す。初回（一覧なし）は
   // 全画面スピナー（GhostList）に委ねるため hasCachedDisplay で排他にする。

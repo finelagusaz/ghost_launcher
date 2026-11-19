@@ -3,8 +3,13 @@ import { render, screen, act, fireEvent, waitFor } from "@testing-library/react"
 import { GhostCard } from "./GhostCard";
 import type { GhostView } from "../types";
 
+// t は既定（ja）ではキーをそのまま返す。lang を変えると「{lang}:{key}」を返し、
+// 再描画で言語切替に追従したかを見分けられる
+const i18nState = vi.hoisted(() => ({ lang: "ja" }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => (i18nState.lang === "ja" ? key : `${i18nState.lang}:${key}`),
+  }),
 }));
 
 // 起動の成否とトースト通知をテストごとに制御する
@@ -156,5 +161,21 @@ describe("GhostCard の起動フィードバック", () => {
     // 失敗時はカード内 role="alert" にインライン表示（既存挙動を維持）
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(mocks.launcherToasts.notifySuccess).not.toHaveBeenCalled();
+  });
+
+  it("カード内の起動エラーは言語の切替に追従する", async () => {
+    mocks.launchGhostSpy.mockRejectedValue(new Error("boom"));
+    const { rerender } = render(<GhostCard ghost={makeGhost()} sspPath="C:/SSP" />);
+
+    fireEvent.click(screen.getByTestId("launch-button"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("card.launchError");
+
+    try {
+      i18nState.lang = "en";
+      rerender(<GhostCard ghost={makeGhost()} sspPath="C:/SSP" />);
+      expect(screen.getByRole("alert")).toHaveTextContent("en:card.launchError");
+    } finally {
+      i18nState.lang = "ja";
+    }
   });
 });

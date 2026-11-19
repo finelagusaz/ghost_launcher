@@ -49,12 +49,3 @@ export function scanInputsFromSettings(
 export function requestKeyFromSettings(sspPath: string, ghostFolders: string[]): string {
   return scanInputsFromSettings(sspPath, ghostFolders).requestKey;
 }
-
-export function formatErrorDetail(error: unknown): string {
-  const detail = error instanceof Error ? error.message.trim() : String(error).trim();
-  return detail ? `（詳細: ${detail}）` : "";
-}
-
-export function buildScanErrorMessage(error: unknown): string {
-  return `ゴースト一覧の取得に失敗しました。SSPフォルダと追加フォルダを確認して「再読込」を実行してください。${formatErrorDetail(error)}`;
-}

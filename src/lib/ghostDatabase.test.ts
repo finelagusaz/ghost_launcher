@@ -4,13 +4,15 @@ import ghostViewColumns from "../test/fixtures/ghost-view-columns.json";
 
 const mockExecute = vi.fn().mockResolvedValue({ rowsAffected: 0 });
 const mockSelect = vi.fn().mockResolvedValue([]);
-const mockLoad = vi.fn().mockResolvedValue({
+const mockGet = vi.fn().mockReturnValue({
   execute: mockExecute,
   select: mockSelect,
 });
+const mockLoad = vi.fn();
 
 vi.mock("@tauri-apps/plugin-sql", () => ({
   default: {
+    get: mockGet,
     load: mockLoad,
   },
 }));
@@ -27,6 +29,7 @@ beforeEach(() => {
   vi.resetModules();
   mockExecute.mockClear();
   mockSelect.mockClear();
+  mockGet.mockClear();
   mockLoad.mockClear();
 });
 
@@ -40,18 +43,18 @@ describe("ghostDatabase - GhostView 列同期", () => {
 });
 
 describe("ghostDatabase - getDb Promise 重複防止", () => {
-  it("並行呼び出しで loadDb が 1 回だけ実行される", async () => {
+  it("並行呼び出しで接続の取得が 1 回だけ実行される", async () => {
     const { getDb } = await import("./ghostDatabase");
     const [db1, db2] = await Promise.all([getDb(), getDb()]);
 
     expect(db1).toBe(db2);
-    expect(mockLoad).toHaveBeenCalledTimes(1);
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 
   it("初回失敗後に再呼び出しで再試行できる", async () => {
-    mockLoad
-      .mockRejectedValueOnce(new Error("disk I/O error"))
-      .mockResolvedValueOnce({ execute: mockExecute, select: mockSelect });
+    mockGet.mockImplementationOnce(() => {
+      throw new Error("disk I/O error");
+    });
 
     const { getDb } = await import("./ghostDatabase");
     await expect(getDb()).rejects.toThrow("disk I/O error");
@@ -59,30 +62,33 @@ describe("ghostDatabase - getDb Promise 重複防止", () => {
     // Promise がリセットされているので再試行可能
     const db = await getDb();
     expect(db).toBeDefined();
-    expect(mockLoad).toHaveBeenCalledTimes(2);
+    expect(mockGet).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("ghostDatabase - getDb", () => {
 
-  it("初回接続時に PRAGMA busy_timeout=5000 を設定する", async () => {
+  it("Rust が事前に開いた読み取り専用の接続を使い、load も execute も呼ばない", async () => {
     const { getDb } = await import("./ghostDatabase");
     await getDb();
 
-    expect(mockLoad).toHaveBeenCalledWith("sqlite:ghosts.db");
-    expect(mockExecute).toHaveBeenCalledWith("PRAGMA busy_timeout=5000");
+    // tauri.conf.json の plugins.sql.preload と同じ文字列で引く
+    expect(mockGet).toHaveBeenCalledWith("sqlite:ghosts.db?mode=ro");
+    // load・execute の権限は webview に渡していない（呼ぶと権限エラーになる）
+    expect(mockLoad).not.toHaveBeenCalled();
+    expect(mockExecute).not.toHaveBeenCalled();
   });
 
-  it("2回目の getDb() では PRAGMA を再実行しない（シングルトン）", async () => {
+  it("2回目の getDb() では接続し直さない（シングルトン）", async () => {
     const { getDb } = await import("./ghostDatabase");
     const db1 = await getDb();
     mockExecute.mockClear();
-    mockLoad.mockClear();
+    mockGet.mockClear();
 
     const db2 = await getDb();
 
     expect(db1).toBe(db2);
-    expect(mockLoad).not.toHaveBeenCalled();
+    expect(mockGet).not.toHaveBeenCalled();
     expect(mockExecute).not.toHaveBeenCalled();
   });
 });

@@ -65,3 +65,27 @@ test("settings-delete-aria-label: 固定文言のみなら失敗", () => {
   `;
   assert.equal(deleteAriaLabelCheck.test(source), false);
 });
+
+const scanErrorCheck = findCheck("scan-error-actionable");
+
+test("scan-error-actionable: error.scanFailed が $t(header.refresh) を参照すれば成功", () => {
+  const source = JSON.stringify({ "error.scanFailed": "失敗しました。「$t(header.refresh)」を実行してください。{{detail}}" });
+  assert.equal(scanErrorCheck.test(source), true);
+});
+
+test("scan-error-actionable: ボタン名の直書きは失敗", () => {
+  const source = JSON.stringify({ "error.scanFailed": "失敗しました。「再読込」を実行してください。{{detail}}" });
+  assert.equal(scanErrorCheck.test(source), false);
+});
+
+test("scan-error-actionable: キーが無ければ失敗", () => {
+  const source = JSON.stringify({ "header.refresh": "$t(header.refresh)" });
+  assert.equal(scanErrorCheck.test(source), false);
+});
+
+test("scan-error-actionable: 同梱ロケールの全ファイルが対象になる", () => {
+  const files = scanErrorCheck.files();
+  assert.ok(files.includes("src/locales/ja.json"));
+  assert.ok(files.includes("src/locales/en.json"));
+  assert.ok(files.every((file) => file.endsWith(".json")));
+});
