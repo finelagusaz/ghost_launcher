@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion};
 use ghost_launcher_lib::bench_support::{
-    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, open_bench_db, order_by, page_limit,
-    search_count_sql, seed_ghosts_db, select_cols_prefixed,
+    Q_COMMON, Q_NONE, Q_RARE, SEARCH_WHERE_PREFIXED, TempDirGuard, open_bench_db, order_by,
+    page_limit, search_count_sql, seed_ghosts_db, select_cols_prefixed,
 };
 use rusqlite::Connection;
 
@@ -17,8 +17,8 @@ const RK: &str = "bench-rk";
 
 /// seed 済み一時 DB を本番読み取り PRAGMA で開き直して返す（seed 接続の書き込み PRAGMA を継がない）。
 /// tag は N ごとに一意化してディレクトリ名衝突を避ける。
-fn seeded_readonly_db(tag: &str, n: usize) -> (tempfile_dir::Guard, Connection) {
-    let guard = tempfile_dir::Guard::new(tag);
+fn seeded_readonly_db(tag: &str, n: usize) -> (TempDirGuard, Connection) {
+    let guard = TempDirGuard::new(&format!("ghost_bench_{tag}"));
     let path = guard.path().join("ghosts.db");
     {
         let seed_conn = open_bench_db(&path).unwrap();
@@ -196,29 +196,6 @@ fn bench_search(c: &mut Criterion) {
         });
 
         group.finish();
-    }
-}
-
-// TempDirGuard は lib 内部（非 pub）なので、ベンチ用の最小 tmp ガードをローカルに持つ。
-mod tempfile_dir {
-    use std::path::{Path, PathBuf};
-    pub struct Guard(PathBuf);
-    impl Guard {
-        pub fn new(prefix: &str) -> Self {
-            // scratchpad ではなく OS 一時ディレクトリ配下。ベンチ終了時に削除。
-            let mut base = std::env::temp_dir();
-            base.push(format!("ghost_bench_{prefix}_{}", std::process::id()));
-            std::fs::create_dir_all(&base).unwrap();
-            Guard(base)
-        }
-        pub fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
     }
 }
 
