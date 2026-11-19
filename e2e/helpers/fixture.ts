@@ -5,8 +5,8 @@ import { crc32, deflateSync } from "node:zlib";
 /// 試験用 SSP の場所を、globalSetup からテストへ渡す環境変数。
 export const FIXTURE_SSP_ENV = "GHOST_LAUNCHER_E2E_FIXTURE_SSP";
 
-/// 連番のゴースト数。本番の 1 ページ（src/App.tsx の LIMIT）を超え、仮想化（80 体以上）と
-/// 先読みのページ送りを必ず通る件数にする。LIMIT を超えていることは global-setup.ts が照合する。
+/// 連番のゴースト数。本番の 1 ページ（src/config/ghost-list.json の pageLimit）を超え、仮想化（80 体以上）と
+/// 先読みのページ送りを必ず通る件数にする。1 ページを超えていることは global-setup.ts が照合する。
 export const NUMBERED_GHOST_COUNT = 600;
 
 /// 連番以外に置く、検索・文字コードの検証用ゴースト。
