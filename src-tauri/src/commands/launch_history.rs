@@ -9,6 +9,39 @@ pub(crate) fn ensure_schema(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("user-data スキーマ作成エラー: {e}"))
 }
 
+/// ghosts に存在する全世代（request_key）を列挙する部分問い合わせ。
+///
+/// 集計列の更新は identity だけが条件だが、ghosts の index はどれも request_key 先頭のため、
+/// そのままでは全表走査になる（skip-scan が選ばれるのは sqlite_stat1 があるときだけで、
+/// 初回起動・リビルド直後の空 DB に PRAGMA optimize をかけても統計は作られない）。
+/// 世代を先に列挙して `request_key IN (…)` を添え、UNIQUE index (request_key, ghost_identity_key)
+/// の点引きに落とす。列挙は MIN の index 探索を世代数ぶん繰り返す loose index scan で、
+/// 行数に依らない（`SELECT DISTINCT request_key` は index を全走査する）。
+macro_rules! all_request_keys_subquery {
+    () => {
+        "(WITH RECURSIVE gen(k) AS (\
+            SELECT MIN(request_key) FROM ghosts \
+            UNION ALL \
+            SELECT (SELECT MIN(request_key) FROM ghosts WHERE request_key > gen.k) \
+            FROM gen WHERE gen.k IS NOT NULL\
+        ) SELECT k FROM gen WHERE k IS NOT NULL)"
+    };
+}
+
+/// 起動 1 回ぶんの集計列 bump（record_launch_inner が使う）。同一 identity を持つ全世代を更新する。
+const BUMP_AGGREGATES_SQL: &str = concat!(
+    "UPDATE ghosts SET launch_count = launch_count + 1, last_launched = datetime('now') \
+     WHERE ghost_identity_key = ?1 AND request_key IN ",
+    all_request_keys_subquery!()
+);
+
+/// 集計列の絶対値上書き（backfill_aggregates が使う）。同一 identity を持つ全世代を更新する。
+const BACKFILL_AGGREGATES_SQL: &str = concat!(
+    "UPDATE ghosts SET last_launched = ?2, launch_count = ?3 \
+     WHERE ghost_identity_key = ?1 AND request_key IN ",
+    all_request_keys_subquery!()
+);
+
 /// 起動履歴を記録する。user-data.db へ INSERT（権威）し、ghosts.db の集計列を bump（導出）する。
 /// user-data 側を先に書くため、ghosts 側更新が失敗しても権威データは残り、次回バックフィルで整合する。
 /// 呼び出し元は actor::handle_job（アクタースレッド上）。
@@ -24,10 +57,7 @@ pub(crate) fn record_launch_inner(
         )
         .map_err(|e| format!("起動履歴 INSERT エラー: {e}"))?;
     ghosts_conn
-        .execute(
-            "UPDATE ghosts SET launch_count = launch_count + 1, last_launched = datetime('now') WHERE ghost_identity_key = ?1",
-            rusqlite::params![ghost_identity_key],
-        )
+        .execute(BUMP_AGGREGATES_SQL, rusqlite::params![ghost_identity_key])
         .map_err(|e| format!("集計列 UPDATE エラー: {e}"))?;
     Ok(())
 }
@@ -48,15 +78,21 @@ pub(crate) fn backfill_aggregates(
             .filter_map(Result::ok)
             .collect()
     };
-    for (key, last, count) in aggregates {
-        ghosts_conn
-            .execute(
-                "UPDATE ghosts SET last_launched = ?2, launch_count = ?3 WHERE ghost_identity_key = ?1",
-                rusqlite::params![key, last, count],
-            )
-            .map_err(|e| format!("集計列バックフィル UPDATE エラー: {e}"))?;
+    // 起動済みゴーストの数だけ UPDATE を発行するため、1 トランザクション・1 準備文にまとめる
+    let tx = ghosts_conn
+        .unchecked_transaction()
+        .map_err(|e| format!("集計列バックフィル開始エラー: {e}"))?;
+    {
+        let mut stmt = tx
+            .prepare_cached(BACKFILL_AGGREGATES_SQL)
+            .map_err(|e| format!("集計列バックフィル UPDATE 準備エラー: {e}"))?;
+        for (key, last, count) in aggregates {
+            stmt.execute(rusqlite::params![key, last, count])
+                .map_err(|e| format!("集計列バックフィル UPDATE エラー: {e}"))?;
+        }
     }
-    Ok(())
+    tx.commit()
+        .map_err(|e| format!("集計列バックフィル commit エラー: {e}"))
 }
 
 /// 旧 ghosts.db.ghost_launches の履歴を user-data.db へ一度だけ複写する。
@@ -203,6 +239,109 @@ mod tests {
             .unwrap();
         assert_eq!(bcount, 0);
         assert_eq!(blast, None);
+    }
+
+    /// 別世代（request_key）の ghosts 行を seed する（同一 identity が複数世代に居る状況の再現）。
+    fn insert_ghost_row_in(conn: &Connection, request_key: &str, identity_key: &str) {
+        conn.execute(
+            "INSERT INTO ghosts (request_key, ghost_identity_key, name, directory_name, path, source, name_lower, directory_name_lower) VALUES (?1, ?2, 'G', 'g', '/g', 'ssp', 'g', 'g')",
+            rusqlite::params![request_key, identity_key],
+        )
+        .unwrap();
+    }
+
+    fn aggregates_of(
+        conn: &Connection,
+        request_key: &str,
+        identity_key: &str,
+    ) -> (i64, Option<String>) {
+        conn.query_row(
+            "SELECT launch_count, last_launched FROM ghosts WHERE request_key = ?1 AND ghost_identity_key = ?2",
+            rusqlite::params![request_key, identity_key],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    fn query_plan(conn: &Connection, sql: &str) -> Vec<String> {
+        let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+        // プランは値に依らないので、バインド変数はすべて NULL で埋める
+        let nulls = vec![rusqlite::types::Null; stmt.parameter_count()];
+        // 行の取得失敗を捨てると「SCAN が無い」検査が空のプランで通ってしまうため、落とす
+        stmt.query_map(rusqlite::params_from_iter(nulls), |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|row| row.expect("EXPLAIN QUERY PLAN の detail 列を読めること"))
+            .collect()
+    }
+
+    /// 集計列の更新文は identity だけを条件にすると、先頭列の合う index が無く全表走査になる
+    /// （skip-scan は sqlite_stat1 があるときしか選ばれず、初回起動・リビルド直後の空 DB に
+    /// PRAGMA optimize をかけても統計は作られない）。統計の無い DB でも UNIQUE index
+    /// (request_key, ghost_identity_key) の点引きになることを、プランで縛る。
+    #[test]
+    fn 集計列の更新文は統計が無くても全表走査しない() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::testutil::apply_cache_schema(&conn);
+
+        for sql in [BUMP_AGGREGATES_SQL, BACKFILL_AGGREGATES_SQL] {
+            let plan = query_plan(&conn, sql);
+            assert!(
+                !plan.iter().any(|d| d.starts_with("SCAN ghosts")),
+                "ghosts を全表走査している: {plan:?}
+  sql: {sql}"
+            );
+            assert!(
+                plan.iter()
+                    .any(|d| d.contains("request_key=? AND ghost_identity_key=?")),
+                "(request_key, ghost_identity_key) の点引きになっていない: {plan:?}
+  sql: {sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn record_launch_innerは同一identityを持つ全世代の集計列をbumpする() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = ghosts_conn_with_row("sspg"); // 世代 rk1
+        insert_ghost_row_in(&ghosts_conn, "rk2", "sspg");
+        insert_ghost_row_in(&ghosts_conn, "rk2", "sspother");
+
+        record_launch_inner(&user_conn, &ghosts_conn, "sspg").unwrap();
+
+        assert_eq!(aggregates_of(&ghosts_conn, "rk1", "sspg").0, 1);
+        assert_eq!(aggregates_of(&ghosts_conn, "rk2", "sspg").0, 1);
+        assert_eq!(
+            aggregates_of(&ghosts_conn, "rk2", "sspother"),
+            (0, None),
+            "別 identity は触らない"
+        );
+    }
+
+    #[test]
+    fn backfill_aggregatesは全世代へ書き戻しghostsに居ない履歴は無視する() {
+        let user_conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&user_conn).unwrap();
+        let ghosts_conn = ghosts_conn_with_row("sspg"); // 世代 rk1
+        insert_ghost_row_in(&ghosts_conn, "rk2", "sspg");
+        for (key, at) in [
+            ("sspg", "2026-01-01 00:00:00"),
+            ("sspg", "2026-01-02 00:00:00"),
+            ("ssp-gone", "2026-01-03 00:00:00"), // ghosts に居ない（削除済みゴーストの履歴）
+        ] {
+            user_conn
+                .execute(
+                    "INSERT INTO ghost_launches (ghost_identity_key, launched_at) VALUES (?1, ?2)",
+                    rusqlite::params![key, at],
+                )
+                .unwrap();
+        }
+
+        backfill_aggregates(&ghosts_conn, &user_conn).unwrap();
+
+        let expected = (2, Some("2026-01-02 00:00:00".to_string()));
+        assert_eq!(aggregates_of(&ghosts_conn, "rk1", "sspg"), expected);
+        assert_eq!(aggregates_of(&ghosts_conn, "rk2", "sspg"), expected);
     }
 
     fn ghosts_conn_with_legacy_launches(rows: &[(&str, &str)]) -> Connection {
