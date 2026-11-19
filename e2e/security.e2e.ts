@@ -53,3 +53,22 @@ test("SQL: JS からの読み取りは通るが、書き込みは権限と読み
   expect(writeViaSelect.ok).toBe(false);
   expect(writeViaSelect.ok ? "" : writeViaSelect.error).toMatch(/readonly|read-only/i);
 });
+
+test("CSP: 後から差し込んだインラインスクリプトは実行されない", async ({ harness }) => {
+  const { driver } = harness;
+  await waitForAppReady(driver);
+
+  // WebDriver のスクリプト実行自体は CSP を受けないので、そこから DOM へ <script> を差し込み、
+  // ページの CSP の下でインラインスクリプトとして評価させる。
+  // Tauri は自前の初期化スクリプトのハッシュを script-src に足すため、script-src に
+  // 'unsafe-inline' を書いても無視される（この試験はそれを区別しない）。CSP を外した
+  // ビルド（csp: null）では落ちることを確かめてある
+  const ran = await driver.executeScript(`
+    window.__inlineScriptRan = false;
+    const script = document.createElement("script");
+    script.textContent = "window.__inlineScriptRan = true;";
+    document.head.appendChild(script);
+    return window.__inlineScriptRan;
+  `);
+  expect(ran).toBe(false);
+});
