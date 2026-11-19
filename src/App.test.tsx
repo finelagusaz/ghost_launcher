@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   useSearchSpy: vi.fn(),
   ghostContentSpy: vi.fn(),
   launchGhostSpy: vi.fn(),
+  launchRecordedListeners: new Set<() => void>(),
   getRandomGhostSpy: vi.fn(),
   launcherToasts: {
     notifySuccess: vi.fn(),
@@ -69,6 +70,10 @@ vi.mock("./lib/ghostDatabase", () => ({
 vi.mock("./lib/sspClient", () => ({
   launchGhost: (...args: unknown[]) => mocks.launchGhostSpy(...args),
   validateSspPath: vi.fn(),
+  subscribeLaunchRecorded: (listener: () => void) => {
+    mocks.launchRecordedListeners.add(listener);
+    return () => mocks.launchRecordedListeners.delete(listener);
+  },
 }));
 // トースト通知はスパイに差し替える（Fluent の Toaster コンテキスト非依存で検証する）
 vi.mock("./hooks/useLauncherToasts", () => ({
@@ -228,5 +233,40 @@ describe("App - スキャン中インジケータ（再スキャン時のみ）"
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("App - 起動記録後の並びの更新", () => {
+  // useSearch の第 7 引数（sortEpoch）の最新値
+  function latestSortEpoch(): number {
+    return mocks.useSearchSpy.mock.calls.at(-1)?.[6] as number;
+  }
+
+  async function selectSortAndRecordLaunch(sort: string) {
+    render(<App />);
+    const onSortChange = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onSortChange;
+    act(() => onSortChange(sort));
+    const before = latestSortEpoch();
+    act(() => {
+      for (const listener of mocks.launchRecordedListeners) listener();
+    });
+    return { before, after: latestSortEpoch() };
+  }
+
+  it.each(["recent", "frequency"])("%s 順では、起動の記録後に並びを取り直す", async (sort) => {
+    const { before, after } = await selectSortAndRecordLaunch(sort);
+    expect(after).toBe(before + 1);
+  });
+
+  it.each(["name", "random"])("%s 順では、起動の記録で並びを取り直さない", async (sort) => {
+    const { before, after } = await selectSortAndRecordLaunch(sort);
+    expect(after).toBe(before);
+  });
+
+  it("アンマウントで購読を解除する", () => {
+    const { unmount } = render(<App />);
+    expect(mocks.launchRecordedListeners.size).toBe(1);
+    unmount();
+    expect(mocks.launchRecordedListeners.size).toBe(0);
   });
 });

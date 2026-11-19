@@ -108,6 +108,22 @@ describe("GhostContent - キーボード選択と Enter 起動", () => {
     expect(selectedName()).toBe("Reimu");
   });
 
+  it("並びの更新（sortEpoch）で選択が先頭へ戻る（入れ替わった別のゴーストを起動対象にしない）", () => {
+    const ghosts = [makeGhost("Reimu"), makeGhost("Marisa"), makeGhost("Sanae")];
+    const { rerender } = render(
+      <GhostContent {...baseProps} sortOrder="recent" ghosts={ghosts} total={3} loadedStart={0} sortEpoch={0} />,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowDown" });
+    expect(selectedName()).toBe("Marisa");
+
+    // Marisa を起動 → 最近起動順の先頭へ上がった並びが届く
+    const reordered = [ghosts[1], ghosts[0], ghosts[2]];
+    rerender(
+      <GhostContent {...baseProps} sortOrder="recent" ghosts={reordered} total={3} loadedStart={0} sortEpoch={1} />,
+    );
+    expect(selectedName()).toBe("Marisa");
+  });
+
   it("検索欄からフォーカスが外れると起動対象の印が消え、戻ると再表示される", () => {
     const ghosts = [makeGhost("Reimu"), makeGhost("Marisa")];
     render(<GhostContent {...baseProps} ghosts={ghosts} total={2} loadedStart={0} />);

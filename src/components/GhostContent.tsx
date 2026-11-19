@@ -22,6 +22,8 @@ interface Props {
   onRandomLaunch: () => Promise<void>;
   onOpenSettings: () => void;
   onLoadMore: (targetOffset: number) => void;
+  // 同じ sortOrder のまま並び順が変わった回数（ランダム再選択・起動記録による並びの更新）
+  sortEpoch?: number;
 }
 
 const SORT_OPTIONS: SortOrder[] = ["name", "recent", "frequency", "random"];
@@ -69,6 +71,7 @@ export const GhostContent = memo(function GhostContent({
   sspPath,
   searchQuery,
   sortOrder,
+  sortEpoch = 0,
   loading,
   searchLoading,
   error,
@@ -98,10 +101,12 @@ export const GhostContent = memo(function GhostContent({
   const [searchFocused, setSearchFocused] = useState(false);
   const launch = useGhostLauncher(sspPath);
 
-  // 検索クエリ・ソート変更で選択を先頭へ戻す
+  // 検索クエリ・ソート変更・並びの更新で選択を先頭へ戻す。並びの更新では選択 index の下の
+  // ゴーストが入れ替わり、Enter で意図しない別のゴーストを起動しかねない（最近起動順では、
+  // 起動したゴーストが先頭へ上がるため先頭に戻すと同じゴーストを指し続ける）
   useEffect(() => {
     setSelectedIndex(0);
-  }, [searchQuery, sortOrder]);
+  }, [searchQuery, sortOrder, sortEpoch]);
   // 件数が減ったら選択を範囲内へクランプする
   useEffect(() => {
     setSelectedIndex((i) => Math.min(i, Math.max(0, total - 1)));
