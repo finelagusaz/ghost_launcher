@@ -5,15 +5,19 @@ mod cache_schema;
 mod commands;
 #[cfg(test)]
 pub(crate) mod testutil;
+mod thumbnail_protocol;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::Manager;
     tauri::Builder::default()
-        .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .register_asynchronous_uri_scheme_protocol(
+            thumbnail_protocol::SCHEME,
+            thumbnail_protocol::handle,
+        )
         .setup(|app| {
             match actor::bootstrap(app) {
                 Ok(handle) => {
@@ -21,6 +25,14 @@ pub fn run() {
                 }
                 Err(e) => return Err(format!("DB アクターの起動に失敗しました: {e}").into()),
             }
+            // sql プラグインは DB アクターの起動（データ置き場と ghosts.db の作成）の後に登録する。
+            // プラグインは登録時に plugins.sql.preload の接続（ghosts.db の読み取り専用）を開く
+            // ため、先に登録すると初回起動でまだ無い ghosts.db を開くことになる。webview には
+            // 接続を開く権限（sql:allow-load）を渡さず、この事前接続だけを読ませる。
+            // IPC はこの setup が返るまで処理されないので、JS が先に接続を引くことはない。
+            app.handle()
+                .plugin(tauri_plugin_sql::Builder::default().build())
+                .map_err(|e| format!("sql プラグインの登録に失敗しました: {e}"))?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

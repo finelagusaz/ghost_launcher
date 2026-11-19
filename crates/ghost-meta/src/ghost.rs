@@ -5,6 +5,13 @@ use crate::thumbnail::{ThumbnailInfo, resolve_thumbnail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// ゴーストのディレクトリ（`ghost_root`）にある descript.txt のパス。このファイルがあることが
+/// 「ゴーストのディレクトリである」ことの定義で、読み込み（`read_ghost`）とサムネイルの形の判定
+/// （`is_thumbnail_candidate`）が共有する。
+pub(crate) fn descript_path(ghost_root: &Path) -> PathBuf {
+    ghost_root.join("ghost").join("master").join("descript.txt")
+}
+
 /// ゴーストのメタデータ
 pub struct GhostMeta {
     /// descript.txt の name フィールド（表示名）。未設定の場合はディレクトリ名
@@ -27,7 +34,7 @@ pub struct GhostMeta {
 
 /// ゴーストルートディレクトリのメタデータを取得する。
 /// ghost_root は `{parent}/{ghost_name}` に相当するディレクトリ。
-/// descript.txt のパスは `ghost_root/ghost/master/descript.txt`。
+/// descript.txt のパスは `ghost_root/ghost/master/descript.txt`（`descript_path`）。
 pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
     let directory_name = ghost_root
         .file_name()
@@ -35,8 +42,7 @@ pub fn read_ghost(ghost_root: &Path) -> Result<GhostMeta, GhostMetaError> {
         .unwrap_or("")
         .to_string();
 
-    let descript_path = ghost_root.join("ghost").join("master").join("descript.txt");
-    let fields = parse_descript(&descript_path)?;
+    let fields = parse_descript(&descript_path(ghost_root))?;
 
     let name = fields
         .get("name")

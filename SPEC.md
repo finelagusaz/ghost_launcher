@@ -71,7 +71,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 
 | モジュール          | 責務                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------- |
-| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン登録。setup 内で DB アクター起動配線（`actor::bootstrap`）を実行し、失敗時は起動中止（fail-fast） |
+| `lib.rs`            | Tauri アプリビルダー。コマンド・プラグイン・サムネイル用プロトコルの登録。setup 内で DB アクター起動配線（`actor::bootstrap`）を実行し、失敗時は起動中止（fail-fast）。sql プラグインは bootstrap の後に setup 内で登録する（§8.1.1） |
 | `actor/`            | ghosts.db/user-data.db への全書き込みを直列化する単一 writer アクター。`mod.rs`: `Job` enum（Scan/RecordLaunch/CleanupCaches/Maintenance）と受信ループ、`db_path.rs`: ghosts.db パス解決の単一権威（アクター専有可視性） |
 | `cache_schema.rs`   | ghosts.db の使い捨てスキーマ管理。`CACHE_SCHEMA` が単一権威で、そのハッシュを `PRAGMA user_version` に刻み、不一致時は起動時に単一トランザクションで自動リビルドする |
 | `commands/ghost/`   | ゴーストスキャン一式: 走査と型変換・差分検知（scan）・差分 delta 書込とキャッシュ寿命管理（store）・二層フィンガープリント（fingerprint）・パス正規化（path_utils）・型定義（types） |
@@ -79,10 +79,11 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・キャッシュ再構築（cache miss）後の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 | `commands/error.rs` | UI へ届くコマンドエラー `CommandError`（種別 `kind` + 引数。ts-rs で TS 型を生成）。文言は持たず、フロントエンドが種別から i18n で組み立てる（§13） |
+| `thumbnail_protocol.rs` | サムネイル画像を webview へ渡す読み取り専用プロトコル（`thumbnail:`）。ゴーストのサムネイルとして成り立つ形のパス（`ghost_meta::is_thumbnail_candidate`）だけを返し、それ以外は 404（無いファイルと区別しない）。読む大きさに上限を設ける。Tauri の asset プロトコルは使わない（場所で絞ると junction 越しのゴーストが読めず、許可範囲を足す前にキャッシュ表示が画像を要求するため、形で絞る） |
 
 **`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
 
-descript.txt のパース（文字コード判定含む）・単体ゴースト読込・サムネイル解決を提供する。
+descript.txt のパース（文字コード判定含む）・単体ゴースト読込・サムネイル解決（と、サムネイルとして成り立つ形のパスかの判定）を提供する。
 ファイル構成と公開 API はクレートのソースを権威とする。
 
 ### 3.3 フロントエンド（React/TypeScript）構成
@@ -380,11 +381,13 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
-JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以下の PRAGMA のみ実行する:
+JS は自分で接続を開かない。Rust が `sqlite:ghosts.db?mode=ro`（読み取り専用）を事前接続し（`tauri.conf.json` の `plugins.sql.preload`）、JS は `Database.get` で事前接続を取得する。PRAGMA は実行しない。
 
-| PRAGMA | 目的 |
-|--------|------|
-| `busy_timeout=5000` | ロック待機 5 秒（SQLITE_BUSY 回避）。sqlx-sqlite が接続確立毎に既定 5 秒を適用するため、この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤） |
+- webview の sql 権限は `sql:allow-select` だけで、`load` と `execute` は渡さない
+  - `load` は「`sqlite:` 以降をデータ置き場へ push したパス」を開くため、絶対パスで任意の場所の SQLite ファイルを作成・読み書きでき、永続データの user-data.db にも届く
+  - `select` も任意の文を流せるため、事前接続の側で `mode=ro` にして書き込みを止める
+- sql プラグインは、アプリの setup で DB アクターの起動（データ置き場と ghosts.db の作成）の後に登録する。プラグインは登録時に事前接続を開くため、ビルダーで先に登録すると、初回起動ではまだ無い ghosts.db を開くことになる。IPC は setup が返るまで処理されないので、JS が事前接続より先に接続を取得することはない
+- `busy_timeout` は設定しない。sqlx-sqlite が接続確立ごとに既定 5 秒を当てる
 
 - `journal_mode=WAL` はファイル永続属性のため、rusqlite 書き込み接続側の設定で足りる（JS 側で再設定不要）
 - `PRAGMA optimize` と条件付き VACUUM は Rust 側 DB アクターの `Job::Maintenance`（起動直後の自己投入ジョブ）へ移動済み。webview ロードも setup もブロックしない（§2.1/§5.2、失敗時はログのみで続行）
@@ -394,7 +397,7 @@ JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以�
 | PRAGMA | 値 | 目的 |
 |--------|-----|------|
 | `journal_mode` | WAL | 並行読み取り性能向上（sqlx 側の読み取りもこの WAL に乗る） |
-| `busy_timeout` | 5000 | sqlx 側と同一 |
+| `busy_timeout` | 5000 | sqlx 側の既定（5 秒）と同じ |
 | `journal_size_limit` | 4194304 | WAL ファイルを 4MB 以下に制限（旧 JS `loadDb` から移設） |
 | `synchronous` | NORMAL | WAL モードでの書き込み高速化（キャッシュ DB のため許容） |
 | `cache_size` | -65536 | 64MB ページキャッシュ（10 万行の作業セットを収容） |
