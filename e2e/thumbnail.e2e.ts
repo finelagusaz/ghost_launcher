@@ -31,13 +31,22 @@ async function loadedImageWidth(driver: WebDriver, img: WebElement): Promise<num
   );
 }
 
-test("サムネイル: ゴースト直下の thumbnail.png（アルファあり）が表示される", async ({ harness }) => {
-  const { driver } = harness;
-  await waitForAppReady(driver);
-  const el = await hoverThumbnail(driver, THUMBNAIL_GHOSTS.selfAlpha.name);
-  expect(await el.getTagName()).toBe("img");
-  expect(await loadedImageWidth(driver, el)).toBeGreaterThan(0);
-});
+// アルファありの画像は <img> で描かれる。置き場所とパスの違うゴーストで、読み込めることを確かめる
+const IMG_CASES = [
+  { ghost: THUMBNAIL_GHOSTS.selfAlpha, title: "ゴースト直下の thumbnail.png" },
+  { ghost: THUMBNAIL_GHOSTS.linked, title: "SSP の外を junction で指すゴースト" },
+  { ghost: THUMBNAIL_GHOSTS.symbols, title: "フォルダ名に日本語と記号を含むゴースト" },
+] as const;
+
+for (const { ghost, title } of IMG_CASES) {
+  test(`サムネイル: ${title}のサムネイル（アルファあり）が表示される`, async ({ harness }) => {
+    const { driver } = harness;
+    await waitForAppReady(driver);
+    const el = await hoverThumbnail(driver, ghost.name);
+    expect(await el.getTagName()).toBe("img");
+    expect(await loadedImageWidth(driver, el)).toBeGreaterThan(0);
+  });
+}
 
 test("サムネイル: surface0.png（アルファなし）はキーカラーを抜いて canvas に描かれる", async ({ harness }) => {
   const { driver } = harness;
@@ -57,22 +66,6 @@ test("サムネイル: surface0.png（アルファなし）はキーカラーを
     );
   }, 5_000, "キーカラーの canvas が描かれない");
   expect(alphas).toEqual([0, 255]);
-});
-
-test("サムネイル: SSP の外を junction で指すゴーストのサムネイルも表示される", async ({ harness }) => {
-  const { driver } = harness;
-  await waitForAppReady(driver);
-  const el = await hoverThumbnail(driver, THUMBNAIL_GHOSTS.linked.name);
-  expect(await el.getTagName()).toBe("img");
-  expect(await loadedImageWidth(driver, el)).toBeGreaterThan(0);
-});
-
-test("サムネイル: フォルダ名に日本語と記号を含むゴーストのサムネイルも表示される", async ({ harness }) => {
-  const { driver } = harness;
-  await waitForAppReady(driver);
-  const el = await hoverThumbnail(driver, THUMBNAIL_GHOSTS.symbols.name);
-  expect(await el.getTagName()).toBe("img");
-  expect(await loadedImageWidth(driver, el)).toBeGreaterThan(0);
 });
 
 test("サムネイル: ゴースト構造の外の画像は webview から読めない", async ({ harness }) => {

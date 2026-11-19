@@ -380,12 +380,12 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
-JS は自分で接続を開かない。Rust が `sqlite:ghosts.db?mode=ro`（読み取り専用）を事前接続し（`tauri.conf.json` の `plugins.sql.preload`）、JS は `Database.get` でその接続を引く。PRAGMA は実行しない。
+JS は自分で接続を開かない。Rust が `sqlite:ghosts.db?mode=ro`（読み取り専用）を事前接続し（`tauri.conf.json` の `plugins.sql.preload`）、JS は `Database.get` で事前接続を取得する。PRAGMA は実行しない。
 
 - webview の sql 権限は `sql:allow-select` だけで、`load` と `execute` は渡さない
   - `load` は「`sqlite:` 以降をデータ置き場へ push したパス」を開くため、絶対パスで任意の場所の SQLite ファイルを作成・読み書きでき、永続データの user-data.db にも届く
   - `select` も任意の文を流せるため、事前接続の側で `mode=ro` にして書き込みを止める
-- sql プラグインは、アプリの setup で DB アクターの起動（データ置き場と ghosts.db の作成）の後に登録する。プラグインは登録時に事前接続を開くため、ビルダーで先に登録すると、初回起動ではまだ無い ghosts.db を開くことになる。IPC は setup が返るまで処理されないので、JS が事前接続より先に接続を引くことはない
+- sql プラグインは、アプリの setup で DB アクターの起動（データ置き場と ghosts.db の作成）の後に登録する。プラグインは登録時に事前接続を開くため、ビルダーで先に登録すると、初回起動ではまだ無い ghosts.db を開くことになる。IPC は setup が返るまで処理されないので、JS が事前接続より先に接続を取得することはない
 - `busy_timeout` は設定しない。sqlx-sqlite が接続確立ごとに既定 5 秒を当てる
 
 - `journal_mode=WAL` はファイル永続属性のため、rusqlite 書き込み接続側の設定で足りる（JS 側で再設定不要）

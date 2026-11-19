@@ -64,16 +64,21 @@ fn build_response(raw_path: &str, origin: Option<&str>) -> Response<Cow<'static,
 /// （読ませないパスと無いファイルを区別すると、任意の場所にゴーストの形のディレクトリが
 /// あるかを探れてしまう）。
 fn read_thumbnail(raw_path: &str) -> Result<(Vec<u8>, &'static str), StatusCode> {
+    use std::io::Read;
+
     let path = decode_request_path(raw_path)
         .filter(|path| is_servable(path))
         .ok_or(StatusCode::NOT_FOUND)?;
-    let too_large = std::fs::metadata(&path)
-        .map(|meta| !meta.is_file() || meta.len() > MAX_THUMBNAIL_BYTES)
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    if too_large {
+    // 開いたハンドルで種類と大きさを確かめ、そのまま読む（パスを解決し直さない）
+    let file = std::fs::File::open(&path).map_err(|_| StatusCode::NOT_FOUND)?;
+    let meta = file.metadata().map_err(|_| StatusCode::NOT_FOUND)?;
+    if !meta.is_file() || meta.len() > MAX_THUMBNAIL_BYTES {
         return Err(StatusCode::NOT_FOUND);
     }
-    let bytes = std::fs::read(&path).map_err(|_| StatusCode::NOT_FOUND)?;
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    file.take(MAX_THUMBNAIL_BYTES)
+        .read_to_end(&mut bytes)
+        .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok((bytes, mime_type(&path)))
 }
 

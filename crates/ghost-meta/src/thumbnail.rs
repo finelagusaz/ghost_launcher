@@ -112,12 +112,7 @@ pub fn is_thumbnail_candidate(path: &Path) -> bool {
     } else {
         None
     };
-    ghost_root.is_some_and(|root| {
-        root.join("ghost")
-            .join("master")
-            .join("descript.txt")
-            .is_file()
-    })
+    ghost_root.is_some_and(|root| crate::ghost::descript_path(root).is_file())
 }
 
 /// shell/master/ 内の surface0* ファイルを探して ThumbnailInfo を返す
