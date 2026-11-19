@@ -22,10 +22,9 @@ export const checks = [
   {
     id: "settings-delete-aria-label",
     file: "src/components/SettingsPanel.tsx",
-    message: "削除ボタンには対象フォルダ名を含む aria-label が必要です。",
-    // テンプレートリテラル（`...${folder}...`）または t() に folder を渡す形式を許可
-    test: (source) =>
-      /aria-label\s*=\s*\{(?:\s*`追加フォルダを削除\s*:\s*\$\{folder\}`\s*|t\([^)]*\{[^}]*\bfolder\b[^}]*\}[^)]*\))\}/.test(source),
+    message: "削除ボタンには、対象フォルダ名を t() に渡した aria-label が必要です。",
+    // 文言は i18n リソースが単一権威なので、t() に folder を渡す形式だけを認める
+    test: (source) => /aria-label\s*=\s*\{t\([^)]*\{[^}]*\bfolder\b[^}]*\}[^)]*\)\}/.test(source),
   },
   {
     id: "ghostlist-alert-role",

@@ -73,7 +73,7 @@ npm run e2e
 
 - `main` 向けの pull request と `main` への push: Windows 上でビルド・テスト・lint を検証（`.github/workflows/ci-build.yml`）
 - bench プロファイルのコンパイル検証（`.github/workflows/ci-bench-profile.yml`。発火条件は同ファイルを参照）
-- `v*` タグ push: リリースビルド実行後、GitHub Release と自動リリースノートを作成（`.github/workflows/release.yml`）
+- `v*` タグ push: 試験を通してからリリースビルドを実行し、GitHub Release と自動リリースノートを作成（`.github/workflows/release.yml`）
 
 ## 関連ドキュメント
 
