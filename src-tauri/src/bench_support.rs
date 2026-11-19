@@ -16,6 +16,9 @@ use crate::commands::ghost::{
     scan_entries_with_fingerprint, scan_ghosts_with_fingerprint_internal,
 };
 
+/// ベンチの一時ディレクトリ（試験の `testutil` と同じガード）。
+pub use crate::tempdir::TempDirGuard;
+
 /// どの行にもマッチしない語（0 件）
 pub const Q_NONE: &str = "該当なし_zzzq";
 /// 約 0.1% にマッチ（craftman が "作者777" の行 = i % 1000 == 777）
