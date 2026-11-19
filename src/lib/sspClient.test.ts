@@ -36,6 +36,53 @@ describe("sspClient", () => {
     await expect(launchGhost("C:\\SSP", ghost)).resolves.toBeUndefined();
   });
 
+  it("起動履歴の記録が成功してから購読者へ通知する（集計列の更新より先に読ませない）", async () => {
+    let resolveRecord: () => void = () => {};
+    mockRecordLaunch.mockReturnValue(new Promise<void>((r) => { resolveRecord = r; }));
+    const { launchGhost, subscribeLaunchRecorded } = await import("./sspClient");
+    const listener = vi.fn();
+    subscribeLaunchRecorded(listener);
+
+    await launchGhost("C:\\SSP", ghost);
+    await Promise.resolve();
+    expect(listener).not.toHaveBeenCalled();
+
+    resolveRecord();
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+  });
+
+  it("起動履歴の記録に失敗したら通知しない", async () => {
+    mockRecordLaunch.mockRejectedValue(new Error("db down"));
+    const { launchGhost, subscribeLaunchRecorded } = await import("./sspClient");
+    const listener = vi.fn();
+    subscribeLaunchRecorded(listener);
+
+    await launchGhost("C:\\SSP", ghost);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("ghost_identity_key が空なら通知しない", async () => {
+    const { launchGhost, subscribeLaunchRecorded } = await import("./sspClient");
+    const listener = vi.fn();
+    subscribeLaunchRecorded(listener);
+
+    await launchGhost("C:\\SSP", { ...ghost, ghost_identity_key: "" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("購読を解除すると通知しない", async () => {
+    const { launchGhost, subscribeLaunchRecorded } = await import("./sspClient");
+    const listener = vi.fn();
+    const unsubscribe = subscribeLaunchRecorded(listener);
+    unsubscribe();
+
+    await launchGhost("C:\\SSP", ghost);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("validateSspPath が validate_ssp_path IPC を呼ぶ", async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     const { validateSspPath } = await import("./sspClient");

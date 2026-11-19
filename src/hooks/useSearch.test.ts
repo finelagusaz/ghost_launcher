@@ -419,8 +419,112 @@ describe("useSearch", () => {
     expect(totals.slice(totalsBeforeReturn).every((t) => t === 50)).toBe(true);
   });
 
+  it("並びだけの更新（sortEpoch）では総数を保ち、COUNT も初期ロード経路も通らない", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts).mockResolvedValueOnce([{ ...marisa }, { ...reimu }]);
+
+    const totals: number[] = [];
+    const { result, rerender } = renderHook(
+      ({ sortEpoch }) => {
+        const r = useSearch("rk1", "", 2, 0, 0, "recent", sortEpoch);
+        totals.push(r.total);
+        return r;
+      },
+      { initialProps: { sortEpoch: 0 } }
+    );
+    await waitFor(() => {
+      expect(result.current.total).toBe(5);
+    });
+    const totalsBefore = totals.length;
+
+    rerender({ sortEpoch: 1 });
+    await waitFor(() => {
+      expect(searchGhosts).toHaveBeenCalledTimes(1);
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(searchGhostsInitialPage).toHaveBeenCalledTimes(1);
+    expect(countGhostsByQuery).toHaveBeenCalledTimes(1);
+    expect(totals.slice(totalsBefore).every((t) => t === 5)).toBe(true);
+    // 並びが変わった結果で置き換え、内容の等しい行は既存の参照を保つ
+    expect(result.current.ghosts.map((g) => g.name)).toEqual(["Marisa", "Reimu"]);
+    expect(result.current.ghosts[0]).toBe(marisa);
+  });
+
+  it("並びの更新で取り直した結果が同じなら、一覧を置き換えない", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts).mockResolvedValueOnce([{ ...reimu }, { ...marisa }]);
+
+    const { result, rerender } = renderHook(
+      ({ sortEpoch }) => useSearch("rk1", "", 2, 0, 0, "recent", sortEpoch),
+      { initialProps: { sortEpoch: 0 } }
+    );
+    await waitFor(() => expect(result.current.total).toBe(5));
+    const before = result.current.ghosts;
+
+    rerender({ sortEpoch: 1 });
+    await waitFor(() => {
+      expect(searchGhosts).toHaveBeenCalledTimes(1);
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.ghosts).toBe(before);
+  });
+
+  it("並びだけの更新は、表示中のバッファの範囲をそのまま取り直す（offset の窓に縮めない）", async () => {
+    // offset 0 → 1 で先読みマージし、バッファは 0..3。その後 offset 1 のまま並びを更新する
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts)
+      .mockResolvedValueOnce([{ ...marisa }, alice])
+      .mockResolvedValueOnce([alice, { ...reimu }, { ...marisa }]);
+
+    const { result, rerender } = renderHook(
+      ({ offset, sortEpoch }) => useSearch("rk1", "", 2, offset, 0, "recent", sortEpoch),
+      { initialProps: { offset: 0, sortEpoch: 0 } }
+    );
+    await waitFor(() => expect(result.current.total).toBe(5));
+    rerender({ offset: 1, sortEpoch: 0 });
+    await waitFor(() => expect(result.current.ghosts).toHaveLength(3));
+
+    rerender({ offset: 1, sortEpoch: 1 });
+    await waitFor(() => {
+      expect(searchGhosts).toHaveBeenCalledTimes(2);
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(searchGhosts).toHaveBeenLastCalledWith("rk1", "", 3, 0, "recent");
+    expect(result.current.loadedStart).toBe(0);
+    expect(result.current.ghosts.map((g) => g.name)).toEqual(["Alice", "Reimu", "Marisa"]);
+  });
+
+  it("初回の COUNT が返る前に並びが更新されても、総数は暫定値で固まらない", async () => {
+    let resolveFirstCount: (n: number) => void = () => {};
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery)
+      .mockReturnValueOnce(new Promise<number>((r) => { resolveFirstCount = r; }))
+      .mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts).mockResolvedValueOnce([{ ...marisa }, { ...reimu }]);
+
+    const { result, rerender } = renderHook(
+      ({ sortEpoch }) => useSearch("rk1", "", 2, 0, 0, "recent", sortEpoch),
+      { initialProps: { sortEpoch: 0 } }
+    );
+    await waitFor(() => expect(result.current.ghosts).toHaveLength(2));
+    expect(result.current.total).toBe(2); // 暫定値
+
+    rerender({ sortEpoch: 1 });
+    resolveFirstCount(5); // 再実行で捨てられる側の COUNT
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.total).toBe(5);
+    });
+  });
+
   it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
-    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5).mockResolvedValueOnce(5);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
     vi.mocked(searchGhosts)
       .mockResolvedValueOnce([reimu, marisa])
       .mockResolvedValueOnce([alice]);

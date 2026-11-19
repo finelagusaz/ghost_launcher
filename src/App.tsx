@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Button,
@@ -25,7 +25,8 @@ import { GhostContent } from "./components/GhostContent";
 import { ScanProgressBar } from "./components/ScanProgressBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
-import { getRandomGhost, reseedRandomSort } from "./lib/ghostDatabase";
+import { getRandomGhost, reseedRandomSort, sortDependsOnLaunchStats } from "./lib/ghostDatabase";
+import { subscribeLaunchRecorded } from "./lib/sspClient";
 import type { SortOrder } from "./types";
 
 // 検索デバウンス幅。1 打鍵の間隔より長く、「入力を止めたら即結果」と感じる短さに保つ
@@ -88,10 +89,18 @@ function App() {
   const { loading: ghostsLoading, error, refresh } = useGhosts(sspPath, ghostFolders);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("name");
-  // ランダム再選択でシードを引き直したことを useSearch に伝える epoch。
-  // reseedRandomSort() 自体はモジュール変数の変更のみで React から不可視のため、
-  // これを resetKey に含めて全置換フェッチを強制する（App.tsx#handleSortChange 参照）
+  // 同じ sortOrder のまま並び順が変わったことを useSearch と GhostContent に伝える epoch。
+  // ランダム再選択のシード変更（reseedRandomSort() はモジュール変数を書き換えるだけ）と、
+  // 最近起動順・起動回数順での起動記録（DB の集計列の更新）は、どちらも React の状態に
+  // 現れない。sortEpoch を進めて、並びの取り直しを強制する
   const [sortEpoch, setSortEpoch] = useState(0);
+
+  // 集計列で並べている間だけ起動の記録を購読し、記録のたびに並びを取り直す
+  // （起動したゴーストが最近起動順の先頭へ上がる）。名前順・ランダム順の並びは起動で変わらない
+  useEffect(() => {
+    if (!sortDependsOnLaunchStats(sortOrder)) return;
+    return subscribeLaunchRecorded(() => setSortEpoch((e) => e + 1));
+  }, [sortOrder]);
   // タイピング中のクエリ発行を打鍵毎から区切り毎に合流させる（時間側の合流）。
   // useDeferredValue はレンダー優先度側の遅延で、役割が異なるため両方通す
   const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
@@ -208,6 +217,7 @@ function App() {
           onRandomLaunch={handleRandomLaunch}
           onOpenSettings={handleOpenSettings}
           onLoadMore={handleLoadMore}
+          sortEpoch={sortEpoch}
         />
       </div>
 

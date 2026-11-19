@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   useSearchSpy: vi.fn(),
   ghostContentSpy: vi.fn(),
   launchGhostSpy: vi.fn(),
+  launchRecordedListeners: new Set<() => void>(),
   getRandomGhostSpy: vi.fn(),
   launcherToasts: {
     notifySuccess: vi.fn(),
@@ -59,8 +60,11 @@ vi.mock("./components/GhostContent", () => ({
     return null;
   },
 }));
-// plugin-sql のロードを避けるため DB アクセス関数はモック化する
-vi.mock("./lib/ghostDatabase", () => ({
+// plugin-sql のロードを避けるため DB アクセス関数はモック化する。
+// ソートの性質の判定（sortDependsOnLaunchStats）は DB に触れない純関数なので本物を使う
+vi.mock("./lib/ghostDatabase", async (importOriginal) => ({
+  sortDependsOnLaunchStats: (await importOriginal<typeof import("./lib/ghostDatabase")>())
+    .sortDependsOnLaunchStats,
   getRandomGhost: (...args: unknown[]) => mocks.getRandomGhostSpy(...args),
   recordLaunch: vi.fn(),
   reseedRandomSort: vi.fn(),
@@ -69,6 +73,10 @@ vi.mock("./lib/ghostDatabase", () => ({
 vi.mock("./lib/sspClient", () => ({
   launchGhost: (...args: unknown[]) => mocks.launchGhostSpy(...args),
   validateSspPath: vi.fn(),
+  subscribeLaunchRecorded: (listener: () => void) => {
+    mocks.launchRecordedListeners.add(listener);
+    return () => mocks.launchRecordedListeners.delete(listener);
+  },
 }));
 // トースト通知はスパイに差し替える（Fluent の Toaster コンテキスト非依存で検証する）
 vi.mock("./hooks/useLauncherToasts", () => ({
@@ -228,5 +236,47 @@ describe("App - スキャン中インジケータ（再スキャン時のみ）"
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("App - 起動記録後の並びの更新", () => {
+  // useSearch の第 7 引数（sortEpoch）の最新値
+  function latestSortEpoch(): number {
+    return mocks.useSearchSpy.mock.calls.at(-1)?.[6] as number;
+  }
+
+  function selectSortAndRecordLaunch(sort: string) {
+    render(<App />);
+    const onSortChange = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onSortChange;
+    act(() => onSortChange(sort));
+    const before = latestSortEpoch();
+    act(() => {
+      for (const listener of mocks.launchRecordedListeners) listener();
+    });
+    return { before, after: latestSortEpoch() };
+  }
+
+  it.each(["recent", "frequency"])("%s 順では、起動の記録後に並びを取り直す", (sort) => {
+    const { before, after } = selectSortAndRecordLaunch(sort);
+    expect(after).toBe(before + 1);
+  });
+
+  it.each(["name", "random"])("%s 順では、起動の記録で並びを取り直さない", (sort) => {
+    const { before, after } = selectSortAndRecordLaunch(sort);
+    expect(after).toBe(before);
+  });
+
+  it("集計列で並べている間だけ購読し、ソートの切替とアンマウントで解除する", () => {
+    const { unmount } = render(<App />);
+    expect(mocks.launchRecordedListeners.size).toBe(0); // 既定の名前順
+    const onSortChange = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onSortChange;
+    act(() => onSortChange("recent"));
+    expect(mocks.launchRecordedListeners.size).toBe(1);
+    act(() => onSortChange("name"));
+    expect(mocks.launchRecordedListeners.size).toBe(0);
+    act(() => onSortChange("frequency"));
+    expect(mocks.launchRecordedListeners.size).toBe(1);
+    unmount();
+    expect(mocks.launchRecordedListeners.size).toBe(0);
   });
 });
