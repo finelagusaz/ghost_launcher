@@ -379,11 +379,11 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 
 ### 8.1.1 DB 初期化（`getDb` → `loadDb`）
 
-JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以下の PRAGMA のみ実行する:
+JS の sqlx 接続は `sqlite:ghosts.db?mode=ro`（読み取り専用）で開き、PRAGMA は実行しない。
 
-| PRAGMA | 目的 |
-|--------|------|
-| `busy_timeout=5000` | ロック待機 5 秒（SQLITE_BUSY 回避）。sqlx-sqlite が接続確立毎に既定 5 秒を適用するため、この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤） |
+- webview の権限は `sql:default`（load・select・close）だけで、`execute` は渡さない。`select` も任意の文を流せるため、JS からの書き込みを止めるのは接続の `mode=ro` である
+- 残る余地: `load` 権限がある限り、JS は別の接続を書き込み可能で開き直せる（tauri-plugin-sql の権限に接続先の範囲指定が無いため）。塞ぐにはプラグインの事前接続（`preload`）で開いて `load` を外す必要があるが、事前接続はアプリの setup（DB アクターが ghosts.db を作る）より前に走るため、初回起動ではまだ無い ghosts.db を読み取り専用で開くことになり、採っていない
+- `busy_timeout` は設定しない。sqlx-sqlite が接続確立ごとに既定 5 秒を当てる
 
 - `journal_mode=WAL` はファイル永続属性のため、rusqlite 書き込み接続側の設定で足りる（JS 側で再設定不要）
 - `PRAGMA optimize` と条件付き VACUUM は Rust 側 DB アクターの `Job::Maintenance`（起動直後の自己投入ジョブ）へ移動済み。webview ロードも setup もブロックしない（§2.1/§5.2、失敗時はログのみで続行）
@@ -393,7 +393,7 @@ JS の sqlx 接続（読み取り専用スコープ）は初回接続時に以�
 | PRAGMA | 値 | 目的 |
 |--------|-----|------|
 | `journal_mode` | WAL | 並行読み取り性能向上（sqlx 側の読み取りもこの WAL に乗る） |
-| `busy_timeout` | 5000 | sqlx 側と同一 |
+| `busy_timeout` | 5000 | sqlx 側の既定（5 秒）と同じ |
 | `journal_size_limit` | 4194304 | WAL ファイルを 4MB 以下に制限（旧 JS `loadDb` から移設） |
 | `synchronous` | NORMAL | WAL モードでの書き込み高速化（キャッシュ DB のため許容） |
 | `cache_size` | -65536 | 64MB ページキャッシュ（10 万行の作業セットを収容） |

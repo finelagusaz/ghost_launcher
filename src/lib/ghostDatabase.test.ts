@@ -65,15 +65,16 @@ describe("ghostDatabase - getDb Promise 重複防止", () => {
 
 describe("ghostDatabase - getDb", () => {
 
-  it("初回接続時に PRAGMA busy_timeout=5000 を設定する", async () => {
+  it("読み取り専用の接続で開き、execute は呼ばない", async () => {
     const { getDb } = await import("./ghostDatabase");
     await getDb();
 
-    expect(mockLoad).toHaveBeenCalledWith("sqlite:ghosts.db");
-    expect(mockExecute).toHaveBeenCalledWith("PRAGMA busy_timeout=5000");
+    expect(mockLoad).toHaveBeenCalledWith("sqlite:ghosts.db?mode=ro");
+    // execute 権限は webview に渡していない（呼ぶと権限エラーで接続に失敗する）
+    expect(mockExecute).not.toHaveBeenCalled();
   });
 
-  it("2回目の getDb() では PRAGMA を再実行しない（シングルトン）", async () => {
+  it("2回目の getDb() では接続し直さない（シングルトン）", async () => {
     const { getDb } = await import("./ghostDatabase");
     const db1 = await getDb();
     mockExecute.mockClear();

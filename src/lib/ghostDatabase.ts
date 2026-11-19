@@ -5,13 +5,13 @@ import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
 
+/// JS の接続は読み取り専用で開く。書き込みは全て IPC 経由で Rust の DB アクターが行う。
+/// webview には sql の execute 権限を渡していないが、select も任意の文を流せるため、
+/// 書き込みを止めるのは接続の mode=ro である。
+/// busy_timeout は sqlx-sqlite が接続確立ごとに既定 5 秒を当てるので設定しない。
+/// journal_mode=WAL はファイルの属性で、Rust 側が設定済み。
 async function loadDb(): Promise<Database> {
-  const db = await Database.load("sqlite:ghosts.db");
-  // 読者に必要な PRAGMA のみ。journal_mode=WAL はファイル永続属性で Rust 側が設定済み。
-  // sqlx-sqlite は接続確立毎にデフォルト 5 秒の busy_timeout を全プール接続へ適用するため
-  // この明示は保険（sqlx 更新でデフォルトが変わった場合の防波堤）。
-  await db.execute("PRAGMA busy_timeout=5000");
-  return db;
+  return Database.load("sqlite:ghosts.db?mode=ro");
 }
 
 async function initializeDb(): Promise<Database> {
