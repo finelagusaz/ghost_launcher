@@ -55,5 +55,9 @@
   "error.ghostFolderNotFound": "ghost フォルダが見つかりません: {{path}}",
   "error.ghostFolderNotDirectory": "ghost フォルダがフォルダではありません: {{path}}",
   "error.ghostFolderUnreadable": "フォルダを読み取れませんでした: {{path}}（{{detail}}）",
-  "error.ghostIdentityCollision": "表記の違い（全角・半角、大文字・小文字、丸数字など）を除くと同じ名前になるフォルダがあります。どちらかの名前を変えてください: {{first}} / {{second}}"
+  "error.ghostIdentityCollision": "表記の違い（全角・半角、大文字・小文字、丸数字など）を除くと同じ名前になるフォルダがあります。どちらかの名前を変えてください: {{first}} / {{second}}",
+  "settings.saveFailed": "設定を保存できませんでした。もう一度お試しください。{{detail}}",
+  "settings.dialogFailed": "ダイアログを開けませんでした。もう一度お試しください。{{detail}}",
+  "settings.folders.duplicate": "このフォルダは登録済みです。",
+  "settings.folders.sspGhostFolder": "SSP の ghost フォルダは常に一覧の対象のため、追加フォルダには登録できません。"
 }

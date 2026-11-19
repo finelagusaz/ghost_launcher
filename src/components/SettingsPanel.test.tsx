@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, confirm } from "@tauri-apps/plugin-dialog";
 import { SettingsPanel } from "./SettingsPanel";
 
 // t は既定（ja）ではキーをそのまま返す。lang を変えると「{lang}:{key}」を返し、
@@ -67,5 +67,44 @@ describe("SettingsPanel", () => {
     } finally {
       i18nState.lang = "ja";
     }
+  });
+
+  it("フォルダ選択ダイアログを開けなかったら、その場に知らせる", async () => {
+    vi.mocked(open).mockRejectedValueOnce(new Error("dialog broken"));
+    render(<SettingsPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByText("settings.ssp.select"));
+    expect(await screen.findByText("settings.dialogFailed")).toBeInTheDocument();
+  });
+
+  it("SSP フォルダの検証が通ったあと保存に失敗したら、その場に知らせる", async () => {
+    vi.mocked(open).mockResolvedValue("C:/SSP");
+    mocks.validateSspPath.mockResolvedValue(undefined);
+    const onPathChange = vi.fn().mockRejectedValue(new Error("disk full"));
+    render(<SettingsPanel {...defaultProps} onPathChange={onPathChange} />);
+
+    fireEvent.click(screen.getByText("settings.ssp.select"));
+    expect(await screen.findByText("settings.saveFailed")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["duplicate", "settings.folders.duplicate"],
+    ["sspGhostFolder", "settings.folders.sspGhostFolder"],
+  ])("追加フォルダが %s で拒否されたら、理由を知らせる", async (outcome, message) => {
+    vi.mocked(open).mockResolvedValue("C:/Ghosts");
+    const onAddFolder = vi.fn().mockResolvedValue(outcome);
+    render(<SettingsPanel {...defaultProps} onAddFolder={onAddFolder} />);
+
+    fireEvent.click(screen.getByText("settings.folders.add"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
+  it("追加フォルダの削除の保存に失敗したら、その場に知らせる", async () => {
+    vi.mocked(confirm).mockResolvedValue(true);
+    const onRemoveFolder = vi.fn().mockRejectedValue(new Error("disk full"));
+    render(<SettingsPanel {...defaultProps} ghostFolders={["C:/A"]} onRemoveFolder={onRemoveFolder} />);
+
+    fireEvent.click(screen.getByText("settings.folders.delete"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("settings.saveFailed");
   });
 });

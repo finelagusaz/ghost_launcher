@@ -49,3 +49,26 @@ export function scanInputsFromSettings(
 export function requestKeyFromSettings(sspPath: string, ghostFolders: string[]): string {
   return scanInputsFromSettings(sspPath, ghostFolders).requestKey;
 }
+
+/// 追加フォルダとして登録できない理由。
+/// - duplicate: 表記（大文字小文字・区切り文字・末尾の区切り）だけが違う登録済みのフォルダがある
+/// - sspGhostFolder: SSP の ghost フォルダ自体。SSP のゴーストとして既に一覧に入るため、
+///   追加すると同じゴーストが 2 体並ぶ
+export type FolderRejectReason = "duplicate" | "sspGhostFolder";
+
+/// 新しい追加フォルダを登録できない理由を返す（登録できるなら null）。
+/// 比較はスキャンと同じ normalizePathKey で行う。
+export function rejectReasonForNewFolder(
+  folder: string,
+  existing: string[],
+  sspPath: string | null,
+): FolderRejectReason | null {
+  const key = normalizePathKey(folder);
+  if (existing.some((registered) => normalizePathKey(registered) === key)) {
+    return "duplicate";
+  }
+  if (sspPath && normalizePathKey(`${sspPath}/ghost`) === key) {
+    return "sspGhostFolder";
+  }
+  return null;
+}

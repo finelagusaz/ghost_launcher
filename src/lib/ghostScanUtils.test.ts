@@ -5,6 +5,7 @@ import {
   buildRequestKey,
   requestKeyFromSettings,
   scanInputsFromSettings,
+  rejectReasonForNewFolder,
 } from "./ghostScanUtils";
 
 describe("normalizePathKey", () => {
@@ -76,5 +77,22 @@ describe("scanInputsFromSettings", () => {
     expect(inputs.requestKey).toBe(requestKeyFromSettings(sspPath, folders));
     expect(inputs.additionalFolders).toEqual(buildAdditionalFolders(folders));
     expect(inputs.additionalFolders).toHaveLength(2); // 重複排除済み
+  });
+});
+
+describe("rejectReasonForNewFolder", () => {
+  it("大文字小文字・区切り文字・末尾の区切りだけが違う登録済みフォルダは重複とする", () => {
+    expect(rejectReasonForNewFolder(String.raw`c:/ghosts/`, [String.raw`C:\Ghosts`], null)).toBe("duplicate");
+  });
+
+  it("SSP の ghost フォルダ自体は追加できない（同じゴーストが 2 体並ぶ）", () => {
+    expect(rejectReasonForNewFolder("C:\\SSP\\ghost\\", [], "c:/ssp")).toBe("sspGhostFolder");
+  });
+
+  it("どちらにも当たらなければ追加できる", () => {
+    expect(rejectReasonForNewFolder("C:/Ghosts2", ["C:/Ghosts"], "C:/SSP")).toBeNull();
+    // SSP フォルダそのもの・ghost の下の個別ゴーストは別物
+    expect(rejectReasonForNewFolder("C:/SSP", [], "C:/SSP")).toBeNull();
+    expect(rejectReasonForNewFolder("C:/SSP/ghost/a", [], "C:/SSP")).toBeNull();
   });
 });

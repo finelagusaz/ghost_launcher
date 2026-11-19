@@ -77,6 +77,10 @@ locales/
 | `settings.folders.deleteTitle` | 削除確認ダイアログのタイトル | — |
 | `settings.folders.deleteOk` | 削除確認の OK ボタン | — |
 | `settings.folders.deleteCancel` | 削除確認のキャンセルボタン | — |
+| `settings.folders.duplicate` | 登録済みのフォルダを追加しようとしたときの表示 | — |
+| `settings.folders.sspGhostFolder` | SSP の ghost フォルダを追加しようとしたときの表示 | — |
+| `settings.saveFailed` | 設定の保存に失敗したときの表示 | `{{detail}}` |
+| `settings.dialogFailed` | フォルダ選択・確認のダイアログを開けなかったときの表示 | `{{detail}}` |
 | `content.noSspPath` | SSP 未設定時のメッセージ | — |
 | `content.openSettings` | 設定を開くリンク | — |
 | `list.loading` | ゴーストリスト読み込み中 | — |
@@ -197,6 +201,10 @@ locales/
 | `settings.folders.deleteTitle` | Delete confirmation dialog title | — |
 | `settings.folders.deleteOk` | Confirm delete button | — |
 | `settings.folders.deleteCancel` | Cancel delete button | — |
+| `settings.folders.duplicate` | Shown when adding a folder that is already registered | — |
+| `settings.folders.sspGhostFolder` | Shown when adding SSP's ghost folder | — |
+| `settings.saveFailed` | Shown when saving the settings fails | `{{detail}}` |
+| `settings.dialogFailed` | Shown when the folder picker or confirmation dialog cannot be opened | `{{detail}}` |
 | `content.noSspPath` | Message shown when SSP path is not set | — |
 | `content.openSettings` | Open settings link | — |
 | `list.loading` | Ghost list loading state | — |

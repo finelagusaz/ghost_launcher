@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useSettings } from "./useSettings";
 import { settingsStore } from "../lib/settingsStore";
 import { i18n, applyUserLocale } from "../lib/i18n";
@@ -73,5 +73,55 @@ describe("useSettings", () => {
     });
 
     expect(applyUserLocale).toHaveBeenCalledWith("ja");
+  });
+
+  async function loaded(sspPath: string | null, folders: string[]) {
+    vi.mocked(settingsStore.get).mockImplementation(async (key: string) => {
+      if (key === "ssp_path") return sspPath;
+      if (key === "ghost_folders") return folders;
+      return null;
+    });
+    const hook = renderHook(() => useSettings());
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  it("表記だけが違う登録済みフォルダは追加せず duplicate を返す", async () => {
+    const { result } = await loaded("C:/SSP", [String.raw`C:\Ghosts`]);
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.addGhostFolder("c:/ghosts/");
+    });
+    expect(outcome).toBe("duplicate");
+    expect(result.current.ghostFolders).toEqual([String.raw`C:\Ghosts`]);
+    expect(settingsStore.set).not.toHaveBeenCalled();
+  });
+
+  it("SSP の ghost フォルダは追加せず sspGhostFolder を返す", async () => {
+    const { result } = await loaded("C:/SSP", []);
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.addGhostFolder(String.raw`C:\SSP\ghost`);
+    });
+    expect(outcome).toBe("sspGhostFolder");
+    expect(result.current.ghostFolders).toEqual([]);
+  });
+
+  it("追加フォルダの保存に失敗したら元に戻して失敗を投げる", async () => {
+    const { result } = await loaded("C:/SSP", ["C:/A"]);
+    vi.mocked(settingsStore.save).mockRejectedValueOnce(new Error("disk full"));
+    await act(async () => {
+      await expect(result.current.addGhostFolder("C:/B")).rejects.toThrow("disk full");
+    });
+    expect(result.current.ghostFolders).toEqual(["C:/A"]);
+  });
+
+  it("SSP フォルダの保存に失敗したら値を変えず失敗を投げる", async () => {
+    const { result } = await loaded("C:/SSP", []);
+    vi.mocked(settingsStore.save).mockRejectedValueOnce(new Error("disk full"));
+    await act(async () => {
+      await expect(result.current.saveSspPath("C:/SSP2")).rejects.toThrow("disk full");
+    });
+    expect(result.current.sspPath).toBe("C:/SSP");
   });
 });

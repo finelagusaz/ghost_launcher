@@ -14,14 +14,18 @@ import {
 import { AddRegular, DeleteRegular, FolderOpenRegular } from "@fluentui/react-icons";
 import { SUPPORTED_LANGUAGES, type Language } from "../lib/i18n";
 import { validateSspPath } from "../lib/sspClient";
-import { describeError, type CaughtError } from "../lib/errorMessages";
+import { describeError, formatErrorDetail } from "../lib/errorMessages";
+import type { AddFolderOutcome } from "../hooks/useSettings";
 
 interface Props {
   sspPath: string | null;
-  onPathChange: (path: string) => void;
+  /// 保存に失敗したら reject する（パネルが画面に知らせる）
+  onPathChange: (path: string) => Promise<void>;
   ghostFolders: string[];
-  onAddFolder: (folder: string) => void;
-  onRemoveFolder: (folder: string) => void;
+  /// 拒否したときは理由を返し、保存に失敗したら reject する
+  onAddFolder: (folder: string) => Promise<AddFolderOutcome>;
+  /// 保存に失敗したら reject する
+  onRemoveFolder: (folder: string) => Promise<void>;
   language: Language;
   onLanguageChange: (lang: Language) => void;
   languageApplying?: boolean;
@@ -80,7 +84,26 @@ const useStyles = makeStyles({
   empty: {
     color: tokens.colorNeutralForeground3,
   },
+  error: {
+    color: tokens.colorPaletteRedForeground1,
+  },
 });
+
+/// パネルに出す失敗。文言は描画時に組み立てる（このダイアログ内で言語を切り替えても、
+/// 表示中の失敗が追従する）。key が無いものは、捕まえた値そのものを文言にする（SSP の検証エラー）。
+interface PanelNotice {
+  key?: string;
+  cause?: unknown;
+}
+
+function useNoticeText() {
+  const { t } = useTranslation();
+  return (notice: PanelNotice | null): string | undefined => {
+    if (!notice) return undefined;
+    if (!notice.key) return describeError(notice.cause, t);
+    return t(notice.key, { detail: notice.cause === undefined ? "" : formatErrorDetail(notice.cause, t) });
+  };
+}
 
 export function SettingsPanel({
   sspPath,
@@ -94,48 +117,66 @@ export function SettingsPanel({
 }: Props) {
   const styles = useStyles();
   const { t } = useTranslation();
-  // 文言は描画時に組み立てる（このダイアログ内で言語を切り替えても、表示中のエラーが追従する）
-  const [validationError, setValidationError] = useState<CaughtError | null>(null);
-  const validationMessage = validationError ? describeError(validationError.cause, t) : undefined;
+  const noticeText = useNoticeText();
+  const [sspNotice, setSspNotice] = useState<PanelNotice | null>(null);
+  const [folderNotice, setFolderNotice] = useState<PanelNotice | null>(null);
   const [validating, setValidating] = useState(false);
 
-  const handleSelectFolder = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: t("settings.ssp.dialogTitle"),
-    });
-    if (!selected) {
-      setValidationError(null);
-      return;
+  /// フォルダ選択ダイアログを開く。開けなかったら知らせて null を返す。
+  const pickFolder = async (
+    title: string,
+    notify: (notice: PanelNotice) => void,
+  ): Promise<string | null> => {
+    try {
+      return await open({ directory: true, multiple: false, title });
+    } catch (e) {
+      notify({ key: "settings.dialogFailed", cause: e });
+      return null;
     }
+  };
+
+  const handleSelectFolder = async () => {
+    setSspNotice(null);
+    const selected = await pickFolder(t("settings.ssp.dialogTitle"), setSspNotice);
+    if (!selected) return;
 
     setValidating(true);
     try {
-      await validateSspPath(selected);
-      onPathChange(selected);
-      setValidationError(null);
-    } catch (e) {
-      setValidationError({ cause: e });
+      try {
+        await validateSspPath(selected);
+      } catch (e) {
+        setSspNotice({ cause: e });
+        return;
+      }
+      try {
+        await onPathChange(selected);
+      } catch (e) {
+        setSspNotice({ key: "settings.saveFailed", cause: e });
+      }
     } finally {
       setValidating(false);
     }
   };
 
   const handleAddGhostFolder = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: t("settings.folders.addDialogTitle"),
-    });
-    if (selected) {
-      onAddFolder(selected);
+    setFolderNotice(null);
+    const selected = await pickFolder(t("settings.folders.addDialogTitle"), setFolderNotice);
+    if (!selected) return;
+    try {
+      const outcome = await onAddFolder(selected);
+      if (outcome !== "added") {
+        setFolderNotice({ key: `settings.folders.${outcome}` });
+      }
+    } catch (e) {
+      setFolderNotice({ key: "settings.saveFailed", cause: e });
     }
   };
 
   const handleRemoveFolder = async (folder: string) => {
+    setFolderNotice(null);
+    let approved: boolean;
     try {
-      const approved = await confirm(
+      approved = await confirm(
         t("settings.folders.deleteConfirm", { folder }),
         {
           title: t("settings.folders.deleteTitle"),
@@ -144,13 +185,20 @@ export function SettingsPanel({
           cancelLabel: t("settings.folders.deleteCancel"),
         },
       );
-      if (approved) {
-        onRemoveFolder(folder);
-      }
     } catch (e) {
-      console.error("フォルダ削除の確認中にエラーが発生しました", e);
+      setFolderNotice({ key: "settings.dialogFailed", cause: e });
+      return;
+    }
+    if (!approved) return;
+    try {
+      await onRemoveFolder(folder);
+    } catch (e) {
+      setFolderNotice({ key: "settings.saveFailed", cause: e });
     }
   };
+
+  const sspMessage = noticeText(sspNotice);
+  const folderMessage = noticeText(folderNotice);
 
   return (
     <div className={styles.panel}>
@@ -174,8 +222,8 @@ export function SettingsPanel({
       <div className={styles.row}>
         <Field
           label={t("settings.ssp.label")}
-          validationState={validationError ? "error" : undefined}
-          validationMessage={validationMessage}
+          validationState={sspMessage ? "error" : undefined}
+          validationMessage={sspMessage}
         >
           <Input readOnly value={sspPath ?? t("settings.ssp.unset")} />
         </Field>
@@ -198,6 +246,11 @@ export function SettingsPanel({
           </Button>
         </div>
         <Text className={styles.helper}>{t("settings.folders.helper")}</Text>
+        {folderMessage && (
+          <Text role="alert" className={styles.error}>
+            {folderMessage}
+          </Text>
+        )}
         {ghostFolders.length === 0 && (
           <Text className={styles.empty}>{t("settings.folders.empty")}</Text>
         )}
