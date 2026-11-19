@@ -51,6 +51,7 @@
   "error.detail": " (Подробности: {{detail}})",
   "error.scanFailed": "Не удалось получить список духов. Проверьте папку SSP и дополнительные папки, затем нажмите «$t(header.refresh)».{{detail}}",
   "error.sspExeNotFound": "ssp.exe не найден: {{path}}",
+  "error.sspPathNotLocal": "Папка SSP должна быть указана путём, начинающимся с буквы диска (сетевые пути вида \\\\server\\share не допускаются): {{path}}",
   "error.sspLaunchFailed": "Не удалось запустить SSP: {{detail}}",
   "error.ghostFolderNotFound": "Папка ghost не найдена: {{path}}",
   "error.ghostFolderNotDirectory": "ghost не является папкой: {{path}}",

@@ -52,6 +52,7 @@
   "error.detail": " (Details: {{detail}})",
   "error.scanFailed": "Failed to load the ghost list. Check the SSP folder and additional folders, then click \"$t(header.refresh)\".{{detail}}",
   "error.sspExeNotFound": "ssp.exe not found: {{path}}",
+  "error.sspPathNotLocal": "The SSP folder must be a path starting with a drive letter (network share paths such as \\\\server\\share are not allowed): {{path}}",
   "error.sspLaunchFailed": "Could not start SSP: {{detail}}",
   "error.ghostFolderNotFound": "ghost folder not found: {{path}}",
   "error.ghostFolderNotDirectory": "ghost folder is not a folder: {{path}}",

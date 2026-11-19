@@ -92,6 +92,7 @@ locales/
 | `error.detail` | エラー文言の末尾に添える詳細（括弧書き） | `{{detail}}` |
 | `error.scanFailed` | ゴースト一覧の取得失敗メッセージ（再読込ボタン名を `$t(header.refresh)` で参照） | `{{detail}}` |
 | `error.sspExeNotFound` | 選んだフォルダに ssp.exe が無い | `{{path}}` |
+| `error.sspPathNotLocal` | SSP フォルダがドライブ文字で始まるパスでない（ネットワーク共有のパス等） | `{{path}}` |
 | `error.sspLaunchFailed` | SSP のプロセス起動の失敗 | `{{detail}}` |
 | `error.ghostFolderNotFound` | SSP の ghost フォルダが無い | `{{path}}` |
 | `error.ghostFolderNotDirectory` | SSP の ghost がフォルダでない | `{{path}}` |
@@ -212,6 +213,7 @@ locales/
 | `error.detail` | Details appended to an error message (parenthesized) | `{{detail}}` |
 | `error.scanFailed` | Message when loading the ghost list fails (refers to the reload button via `$t(header.refresh)`) | `{{detail}}` |
 | `error.sspExeNotFound` | ssp.exe is missing from the selected folder | `{{path}}` |
+| `error.sspPathNotLocal` | The SSP folder is not a path starting with a drive letter (e.g. a network share path) | `{{path}}` |
 | `error.sspLaunchFailed` | Starting the SSP process failed | `{{detail}}` |
 | `error.ghostFolderNotFound` | SSP's ghost folder is missing | `{{path}}` |
 | `error.ghostFolderNotDirectory` | SSP's ghost is not a folder | `{{path}}` |

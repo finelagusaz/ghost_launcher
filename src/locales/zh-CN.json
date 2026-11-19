@@ -51,6 +51,7 @@
   "error.detail": "（详细信息：{{detail}}）",
   "error.scanFailed": "获取幽灵列表失败。请检查SSP文件夹和附加文件夹，然后点击「$t(header.refresh)」。{{detail}}",
   "error.sspExeNotFound": "找不到 ssp.exe：{{path}}",
+  "error.sspPathNotLocal": "SSP 文件夹必须是以盘符开头的路径（不能使用 \\\\server\\share 这样的网络共享路径）：{{path}}",
   "error.sspLaunchFailed": "无法启动SSP：{{detail}}",
   "error.ghostFolderNotFound": "找不到 ghost 文件夹：{{path}}",
   "error.ghostFolderNotDirectory": "ghost 不是文件夹：{{path}}",

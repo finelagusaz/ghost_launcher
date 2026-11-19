@@ -279,7 +279,8 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | 戻り値 | `()`                                                                                                                                                            |
 | 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
 | 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
-| エラー | `CommandError`（§13）。`ssp.exe` 不在時は `sspExeNotFound`、起動失敗時は `sspLaunchFailed`                                                                     |
+| 検証   | `ssp_path` はドライブ文字で始まる絶対パス（`C:\…`・`\\?\C:\…`）に限る。UNC（`\\server\share`・`\\?\UNC\…`）・デバイスパス・相対パス・ドライブ相対（`C:ssp`）・`..` を含むパスは、ファイルシステムに触れる前に拒否する（乗っ取られた webview からリモート共有上の exe を起動させない。UNC は存在確認だけで SMB 接続を起こすため）。割り当て済みのネットワークドライブ（`Z:` 等）は通す |
+| エラー | `CommandError`（§13）。`ssp_path` が上記の検証を通らないときは `sspPathNotLocal`、`ssp.exe` 不在時は `sspExeNotFound`、起動失敗時は `sspLaunchFailed`       |
 
 ### 6.3 `validate_ssp_path`
 
@@ -287,8 +288,8 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | ------ | ------------------------------------------------------------ |
 | 引数   | `ssp_path: String`                                           |
 | 戻り値 | `()`                                                         |
-| 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
-| エラー | `ssp.exe` 不在時に `CommandError` の `sspExeNotFound` を返す（設定画面が UI の言語の文言にして表示） |
+| 処理   | `ssp_path` を §6.2 と同じ検証（ドライブ文字で始まる絶対パスに限る）にかけてから、`{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
+| エラー | 検証を通らないときは `sspPathNotLocal`、`ssp.exe` 不在時は `sspExeNotFound` を `CommandError` で返す（設定画面が UI の言語の文言にして表示） |
 
 ### 6.4 `read_user_locale`
 
@@ -730,6 +731,7 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 | `descript.txt` 不在                  | そのゴーストをスキップ                                   |
 | `descript.txt` に `name` 未定義      | ディレクトリ名をフォールバック表示名とする               |
 | `ssp.exe` 不在（カード個別起動）     | 起動時エラー表示（カード内 `role="alert"`・インライン）   |
+| SSP フォルダがドライブ文字で始まらない（UNC 等） | ファイルシステムに触れる前に `sspPathNotLocal` で拒否（§6.2/§6.3）。表示は `ssp.exe` 不在と同じ経路 |
 | ランダム起動の成功/失敗/対象なし     | トースト通知（成功/エラー/警告）。ゴースト一覧は破壊しない |
 | スキャンエラー（キャッシュ表示済み） | キャッシュ表示を維持し、エラーを抑制                     |
 | スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |

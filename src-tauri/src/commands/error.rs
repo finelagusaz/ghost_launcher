@@ -17,6 +17,8 @@ use ts_rs::TS;
 pub enum CommandError {
     /// 指定フォルダに ssp.exe が無い
     SspExeNotFound { path: String },
+    /// SSP フォルダがローカルのドライブ文字で始まる絶対パスでない（UNC・相対・`..` を含む）
+    SspPathNotLocal { path: String },
     /// ssp.exe のプロセス起動に失敗した（`detail` は OS のエラー文）
     SspLaunchFailed { detail: String },
     /// 必須の ghost フォルダ（`{ssp_path}/ghost`）が無い

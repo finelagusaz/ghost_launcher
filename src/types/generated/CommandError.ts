@@ -8,4 +8,4 @@
  * 種別を持たない内部失敗（DB エラー等）は `Internal` に生の詳細を載せる。フロントは
  * 詳細をそのまま「詳細」欄へ出す。`From<String>` で既存の `?` 伝播をそのまま受ける。
  */
-export type CommandError = { "kind": "sspExeNotFound", path: string, } | { "kind": "sspLaunchFailed", detail: string, } | { "kind": "ghostFolderNotFound", path: string, } | { "kind": "ghostFolderNotDirectory", path: string, } | { "kind": "ghostFolderUnreadable", path: string, detail: string, } | { "kind": "ghostIdentityCollision", first: string, second: string, } | { "kind": "internal", detail: string, };
+export type CommandError = { "kind": "sspExeNotFound", path: string, } | { "kind": "sspPathNotLocal", path: string, } | { "kind": "sspLaunchFailed", detail: string, } | { "kind": "ghostFolderNotFound", path: string, } | { "kind": "ghostFolderNotDirectory", path: string, } | { "kind": "ghostFolderUnreadable", path: string, detail: string, } | { "kind": "ghostIdentityCollision", first: string, second: string, } | { "kind": "internal", detail: string, };
