@@ -12,19 +12,32 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use tokio::sync::{mpsc, oneshot};
 
 /// 起動配線（設計書 §2.1 の 5 ステップ・すべて setup スレッドで同期実行）。
-/// 順序は不変条件: sanitize → user-data 初期化＋legacy 移送 → スキーマ確定 → スレッド起動。
+/// 順序は不変条件: データ置き場の作成 → sanitize → user-data 初期化＋legacy 移送 →
+/// スキーマ確定 → スレッド起動。
 /// 特に「移送 → ensure_cache_schema」の順序を破ると、旧世代 DB の永続履歴が
 /// リビルドの全 DROP に巻き込まれて失われる（issue #93/#146）。
-// bootstrap は actor 起動配線として ghosts.db/user-data.db を直接開く正当な唯一の入口（設計書 §2.3）。
-#[allow(clippy::disallowed_methods)]
 pub(crate) fn bootstrap(app: &tauri::App) -> Result<ActorHandle, String> {
-    // (1) パス解決（単一権威・ここ以外に ghosts.db のパスを知るコードは存在しない）と最小 sanitize
+    // (1) パス解決（単一権威・ここ以外に ghosts.db のパスを知るコードは存在しない）
     let db_dir = db_path::ghost_db_dir(app)?;
+    bootstrap_in(&db_dir)
+}
+
+/// bootstrap の本体（パス解決以降）。テストから Tauri の App なしで駆動できるよう、
+/// DB を置くディレクトリを受け取る。
+// actor 起動配線として ghosts.db/user-data.db を直接開く正当な唯一の入口（設計書 §2.3）。
+#[allow(clippy::disallowed_methods)]
+fn bootstrap_in(db_dir: &std::path::Path) -> Result<ActorHandle, String> {
+    // (1') データ置き場を用意する。初回起動ではまだ無く、SQLite はファイルを作れても
+    //      親ディレクトリは作らない（無いまま開くと起動中止になり、新規の利用者が起動できない）
+    std::fs::create_dir_all(db_dir)
+        .map_err(|e| format!("データ置き場を作成できません（{}）: {e}", db_dir.display()))?;
+
+    // (1'') 最小 sanitize
     let ghosts_path = db_dir.join(db_path::GHOST_DB_FILES[0]);
-    sanitize(&db_dir, &ghosts_path);
+    sanitize(db_dir, &ghosts_path);
 
     // (2) user-data 初期化 + legacy 移送
-    let user_path = db_path::user_data_db_path(app)?;
+    let user_path = db_dir.join(db_path::USER_DATA_DB_FILE);
     let user_conn = rusqlite::Connection::open(&user_path)
         .map_err(|e| format!("user-data.db オープンエラー: {e}"))?;
     crate::commands::ghost::store::configure_connection(&user_conn)
@@ -297,6 +310,31 @@ mod tests {
             })
             .unwrap();
         rx.blocking_recv().unwrap()
+    }
+
+    /// 初回起動（データ置き場のディレクトリがまだ無い）でも起動配線が通り、
+    /// 両 DB がそのディレクトリに作られること。#97 以降、ディレクトリを作る前に user-data.db を
+    /// 開いて起動中止になっていた（新規の利用者がアプリを起動できない）回帰ガード。
+    #[test]
+    fn 初回起動でデータ置き場が無くても起動しdbを作る() {
+        let dir = TempDirGuard::new("ghost_launcher_first_launch_test");
+        let db_dir = dir.path().join("AppData").join("com.example.first-launch");
+        assert!(!db_dir.exists(), "テスト前提: データ置き場はまだ無い");
+
+        let handle = bootstrap_in(&db_dir).expect("初回起動で起動配線が失敗した");
+
+        assert!(db_dir.join(db_path::USER_DATA_DB_FILE).is_file());
+        assert!(db_dir.join(db_path::GHOST_DB_FILES[0]).is_file());
+        // アクターが応答する（起動配線が実際に使える状態で終わっている）
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        handle
+            .send(Job::CleanupCaches {
+                current_request_key: "rk".to_string(),
+                reply,
+            })
+            .unwrap();
+        assert_eq!(rx.blocking_recv().unwrap(), Ok(0));
+        drop(handle);
     }
 
     #[test]
