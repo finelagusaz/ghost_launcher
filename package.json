@@ -1,7 +1,7 @@
 {
   "name": "ghost-launcher",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.9.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,8 @@
     "test:ui-guidelines-check": "node --test scripts/check-ui-guidelines.test.mjs",
     "check:doc-paths": "node scripts/check-doc-paths.mjs",
     "test:doc-paths-check": "node --test scripts/check-doc-paths.test.mjs",
+    "check:version": "node scripts/check-version.mjs",
+    "test:version-check": "node --test scripts/check-version.test.mjs",
     "test:hooks": "node --test scripts/hooks/hooks.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri",

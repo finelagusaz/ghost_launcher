@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # タグとアプリの版（package.json・tauri.conf.json・Cargo.toml 等）が一致しなければ公開しない。
+      # 版を上げる PR をマージしてからタグを打つ（手順は docs/development.md）
+      - name: Check versions match the tag
+        run: npm run check:version -- --tag ${{ github.ref_name }}
+
       # 公開前に試験を通す。タグを打ったコミットが CI を通っていなくても、壊れた版を公開しない
       - name: Run frontend tests
         run: npm test
