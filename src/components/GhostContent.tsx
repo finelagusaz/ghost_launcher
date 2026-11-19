@@ -104,7 +104,8 @@ export const GhostContent = memo(function GhostContent({
   // 検索クエリの変更・ソートの切替・並びの更新で、選択を先頭へ戻す。
   // 並びが更新されると、選択 index の位置に別のゴーストが来る。そのまま Enter を押すと、
   // 意図しないゴーストを起動してしまう。最近起動順では起動したゴーストが先頭へ上がるため、
-  // 先頭へ戻すと同じゴーストを選んだままになる
+  // 先頭へ戻すと同じゴーストを選んだままになる。起動回数順では先頭が起動したゴーストとは
+  // 限らない（選択を identity で持てば揃えられるが、仮想化で未読込の行を指せないため見送る）
   useEffect(() => {
     setSelectedIndex(0);
   }, [searchQuery, sortOrder, sortEpoch]);

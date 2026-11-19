@@ -128,9 +128,9 @@ export function useSearch(
         // 並びの更新では、offset の窓ではなく、読込済みのバッファの範囲をそのまま取り直す。
         // offset の窓で取り直すと、先読みで広がったバッファのうち表示中の行が窓から外れ、
         // いったん Skeleton になる
-        const prev = bufferRef.current;
-        const fetchLimit = isReorderOnly ? prev.ghosts.length : limit;
-        const fetchOffset = isReorderOnly ? prev.start : offset;
+        const buffered = bufferRef.current;
+        const fetchLimit = isReorderOnly ? buffered.ghosts.length : limit;
+        const fetchOffset = isReorderOnly ? buffered.start : offset;
 
         // COUNT は総数が変わり得るリセット時だけ発行する（スクロールのページ送り・ソートの切替・
         // 並びの更新では発行しない）。SELECT と並行させ、待ち時間を重ねない
@@ -144,7 +144,7 @@ export function useSearch(
 
         if (isReset) {
           // コンテキストの変更・並びの更新 → バッファを全置換する
-          const next = isReorderOnly ? reuseSameRows(prev.ghosts, pageGhosts) : pageGhosts;
+          const next = isReorderOnly ? reuseSameRows(buffered.ghosts, pageGhosts) : pageGhosts;
           if (next !== null) {
             setGhosts(next);
             setLoadedStart(fetchOffset);
@@ -152,7 +152,9 @@ export function useSearch(
           }
           if (newTotal !== null) applyCount(newTotal);
         } else {
-          // スクロールによる offset 変更 → マージ（total はリセット時の値を保持）
+          // スクロールによる offset 変更 → マージ（total はリセット時の値を保持）。
+          // マージ先のバッファは取得の完了後に読む（取得中の更新を取りこぼさない）
+          const prev = bufferRef.current;
           const prevEnd = prev.start + prev.ghosts.length;
           const newEnd = offset + pageGhosts.length;
           const hasOverlap = offset <= prevEnd && newEnd >= prev.start;
