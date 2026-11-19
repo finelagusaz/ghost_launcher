@@ -141,7 +141,6 @@ SQLite `ghosts` テーブルからの SELECT 結果を表す型（`diff_fingerpr
 | `name_lower`             | `TEXT`    | `name` の NFKC 正規化・小文字版（検索用）                |
 | `directory_name_lower`   | `TEXT`    | `directory_name` の NFKC 正規化・小文字版（検索用）      |
 | `request_key`            | `TEXT`    | SSP パスと追加フォルダからフロントエンドが生成した識別子  |
-| `updated_at`             | `TEXT`    | 行の最終更新日時（INSERT 時に `CURRENT_TIMESTAMP`）      |
 | `craftman`               | `TEXT`    | 作者名                                                   |
 | `thumbnail_path`         | `TEXT`    | サムネイル画像パス                                       |
 | `thumbnail_use_self_alpha` | `INTEGER` | 透過方式（1 = SelfAlpha, 0 = KeyColor）               |

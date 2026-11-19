@@ -98,7 +98,7 @@ pub(crate) fn read_scan_entries(
 /// 隣接する位置引数だと取り違えをコンパイラが検知できないため、名前付きフィールドで構造的に防ぐ。
 ///
 /// - `upserts`: 変更子（parse 成功）。`ON CONFLICT … DO UPDATE … WHERE row_fingerprint 相違` で、
-///   新規は INSERT・メタ変化は UPDATE・不変は no-op（updated_at を bump しない）。初回/移行時
+///   新規は INSERT・メタ変化は UPDATE・不変は no-op（行も index も書き換えない）。初回/移行時
 ///   （ghosts 既存・scan_entries 空）でも UNIQUE 衝突せず UPDATE で吸収する。
 /// - `deletes`: DELETE 対象 `ghost_identity_key`（削除子＋parse 失敗子）。upsert より先に適用する。
 /// - `scan_upserts` / `scan_deletes`: `ghost_scan_entries` の差分（変更子を UPSERT・削除子を DELETE）。
@@ -173,12 +173,10 @@ pub(crate) fn store_ghosts_delta(
                         directory_name, path, source,\
                         name_lower, sakura_name_lower, kero_name_lower,\
                         craftman_lower, craftmanw_lower, directory_name_lower,\
-                        thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind,\
-                        updated_at\
+                        thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind\
                     ) VALUES (\
                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,\
-                        ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,\
-                        datetime('now')\
+                        ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20\
                     ) ON CONFLICT(request_key, ghost_identity_key) DO UPDATE SET \
                         row_fingerprint = excluded.row_fingerprint,\
                         name = excluded.name, sakura_name = excluded.sakura_name,\
@@ -191,7 +189,7 @@ pub(crate) fn store_ghosts_delta(
                         directory_name_lower = excluded.directory_name_lower,\
                         thumbnail_path = excluded.thumbnail_path,\
                         thumbnail_use_self_alpha = excluded.thumbnail_use_self_alpha,\
-                        thumbnail_kind = excluded.thumbnail_kind, updated_at = datetime('now')\
+                        thumbnail_kind = excluded.thumbnail_kind \
                     WHERE ghosts.row_fingerprint != excluded.row_fingerprint",
                 )
                 .map_err(|e| format!("UPSERT 準備エラー: {e}"))?;
@@ -567,8 +565,20 @@ mod tests {
     }
 
     #[test]
-    fn store_ghosts_delta_が変更子をupdateし不変子のupdated_atを保つ() {
+    fn store_ghosts_delta_が変更子をupdateし不変子を書き換えない() {
         let conn = setup_db();
+        // ghosts への UPDATE を数える（不変子の no-op を、行の中身でなく UPDATE の有無で観測する）
+        conn.execute_batch(
+            "CREATE TEMP TABLE ghost_updates (n INTEGER);\
+             INSERT INTO ghost_updates VALUES (0);\
+             CREATE TEMP TRIGGER count_ghost_updates AFTER UPDATE ON ghosts \
+             BEGIN UPDATE ghost_updates SET n = n + 1; END;",
+        )
+        .unwrap();
+        let update_count = |conn: &Connection| -> i64 {
+            conn.query_row("SELECT n FROM ghost_updates", [], |r| r.get(0))
+                .unwrap()
+        };
         let mut alice = make_ghost("Alice", "alice", "ssp");
         let ka = build_ghost_identity_key(&alice);
         store_ghosts_delta(
@@ -585,15 +595,9 @@ mod tests {
             },
         )
         .unwrap();
-        let updated_at_1: String = conn
-            .query_row(
-                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
-                ["rk1"],
-                |row| row.get(0),
-            )
-            .unwrap();
+        assert_eq!(update_count(&conn), 0, "新規は INSERT のみ");
 
-        // row_fingerprint 一致の再 upsert（メタ不変）→ WHERE で UPDATE されず updated_at 不変
+        // row_fingerprint 一致の再 upsert（メタ不変）→ WHERE で UPDATE されない
         store_ghosts_delta(
             &conn,
             "rk1",
@@ -608,17 +612,7 @@ mod tests {
             },
         )
         .unwrap();
-        let updated_at_2: String = conn
-            .query_row(
-                "SELECT updated_at FROM ghosts WHERE request_key = ?1",
-                ["rk1"],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            updated_at_1, updated_at_2,
-            "メタ不変なら updated_at は bump しない"
-        );
+        assert_eq!(update_count(&conn), 0, "メタ不変なら行を書き換えない");
 
         // row_fingerprint 変化 → UPDATE される
         alice.diff_fingerprint = "fp-changed".to_string();
@@ -645,6 +639,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(name, "Alice-Updated");
+        assert_eq!(update_count(&conn), 1);
         assert_eq!(count_ghosts(&conn, "rk1"), 1);
     }
 
@@ -729,12 +724,9 @@ mod tests {
 
     // --- cleanup_old_ghost_caches ---
 
+    /// 世代を 1 つ seed する。updated_at は世代の台帳（ghost_fingerprints）の最終書込時刻。
     fn seed_generation(conn: &Connection, request_key: &str, updated_at: &str) {
-        conn.execute(
-            "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES (?1, ?1 || 'g', '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', ?2)",
-            rusqlite::params![request_key, updated_at],
-        )
-        .unwrap();
+        crate::testutil::insert_ghost_row_in(conn, request_key, &format!("{request_key}g"));
         conn.execute(
             "INSERT INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES (?1, 'fp', ?2)",
             rusqlite::params![request_key, updated_at],
@@ -833,28 +825,6 @@ mod tests {
         assert!(
             !plan.iter().any(|d| d.contains(" ghosts")),
             "ghosts を読んでいる: {plan:?}"
-        );
-    }
-
-    /// 世代の新しさと TTL は「その世代へ最後に書き込んだ時刻」（ghost_fingerprints.updated_at）で
-    /// 測る。行が長く不変でも、最近書き込みのあった世代は TTL で消さない。
-    #[test]
-    fn cleanupは行が古くても最近書き込んだ世代をttlで消さない() {
-        let conn = setup_db();
-        seed_generation(&conn, "rk-stable", "2020-01-01 00:00:00"); // 行は古いまま不変
-        conn.execute(
-            "UPDATE ghost_fingerprints SET updated_at = ?1 WHERE request_key = 'rk-stable'",
-            [days_ago(&conn, 1)],
-        )
-        .unwrap(); // 世代への最後の書込（0 子変更の cache miss 等）は最近
-        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
-
-        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
-
-        assert_eq!(deleted, 0);
-        assert_eq!(
-            remaining_keys(&conn),
-            vec!["rk-current".to_string(), "rk-stable".to_string()]
         );
     }
 
