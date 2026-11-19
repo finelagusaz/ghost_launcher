@@ -9,7 +9,7 @@
 - **起動前のガード**: 起動しようとしているバイナリが E2E の識別子を含まない（本番の識別子を含む）なら起動を拒否する（`helpers/appData.ts` の `assertE2eBinary`）。`GHOST_LAUNCHER_E2E_APP` で差し替えた場合も同じ
 - **テストごとに初期化**: E2E 用のデータ置き場（`%APPDATA%` と `%LOCALAPPDATA%` 配下の `com.ghost-launcher.e2e`）を消し、開始時の設定を書いてから起動する。テストが前のテストの状態（言語・DB・キャッシュ）を引き継がないため、後片付けは要らない。データ置き場を共有するため、テストは並行に走らせない（`workers: 1` は不変条件）
 - **試験用 SSP**: `global-setup.ts` が実行ごとに 1 回、OS の一時ディレクトリへ作り、終了時に消す（`helpers/fixture.ts`）。`ssp.exe` は存在確認用の空ファイルで、起動ボタンは押さない。次のものを含む
-  - 本番の 1 ページ（`src/App.tsx` の `LIMIT`）を超える件数のゴースト（超えていることは `global-setup.ts` が照合する）
+  - 本番の 1 ページ（`src/config/ghost-list.json` の `pageLimit`）を超える件数のゴースト（超えていることは `global-setup.ts` が照合する）
   - 検索・文字コードの検証用ゴースト（ASCII 名・全角名・Shift_JIS の descript）
   - サムネイルの検証用ゴースト（アルファあり・キーカラー・SSP の外を指す junction・フォルダ名に日本語と記号）
   - ゴースト構造の外に置いた画像（webview から読めてはならない）

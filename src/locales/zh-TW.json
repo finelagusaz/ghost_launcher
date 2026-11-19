@@ -56,5 +56,9 @@
   "error.ghostFolderNotFound": "找不到 ghost 資料夾：{{path}}",
   "error.ghostFolderNotDirectory": "ghost 不是資料夾：{{path}}",
   "error.ghostFolderUnreadable": "無法讀取資料夾：{{path}}（{{detail}}）",
-  "error.ghostIdentityCollision": "有兩個資料夾的名稱在忽略寫法差異（全形/半形、大小寫、圓圈數字等）後相同。請重新命名其中一個：{{first}} / {{second}}"
+  "error.ghostIdentityCollision": "有兩個資料夾的名稱在忽略寫法差異（全形/半形、大小寫、圓圈數字等）後相同。請重新命名其中一個：{{first}} / {{second}}",
+  "settings.saveFailed": "無法儲存設定。請再試一次。{{detail}}",
+  "settings.dialogFailed": "無法開啟對話方塊。請再試一次。{{detail}}",
+  "settings.folders.duplicate": "此資料夾已登錄。",
+  "settings.folders.sspGhostFolder": "SSP 的 ghost 資料夾一律包含在清單中，無法作為附加資料夾加入。"
 }

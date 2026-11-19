@@ -30,6 +30,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 公開前に試験を通す。タグを打ったコミットが CI を通っていなくても、壊れた版を公開しない
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Test Rust crates
+        run: cargo test --workspace
+
       - name: Build Tauri app
         run: npx tauri build --no-bundle
 

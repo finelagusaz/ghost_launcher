@@ -1,38 +1,18 @@
 //! FS走査層(scan/fingerprint/store)の計測。cargo bench --features bench --bench scan_bench
 
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use criterion::Criterion;
 use ghost_launcher_lib::bench_support::{
-    add_one_ghost, fingerprint_only, full_scan_count, generate_ghost_tree, layer1_hit,
-    open_bench_db, scan_entries_to_handle, scan_to_handle, store_delta_entries, store_handle,
-    store_with_real_mtimes, walk_dir_mtime, walk_full, walk_nameset,
+    TempDirGuard, add_one_ghost, fingerprint_only, full_scan_count, generate_ghost_tree,
+    layer1_hit, open_bench_db, scan_entries_to_handle, scan_to_handle, store_delta_entries,
+    store_handle, store_with_real_mtimes, walk_dir_mtime, walk_full, walk_nameset,
 };
-
-/// ベンチ用の一時ディレクトリガード（lib 内部 TempDirGuard は非 pub のためローカルに持つ）。
-struct Guard(PathBuf);
-impl Guard {
-    fn new(tag: &str) -> Self {
-        let mut base = std::env::temp_dir();
-        base.push(format!("ghost_scan_bench_{tag}_{}", std::process::id()));
-        std::fs::create_dir_all(&base).unwrap();
-        Guard(base)
-    }
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-impl Drop for Guard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
 
 fn bench_scan(c: &mut Criterion) {
     for &n in &[1_000usize, 10_000, 100_000] {
         // ツリーは 1 回だけ生成（計測外）
-        let guard = Guard::new(&format!("n{n}"));
+        let guard = TempDirGuard::new(&format!("ghost_scan_bench_n{n}"));
         let ssp = guard.path().join("ssp");
         generate_ghost_tree(&ssp, n).unwrap();
         let ssp_str = ssp.to_string_lossy().to_string();

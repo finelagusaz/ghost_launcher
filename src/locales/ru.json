@@ -56,5 +56,9 @@
   "error.ghostFolderNotFound": "Папка ghost не найдена: {{path}}",
   "error.ghostFolderNotDirectory": "ghost не является папкой: {{path}}",
   "error.ghostFolderUnreadable": "Не удалось прочитать папку: {{path}} ({{detail}})",
-  "error.ghostIdentityCollision": "Есть папки, имена которых совпадают, если не учитывать различия в написании (полноширинные/полуширинные символы, регистр, цифры в кружках и т. п.). Переименуйте одну из них: {{first}} / {{second}}"
+  "error.ghostIdentityCollision": "Есть папки, имена которых совпадают, если не учитывать различия в написании (полноширинные/полуширинные символы, регистр, цифры в кружках и т. п.). Переименуйте одну из них: {{first}} / {{second}}",
+  "settings.saveFailed": "Не удалось сохранить настройки. Попробуйте ещё раз.{{detail}}",
+  "settings.dialogFailed": "Не удалось открыть диалог. Попробуйте ещё раз.{{detail}}",
+  "settings.folders.duplicate": "Эта папка уже добавлена.",
+  "settings.folders.sspGhostFolder": "Папка ghost в SSP всегда входит в список, поэтому её нельзя добавить как дополнительную."
 }

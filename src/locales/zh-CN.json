@@ -56,5 +56,9 @@
   "error.ghostFolderNotFound": "找不到 ghost 文件夹：{{path}}",
   "error.ghostFolderNotDirectory": "ghost 不是文件夹：{{path}}",
   "error.ghostFolderUnreadable": "无法读取文件夹：{{path}}（{{detail}}）",
-  "error.ghostIdentityCollision": "有两个文件夹的名称在忽略写法差异（全角/半角、大小写、圆圈数字等）后相同。请重命名其中一个：{{first}} / {{second}}"
+  "error.ghostIdentityCollision": "有两个文件夹的名称在忽略写法差异（全角/半角、大小写、圆圈数字等）后相同。请重命名其中一个：{{first}} / {{second}}",
+  "settings.saveFailed": "无法保存设置。请重试。{{detail}}",
+  "settings.dialogFailed": "无法打开对话框。请重试。{{detail}}",
+  "settings.folders.duplicate": "该文件夹已注册。",
+  "settings.folders.sspGhostFolder": "SSP 的 ghost 文件夹始终包含在列表中，无法作为附加文件夹添加。"
 }

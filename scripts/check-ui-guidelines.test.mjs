@@ -39,13 +39,14 @@ test("searchbox-labeled: 子要素aria-labelのみでは失敗", () => {
   assert.equal(searchLabelCheck.test(source), false);
 });
 
-test("settings-delete-aria-label: folderを含むテンプレート文字列なら成功", () => {
+// 文言は i18n リソースが単一権威。直書きの日本語は、folder を含んでいても英語の UI に日本語を出す
+test("settings-delete-aria-label: folderを含んでも直書きのテンプレート文字列なら失敗", () => {
   const source = `
     <Button aria-label={\`追加フォルダを削除: \${folder}\`}>
       削除
     </Button>
   `;
-  assert.equal(deleteAriaLabelCheck.test(source), true);
+  assert.equal(deleteAriaLabelCheck.test(source), false);
 });
 
 test("settings-delete-aria-label: t()にfolderを渡す形式なら成功", () => {

@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { settingsStore } from "../lib/settingsStore";
 import { i18n, applyUserLocale, LANGUAGE_STORE_KEY, isSupportedLanguage, type Language } from "../lib/i18n";
+import { rejectReasonForNewFolder, type FolderRejectReason } from "../lib/ghostScanUtils";
+
+/// 追加フォルダの追加の結果。拒否したときは理由を返す（保存の失敗は例外で伝える）。
+export type AddFolderOutcome = "added" | FolderRejectReason;
 
 export function useSettings() {
   const [sspPath, setSspPath] = useState<string | null>(null);
@@ -9,6 +13,8 @@ export function useSettings() {
   const [loading, setLoading] = useState(true);
   const [languageApplying, setLanguageApplying] = useState(false);
   const ghostFoldersRef = useRef<string[]>([]);
+  const sspPathRef = useRef<string | null>(null);
+  sspPathRef.current = sspPath;
 
   useEffect(() => {
     let active = true;
@@ -77,14 +83,11 @@ export function useSettings() {
     };
   }, []);
 
+  /// 保存に失敗したら値を変えずに失敗を投げる（呼び出し側が画面に知らせる）。
   const saveSspPath = useCallback(async (path: string) => {
-    try {
-      await settingsStore.set("ssp_path", path);
-      await settingsStore.save();
-      setSspPath(path);
-    } catch (error) {
-      console.error("SSPフォルダ設定の保存に失敗しました", error);
-    }
+    await settingsStore.set("ssp_path", path);
+    await settingsStore.save();
+    setSspPath(path);
   }, []);
 
   const saveLanguage = useCallback(async (lang: Language) => {
@@ -104,43 +107,39 @@ export function useSettings() {
     await settingsStore.save();
   }, []);
 
-  const updateGhostFolders = useCallback(async (
-    computeUpdated: (previous: string[]) => string[] | null,
-    errorMessage: string,
-  ) => {
+  /// 追加フォルダを先に画面へ反映してから保存する。保存に失敗したら元に戻して失敗を投げる
+  /// （呼び出し側が画面に知らせる）。
+  const updateGhostFolders = useCallback(async (updated: string[]) => {
     const previous = ghostFoldersRef.current;
-    const updated = computeUpdated(previous);
-    if (updated === null) {
-      return;
-    }
-
     setGhostFolders(updated);
     ghostFoldersRef.current = updated;
 
     try {
       await persistGhostFolders(updated);
     } catch (error) {
-      console.error(errorMessage, error);
       setGhostFolders(previous);
       ghostFoldersRef.current = previous;
+      throw error;
     }
   }, [persistGhostFolders]);
 
-  const addGhostFolder = useCallback(async (folder: string) => {
-    await updateGhostFolders(
-      (previous) => previous.includes(folder) ? null : [...previous, folder],
-      "追加フォルダ設定の保存に失敗しました",
-    );
+  const addGhostFolder = useCallback(async (folder: string): Promise<AddFolderOutcome> => {
+    const previous = ghostFoldersRef.current;
+    const reason = rejectReasonForNewFolder(folder, previous, sspPathRef.current);
+    if (reason) {
+      return reason;
+    }
+    await updateGhostFolders([...previous, folder]);
+    return "added";
   }, [updateGhostFolders]);
 
   const removeGhostFolder = useCallback(async (folder: string) => {
-    await updateGhostFolders(
-      (previous) => {
-        const updated = previous.filter((value) => value !== folder);
-        return updated.length === previous.length ? null : updated;
-      },
-      "追加フォルダ設定の削除保存に失敗しました",
-    );
+    const previous = ghostFoldersRef.current;
+    const updated = previous.filter((value) => value !== folder);
+    if (updated.length === previous.length) {
+      return;
+    }
+    await updateGhostFolders(updated);
   }, [updateGhostFolders]);
 
   return {

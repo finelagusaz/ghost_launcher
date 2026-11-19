@@ -13,6 +13,7 @@ export const DOC_PATHSPECS = [
   ":(glob).claude/agents/*.md",
   "SPEC.md",
   ":(glob)docs/*.md",
+  ":(glob)docs/perf/*.md",
   "RETROSPECTIVE.md",
 ];
 
