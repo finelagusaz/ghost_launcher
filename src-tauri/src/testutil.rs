@@ -5,11 +5,20 @@ pub(crate) fn apply_cache_schema(conn: &rusqlite::Connection) {
         .unwrap_or_else(|e| panic!("cache schema の適用に失敗: {e}"));
 }
 
-/// ghosts テーブルへ最小構成の 1 行を seed する（集計列 bump 観測などのテスト用）。
+/// ghosts テーブルへ最小構成の 1 行を seed する（集計列 bump 観測などのテスト用）。世代は rk1。
 pub(crate) fn insert_ghost_row(conn: &rusqlite::Connection, identity_key: &str) {
+    insert_ghost_row_in(conn, "rk1", identity_key);
+}
+
+/// 世代（request_key）を指定して ghosts へ 1 行 seed する（同一 identity が複数世代に居る状況の再現用）。
+pub(crate) fn insert_ghost_row_in(
+    conn: &rusqlite::Connection,
+    request_key: &str,
+    identity_key: &str,
+) {
     conn.execute(
-        "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES ('rk1', ?1, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
-        rusqlite::params![identity_key],
+        "INSERT INTO ghosts (request_key, ghost_identity_key, row_fingerprint, name, sakura_name, kero_name, craftman, craftmanw, directory_name, path, source, name_lower, sakura_name_lower, kero_name_lower, craftman_lower, craftmanw_lower, directory_name_lower, thumbnail_path, thumbnail_use_self_alpha, thumbnail_kind, updated_at) VALUES (?1, ?2, '', 'G', '', '', '', '', 'g', '/g', 'ssp', 'g', '', '', '', '', 'g', '', 0, '', '')",
+        rusqlite::params![request_key, identity_key],
     )
     .unwrap();
 }

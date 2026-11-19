@@ -157,7 +157,7 @@ pub async fn record_launch(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::testutil::insert_ghost_row;
+    use crate::testutil::{insert_ghost_row, insert_ghost_row_in};
 
     fn ghosts_conn_with_row(identity_key: &str) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -239,15 +239,6 @@ mod tests {
             .unwrap();
         assert_eq!(bcount, 0);
         assert_eq!(blast, None);
-    }
-
-    /// 別世代（request_key）の ghosts 行を seed する（同一 identity が複数世代に居る状況の再現）。
-    fn insert_ghost_row_in(conn: &Connection, request_key: &str, identity_key: &str) {
-        conn.execute(
-            "INSERT INTO ghosts (request_key, ghost_identity_key, name, directory_name, path, source, name_lower, directory_name_lower) VALUES (?1, ?2, 'G', 'g', '/g', 'ssp', 'g', 'g')",
-            rusqlite::params![request_key, identity_key],
-        )
-        .unwrap();
     }
 
     fn aggregates_of(
