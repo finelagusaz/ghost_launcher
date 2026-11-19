@@ -96,7 +96,7 @@ locales/
 | `error.ghostFolderNotFound` | SSP の ghost フォルダが無い | `{{path}}` |
 | `error.ghostFolderNotDirectory` | SSP の ghost がフォルダでない | `{{path}}` |
 | `error.ghostFolderUnreadable` | SSP の ghost フォルダを読み取れない | `{{path}}` `{{detail}}` |
-| `error.ghostIdentityCollision` | 全角・半角や大文字・小文字の違いだけで名前が重なるフォルダがある | `{{first}}` `{{second}}` |
+| `error.ghostIdentityCollision` | 表記の違い（全角・半角、大文字・小文字など）を除くと名前が同じになるフォルダがある | `{{first}}` `{{second}}` |
 | `search.label` | 検索ボックスのラベル | — |
 | `search.placeholder` | 検索ボックスのプレースホルダ | — |
 | `search.clear` | 検索クリア（×）ボタンの aria-label | — |
@@ -216,7 +216,7 @@ locales/
 | `error.ghostFolderNotFound` | SSP's ghost folder is missing | `{{path}}` |
 | `error.ghostFolderNotDirectory` | SSP's ghost is not a folder | `{{path}}` |
 | `error.ghostFolderUnreadable` | SSP's ghost folder cannot be read | `{{path}}` `{{detail}}` |
-| `error.ghostIdentityCollision` | Two folders have names that differ only in case or full-width/half-width characters | `{{first}}` `{{second}}` |
+| `error.ghostIdentityCollision` | Two folders have names that become identical once notation differences (width, case, etc.) are ignored | `{{first}}` `{{second}}` |
 | `search.label` | Search box label | — |
 | `search.placeholder` | Search box placeholder | — |
 | `search.clear` | Aria-label for the clear (×) button | — |

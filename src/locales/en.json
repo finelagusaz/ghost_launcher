@@ -56,5 +56,5 @@
   "error.ghostFolderNotFound": "ghost folder not found: {{path}}",
   "error.ghostFolderNotDirectory": "ghost folder is not a folder: {{path}}",
   "error.ghostFolderUnreadable": "Could not read the folder: {{path}} ({{detail}})",
-  "error.ghostIdentityCollision": "Two folders have names that differ only in letter case or full-width/half-width characters. Rename one of them: {{first}} / {{second}}"
+  "error.ghostIdentityCollision": "Two folders have names that become identical once differences in notation (full-width/half-width, letter case, circled numbers, etc.) are ignored. Rename one of them: {{first}} / {{second}}"
 }

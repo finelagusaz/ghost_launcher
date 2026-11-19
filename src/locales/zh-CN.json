@@ -55,5 +55,5 @@
   "error.ghostFolderNotFound": "找不到 ghost 文件夹：{{path}}",
   "error.ghostFolderNotDirectory": "ghost 不是文件夹：{{path}}",
   "error.ghostFolderUnreadable": "无法读取文件夹：{{path}}（{{detail}}）",
-  "error.ghostIdentityCollision": "有两个文件夹的名称仅在大小写或全角/半角上不同。请重命名其中一个：{{first}} / {{second}}"
+  "error.ghostIdentityCollision": "有两个文件夹的名称在忽略写法差异（全角/半角、大小写、圆圈数字等）后相同。请重命名其中一个：{{first}} / {{second}}"
 }

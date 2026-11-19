@@ -1,9 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { SettingsPanel } from "./SettingsPanel";
 
+// t は既定（ja）ではキーをそのまま返す。lang を変えると「{lang}:{key}」を返し、
+// 再描画で言語切替に追従したかを見分けられる
+const i18nState = vi.hoisted(() => ({ lang: "ja" }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => (i18nState.lang === "ja" ? key : `${i18nState.lang}:${key}`),
+  }),
+}));
+
+const mocks = vi.hoisted(() => ({ validateSspPath: vi.fn() }));
+vi.mock("../lib/sspClient", () => ({
+  validateSspPath: (...args: unknown[]) => mocks.validateSspPath(...args),
 }));
 
 vi.mock("../lib/i18n", () => ({
@@ -39,5 +50,22 @@ describe("SettingsPanel", () => {
     expect(screen.getByDisplayValue("C:/ghosts/B")).toBeInTheDocument();
     const deleteButtons = screen.getAllByText("settings.folders.delete");
     expect(deleteButtons).toHaveLength(2);
+  });
+
+  it("SSP フォルダの検証エラーは言語の切替に追従する", async () => {
+    vi.mocked(open).mockResolvedValue("C:/NoSsp");
+    mocks.validateSspPath.mockRejectedValue({ kind: "sspExeNotFound", path: "C:/NoSsp/ssp.exe" });
+    const { rerender } = render(<SettingsPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByText("settings.ssp.select"));
+    expect(await screen.findByText("error.sspExeNotFound")).toBeInTheDocument();
+
+    try {
+      i18nState.lang = "en";
+      rerender(<SettingsPanel {...defaultProps} language="en" />);
+      expect(screen.getByText("en:error.sspExeNotFound")).toBeInTheDocument();
+    } finally {
+      i18nState.lang = "ja";
+    }
   });
 });

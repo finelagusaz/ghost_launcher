@@ -3,6 +3,13 @@ import type { CommandError } from "../types/generated/CommandError";
 
 type KnownKind = Exclude<CommandError["kind"], "internal">;
 
+/// 捕まえたエラーを、文言にする前の値のまま state に持つための箱。翻訳済みの文字列を持つと、
+/// 言語を切り替えても前の言語の文言が残るため、文言は描画時に組み立てる。
+/// reject 値が falsy（空文字・null 等）でも「エラーあり」を表せるよう包む。
+export interface CaughtError {
+  cause: unknown;
+}
+
 /// コマンドエラーの種別 → i18n キー。Record で全種別の網羅をコンパイル時に縛る
 /// （Rust 側に種別を足して TS 型を再生成すると、ここが埋まるまで型検査が落ちる）。
 const KIND_KEYS: Record<KnownKind, string> = {

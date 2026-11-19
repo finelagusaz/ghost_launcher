@@ -14,7 +14,7 @@ import {
 } from "@fluentui/react-components";
 import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
-import { formatErrorDetail } from "../lib/errorMessages";
+import { formatErrorDetail, type CaughtError } from "../lib/errorMessages";
 import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
 import { launchGhost } from "../lib/sspClient";
 import { useLauncherToasts } from "../hooks/useLauncherToasts";
@@ -209,7 +209,8 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
   const { t } = useTranslation();
   const { notifySuccess } = useLauncherToasts();
   const [launching, setLaunching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 文言は描画時に組み立てる（言語を切り替えたら表示中のエラーも切り替わる）
+  const [error, setError] = useState<CaughtError | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceFolderLabel = ghost.source !== "ssp" ? getSourceFolderLabel(ghost.source) : null;
@@ -239,7 +240,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
       await launchGhost(sspPath, ghost);
       notifySuccess(t("card.launchSuccess", { name: ghost.name }));
     } catch (e) {
-      setError(t("card.launchError", { detail: formatErrorDetail(e, t) }));
+      setError({ cause: e });
     } finally {
       setLaunching(false);
     }
@@ -299,7 +300,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
       </div>
       {error && (
         <Text role="alert" className={styles.error}>
-          {error}
+          {t("card.launchError", { detail: formatErrorDetail(error.cause, t) })}
         </Text>
       )}
       {showOverlay && thumbnailSrc && createPortal(
