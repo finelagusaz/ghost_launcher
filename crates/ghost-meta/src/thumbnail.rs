@@ -46,7 +46,7 @@ pub fn resolve_thumbnail(
         return Some(info);
     }
 
-    let thumbnail_path = ghost_root.join("thumbnail.png");
+    let thumbnail_path = ghost_root.join(THUMBNAIL_FILENAME);
     if thumbnail_path.is_file() {
         let alpha = detect_thumbnail_alpha(&thumbnail_path);
         return Some(ThumbnailInfo {
@@ -57,6 +57,67 @@ pub fn resolve_thumbnail(
     }
 
     None
+}
+
+/// `thumbnail.png` のファイル名（ゴーストのディレクトリ直下）。
+const THUMBNAIL_FILENAME: &str = "thumbnail.png";
+
+/// surface0* 画像の種別。
+enum Surface0Ext {
+    Apng,
+    Png,
+}
+
+/// ファイル名が surface0* 画像（`surface` + 1 つ以上の `0` + `.png`/`.apng`、大文字小文字を問わない）なら
+/// その種別を返す。`resolve_surface0` と `is_thumbnail_candidate` の単一権威。
+fn surface0_extension(filename: &str) -> Option<Surface0Ext> {
+    let lower = filename.to_ascii_lowercase();
+    let rest = lower.strip_prefix("surface")?;
+    let trimmed = rest.trim_start_matches('0');
+    // 少なくとも 1 つの '0' があり、残りが ".png" または ".apng" であればマッチ
+    if rest.len() == trimmed.len() {
+        return None;
+    }
+    match trimmed {
+        ".apng" => Some(Surface0Ext::Apng),
+        ".png" => Some(Surface0Ext::Png),
+        _ => None,
+    }
+}
+
+/// `path` がゴーストのサムネイルとして成り立つ形かを返す。サムネイルを webview へ渡す読み取り口が、
+/// 任意のファイルを読ませないための判定に使う。
+///
+/// 成り立つ形（`resolve_thumbnail` が選び得るファイル）:
+/// - `{ghost_root}/thumbnail.png`
+/// - `{ghost_root}/shell/master/surface0*.png` / `.apng`
+///
+/// かつ `{ghost_root}/ghost/master/descript.txt` が在る（ゴーストのディレクトリである）こと。
+///
+/// 「いま `resolve_thumbnail` が選ぶ 1 枚」とは照合しない。キャッシュに残る古いパスも描けるように
+/// するためで、ファイルの有無も問わない（読む側が確かめる）。パスは正規化しない
+/// （junction 越しのゴーストを通すため）。`..` を含むパスの拒否は呼び出し側の責務。
+pub fn is_thumbnail_candidate(path: &Path) -> bool {
+    let Some(filename) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let ghost_root = if filename == THUMBNAIL_FILENAME {
+        path.parent()
+    } else if surface0_extension(filename).is_some() {
+        path.parent()
+            .filter(|master| master.file_name().is_some_and(|name| name == "master"))
+            .and_then(Path::parent)
+            .filter(|shell| shell.file_name().is_some_and(|name| name == "shell"))
+            .and_then(Path::parent)
+    } else {
+        None
+    };
+    ghost_root.is_some_and(|root| {
+        root.join("ghost")
+            .join("master")
+            .join("descript.txt")
+            .is_file()
+    })
 }
 
 /// shell/master/ 内の surface0* ファイルを探して ThumbnailInfo を返す
@@ -71,17 +132,10 @@ fn resolve_surface0(
 
     for entry in fs::read_dir(&shell_master).ok()?.flatten() {
         let filename = entry.file_name().to_string_lossy().into_owned();
-        let lower = filename.to_ascii_lowercase();
-        if let Some(rest) = lower.strip_prefix("surface") {
-            let trimmed = rest.trim_start_matches('0');
-            // 少なくとも 1 つの '0' があり、残りが ".png" または ".apng" であればマッチ
-            if rest.len() > trimmed.len() {
-                if trimmed == ".apng" {
-                    apng_files.push(filename);
-                } else if trimmed == ".png" {
-                    png_files.push(filename);
-                }
-            }
+        match surface0_extension(&filename) {
+            Some(Surface0Ext::Apng) => apng_files.push(filename),
+            Some(Surface0Ext::Png) => png_files.push(filename),
+            None => {}
         }
     }
 
@@ -428,5 +482,83 @@ mod tests {
         let info = resolve_thumbnail(tmp.path(), None).unwrap();
         assert_eq!(info.path, thumbnail_path);
         assert_eq!(info.alpha, AlphaMode::KeyColor);
+    }
+
+    // --- is_thumbnail_candidate ---
+
+    fn create_ghost_root(base: &Path, name: &str) -> PathBuf {
+        let root = base.join(name);
+        fs::create_dir_all(root.join("ghost").join("master")).unwrap();
+        fs::write(
+            root.join("ghost").join("master").join("descript.txt"),
+            "name,A\n",
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn 候補_ゴースト直下のthumbnailpngは候補() {
+        let tmp = TempDirGuard::new("ghost_meta_candidate_thumbnail");
+        let root = create_ghost_root(tmp.path(), "g");
+        assert!(is_thumbnail_candidate(&root.join("thumbnail.png")));
+    }
+
+    #[test]
+    fn 候補_shell_masterのsurface0系は候補() {
+        let tmp = TempDirGuard::new("ghost_meta_candidate_surface");
+        let root = create_ghost_root(tmp.path(), "g");
+        let master = root.join("shell").join("master");
+        assert!(is_thumbnail_candidate(&master.join("surface0.png")));
+        assert!(is_thumbnail_candidate(&master.join("surface00.apng")));
+        assert!(is_thumbnail_candidate(&master.join("Surface0.PNG")));
+    }
+
+    #[test]
+    fn 候補_サムネイルの名前でないファイルは候補でない() {
+        let tmp = TempDirGuard::new("ghost_meta_candidate_other_names");
+        let root = create_ghost_root(tmp.path(), "g");
+        let master = root.join("shell").join("master");
+        assert!(!is_thumbnail_candidate(&master.join("surface1.png")));
+        assert!(!is_thumbnail_candidate(&master.join("surface.png")));
+        assert!(!is_thumbnail_candidate(&master.join("descript.txt")));
+        assert!(!is_thumbnail_candidate(&root.join("readme.png")));
+        assert!(!is_thumbnail_candidate(
+            &root.join("ghost").join("master").join("descript.txt")
+        ));
+    }
+
+    #[test]
+    fn 候補_ゴーストのディレクトリでなければ候補でない() {
+        let tmp = TempDirGuard::new("ghost_meta_candidate_not_ghost");
+        // ghost/master/descript.txt を持たないディレクトリ
+        let plain = tmp.path().join("plain");
+        fs::create_dir_all(plain.join("shell").join("master")).unwrap();
+        assert!(!is_thumbnail_candidate(&plain.join("thumbnail.png")));
+        assert!(!is_thumbnail_candidate(
+            &plain.join("shell").join("master").join("surface0.png")
+        ));
+    }
+
+    #[test]
+    fn 候補_surface0はshell_masterの直下でなければ候補でない() {
+        let tmp = TempDirGuard::new("ghost_meta_candidate_wrong_dir");
+        let root = create_ghost_root(tmp.path(), "g");
+        assert!(!is_thumbnail_candidate(&root.join("surface0.png")));
+        assert!(!is_thumbnail_candidate(
+            &root.join("master").join("surface0.png")
+        ));
+        assert!(!is_thumbnail_candidate(
+            &root.join("shell").join("other").join("surface0.png")
+        ));
+    }
+
+    #[test]
+    fn 候補_ファイルの有無は問わない() {
+        // 呼び出し側（読み取り）が存在を確かめる。形の判定はキャッシュの古いパスにも当てられる
+        let tmp = TempDirGuard::new("ghost_meta_candidate_missing_file");
+        let root = create_ghost_root(tmp.path(), "g");
+        assert!(!root.join("thumbnail.png").exists());
+        assert!(is_thumbnail_candidate(&root.join("thumbnail.png")));
     }
 }

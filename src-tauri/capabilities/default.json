@@ -10,6 +10,6 @@
     "dialog:default",
     "store:default",
     "window-state:default",
-    "sql:default"
+    "sql:allow-select"
   ]
 }

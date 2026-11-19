@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   Badge,
   Button,
@@ -16,6 +15,7 @@ import { PlayRegular } from "@fluentui/react-icons";
 import { getSourceFolderLabel } from "../lib/ghostLaunchUtils";
 import { formatErrorDetail } from "../lib/ghostScanUtils";
 import { applyKeyColorAlpha } from "../lib/keyColorAlpha";
+import { thumbnailUrl } from "../lib/thumbnailUrl";
 import { launchGhost } from "../lib/sspClient";
 import { useLauncherToasts } from "../hooks/useLauncherToasts";
 import type { GhostView } from "../types";
@@ -249,7 +249,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
     ? `${ghost.directory_name} | ${ghost.craftman}`
     : ghost.directory_name;
 
-  const thumbnailSrc = ghost.thumbnail_path ? convertFileSrc(ghost.thumbnail_path) : null;
+  const thumbnailSrc = ghost.thumbnail_path ? thumbnailUrl(ghost.thumbnail_path) : null;
 
   const overlayPositionStyle: React.CSSProperties = {
     bottom: ghost.thumbnail_kind === "surface" ? 0 : "20px",
@@ -303,7 +303,7 @@ export const GhostCard = memo(function GhostCard({ ghost, sspPath, selected }: P
         </Text>
       )}
       {showOverlay && thumbnailSrc && createPortal(
-        <div className={styles.overlay} style={overlayPositionStyle}>
+        <div className={styles.overlay} style={overlayPositionStyle} data-testid="thumbnail-overlay">
           {Boolean(ghost.thumbnail_use_self_alpha) ? (
             <img src={thumbnailSrc} alt="" className={roundedClass} style={overlayMaxSize} />
           ) : (

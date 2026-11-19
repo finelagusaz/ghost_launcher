@@ -5,13 +5,17 @@ import { measureSearch, reportDbSize } from "./dbMonitor";
 
 let dbInitPromise: Promise<Database> | null = null;
 
-/// JS の接続は読み取り専用で開く。書き込みは全て IPC 経由で Rust の DB アクターが行う。
-/// webview には sql の execute 権限を渡していないが、select も任意の文を流せるため、
-/// 書き込みを止めるのは接続の mode=ro である。
+/// ghosts.db の読み取り専用の接続。Rust がアプリの setup で事前に開く（tauri.conf.json の
+/// plugins.sql.preload と同じ文字列）。JS は自分で接続を開かない。
+const GHOSTS_DB = "sqlite:ghosts.db?mode=ro";
+
+/// 書き込みは全て IPC 経由で Rust の DB アクターが行う。webview の sql 権限は select だけで、
+/// load（任意の場所の SQLite ファイルを書き込み可能で開ける）と execute は渡していない。
+/// select も任意の文を流せるため、書き込みを止めるのは接続の mode=ro である。
 /// busy_timeout は sqlx-sqlite が接続確立ごとに既定 5 秒を当てるので設定しない。
 /// journal_mode=WAL はファイルの属性で、Rust 側が設定済み。
 async function loadDb(): Promise<Database> {
-  return Database.load("sqlite:ghosts.db?mode=ro");
+  return Database.get(GHOSTS_DB);
 }
 
 async function initializeDb(): Promise<Database> {

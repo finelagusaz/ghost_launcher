@@ -54,6 +54,20 @@ test("SQL: JS からの読み取りは通るが、書き込みは権限と読み
   expect(writeViaSelect.ok ? "" : writeViaSelect.error).toMatch(/readonly|read-only/i);
 });
 
+test("SQL: JS は別の接続を開けない（書き込み可能な接続・任意の場所のファイルを作れない）", async ({ harness }) => {
+  const { driver } = harness;
+  await waitForAppReady(driver);
+  await waitForGhosts(driver);
+
+  // load が通ると、起動履歴の user-data.db を書き込み可能で開けるうえ、"sqlite:" 以降は
+  // データ置き場への push なので、絶対パスで任意の場所に SQLite ファイルを作れる
+  for (const db of ["sqlite:user-data.db", "sqlite:ghosts.db"]) {
+    const load = await invokeFromWebview(driver, "plugin:sql|load", { db });
+    expect(load.ok, db).toBe(false);
+    expect(load.ok ? "" : load.error, db).toMatch(/not allowed/i);
+  }
+});
+
 test("CSP: 後から差し込んだインラインスクリプトは実行されない", async ({ harness }) => {
   const { driver } = harness;
   await waitForAppReady(driver);

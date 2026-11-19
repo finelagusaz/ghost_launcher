@@ -14,4 +14,4 @@ mod thumbnail;
 pub(crate) mod testutil;
 
 pub use ghost::{GhostMeta, read_ghost};
-pub use thumbnail::{AlphaMode, ThumbnailInfo, ThumbnailKind};
+pub use thumbnail::{AlphaMode, ThumbnailInfo, ThumbnailKind, is_thumbnail_candidate};

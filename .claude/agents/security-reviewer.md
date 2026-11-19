@@ -25,7 +25,8 @@ tools: Read, Grep, Glob, Bash
 ### 3. パストラバーサル
 - ユーザー入力（設定パス、追加フォルダ等）由来のファイルパスが `..` で親ディレクトリを辿れないか
 - `Path::join()` に外部入力を渡す箇所でパスの正規化・検証が行われているか
-- `convertFileSrc()` 等でフロントエンドに返すパスが意図したディレクトリ内に収まっているか
+- webview がファイルを読む経路を広げていないか。サムネイルは専用プロトコル（`src-tauri/src/thumbnail_protocol.rs`）がゴーストのサムネイルとして成り立つ形のパス（`ghost_meta::is_thumbnail_candidate`）だけを返す。Tauri の asset プロトコル（`assetProtocol`・`protocol-asset` feature）を有効に戻していないか、判定を緩めていないか
+- webview の権限（`src-tauri/capabilities/`）と CSP（`tauri.conf.json`）を広げていないか。sql の権限は `sql:allow-select` だけにする。`sql:allow-load` を足すと任意の場所の SQLite ファイルを書き込み可能で開け、`sql:allow-execute` を足すと DB へ書ける（JS は Rust が事前接続した `?mode=ro` の接続だけを使う）。いずれも `e2e/security.e2e.ts`・`e2e/thumbnail.e2e.ts` が拒否されることを確かめている
 
 ### 4. IPC 境界の安全性
 - Tauri コマンド（`#[tauri::command]`）の引数バリデーション
