@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { download as downloadEdgeDriver } from "edgedriver";
 import { Builder, type WebDriver } from "selenium-webdriver";
+import { assertE2eBinary, resetE2eAppData, type E2eSettings } from "./appData";
+import { fixtureSspPath } from "./fixture";
 
 export type Harness = {
   driver: WebDriver;
@@ -38,8 +40,9 @@ async function fileExists(targetPath: string): Promise<boolean> {
 
 function getAppBinaryPath(): string {
   const defaultName = process.platform === "win32" ? "ghost-launcher.exe" : "ghost-launcher";
-  // cargo workspace のため、ビルド出力は src-tauri/target でなくリポジトリ直下の target/ に集約される。
-  return process.env.GHOST_LAUNCHER_E2E_APP ?? path.resolve(process.cwd(), "target", "release", defaultName);
+  // E2E 専用ビルド（npm run e2e:build）の出力先。本番ビルドの target/release とは分けてある。
+  // GHOST_LAUNCHER_E2E_APP で差し替えても、起動前に E2E 専用ビルドかを確かめる（assertE2eBinary）。
+  return process.env.GHOST_LAUNCHER_E2E_APP ?? path.resolve(process.cwd(), "target", "e2e", "release", defaultName);
 }
 
 function getTauriDriverPath(): string {
@@ -100,14 +103,7 @@ async function spawnTauriDriver(port: number, nativePort: number): Promise<Child
   return proc;
 }
 
-async function createWebDriverSession(port: number): Promise<WebDriver> {
-  const appBinary = getAppBinaryPath();
-  if (!(await fileExists(appBinary))) {
-    throw new Error(
-      `App binary not found at ${appBinary}. Run: npm run e2e:setup`,
-    );
-  }
-
+async function createWebDriverSession(port: number, appBinary: string): Promise<WebDriver> {
   return new Builder()
     .usingServer(`http://127.0.0.1:${port}/`)
     .withCapabilities({
@@ -119,14 +115,31 @@ async function createWebDriverSession(port: number): Promise<WebDriver> {
     .build();
 }
 
-export async function createHarness(): Promise<Harness> {
+export type HarnessOptions = {
+  /// テスト開始時の設定。省略時は試験用 SSP を設定した日本語の状態。null は設定ファイルなし（初回起動）。
+  settings?: E2eSettings;
+};
+
+/// E2E 用のデータ置き場をテストごとに初期化してからアプリを起動する。
+/// データ置き場を共有するため、テストは並行に走らせない（playwright.tauri.config.ts の workers: 1）。
+export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
+  const appBinary = getAppBinaryPath();
+  if (!(await fileExists(appBinary))) {
+    throw new Error(`App binary not found at ${appBinary}. Run: npm run e2e:build`);
+  }
+  await assertE2eBinary(appBinary);
+  const settings = options.settings === undefined
+    ? { ssp_path: fixtureSspPath(), language: "ja" as const }
+    : options.settings;
+  await resetE2eAppData(settings);
+
   let tauriDriver: ChildProcessWithoutNullStreams | undefined;
   let driver: WebDriver | undefined;
   try {
     const port = await getFreePort();
     const nativePort = await getFreePort();
     tauriDriver = await spawnTauriDriver(port, nativePort);
-    driver = await createWebDriverSession(port);
+    driver = await createWebDriverSession(port, appBinary);
     return { driver, tauriDriver };
   } catch (e) {
     if (driver) {

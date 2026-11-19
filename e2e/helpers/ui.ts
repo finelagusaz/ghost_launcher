@@ -1,4 +1,4 @@
-import { By, until, type WebDriver, type WebElement } from "selenium-webdriver";
+import { By, until, error as seleniumError, type WebDriver, type WebElement } from "selenium-webdriver";
 
 /** アプリの初期ロードを待機する（ルート要素が描画されるまで） */
 export async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Promise<void> {
@@ -7,23 +7,58 @@ export async function waitForAppReady(driver: WebDriver, timeoutMs = 15_000): Pr
 }
 
 /**
- * スキャン完了（ゴーストカード表示 or 空状態）まで待機する。
- * ゴーストが存在すれば起動ボタン一覧を返し、空状態・タイムアウトなら null を返す。
- * スキャン中のローディング状態でも確実に完了を待つ。
+ * スキャン完了（ゴーストカードの表示）まで待機し、起動ボタン一覧を返す。
+ * E2E は試験用 SSP を使うためゴーストは必ず存在する。現れなければ skip せず失敗させる
+ * （環境次第で黙って skip されると、検証していないのに通ったように見える）。
+ * 初回起動は全件スキャンを伴うため、待ち時間を長めに取る。
  */
-export async function waitForGhosts(driver: WebDriver, timeoutMs = 15_000): Promise<WebElement[] | null> {
-  let found: WebElement[] | null = null;
+export async function waitForGhosts(driver: WebDriver, timeoutMs = 30_000): Promise<WebElement[]> {
+  let found: WebElement[] = [];
+  await driver.wait(async () => {
+    found = await driver.findElements(By.css("[data-testid='launch-button']"));
+    return found.length > 0;
+  }, timeoutMs, "ゴーストカードが表示されない（試験用 SSP のスキャンが終わらない）");
+  return found;
+}
+
+/** 一覧に表示中のゴースト名（仮想化の窓内のカードのみ）。差し替え中で stale な要素は空文字にする */
+export async function visibleGhostNames(driver: WebDriver): Promise<string[]> {
+  const els = await driver.findElements(By.css("[data-testid='ghost-name']"));
+  return Promise.all(
+    els.map(async (el) => {
+      try {
+        return await el.getText();
+      } catch (err) {
+        // 仮想リストの再描画（SkeletonCard → GhostCard 差し替え）で要素が差し替わると
+        // getText が stale になる。呼び出し側の wait が次周期で再取得するため空文字として扱う
+        if (err instanceof seleniumError.StaleElementReferenceError) {
+          return "";
+        }
+        throw err;
+      }
+    }),
+  );
+}
+
+/** 検索欄に入力し、表示中のゴースト名が条件を満たすまで待ってから返す */
+export async function searchAndWait(
+  driver: WebDriver,
+  query: string,
+  until: (names: string[]) => boolean,
+  timeoutMs = 10_000,
+): Promise<string[]> {
+  const input = await driver.findElement(By.css("[data-testid='search-input'] input"));
+  await input.sendKeys(query);
+  let names: string[] = [];
   try {
     await driver.wait(async () => {
-      const buttons = await driver.findElements(By.css("[data-testid='launch-button']"));
-      if (buttons.length > 0) { found = buttons; return true; }
-      const empties = await driver.findElements(By.css("[data-testid='empty-state']"));
-      return empties.length > 0;
+      names = (await visibleGhostNames(driver)).filter((name) => name.length > 0);
+      return until(names);
     }, timeoutMs);
-  } catch {
-    // タイムアウト
+  } catch (err) {
+    throw new Error(`検索「${query}」の結果が期待どおりにならない（最後に見えた名前: ${JSON.stringify(names)}）`, { cause: err });
   }
-  return found;
+  return names;
 }
 
 /** 設定ダイアログを開く（空状態ボタンとヘッダーボタンの両方に対応） */

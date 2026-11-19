@@ -60,12 +60,14 @@ npm run tauri build
 ## E2E テスト
 
 ```bash
-# 初回のみ: tauri-driver 導入 + no-bundle ビルド
+# 初回のみ: tauri-driver 導入
 npm run e2e:setup
 
-# 実行（事前に npm run tauri build が必要）
+# E2E 専用ビルド（識別子を差し替え、本物の設定・DB に触れない）→ テスト実行
 npm run e2e
 ```
+
+詳細（データ置き場の分離・試験用 SSP・WebView2 の版合わせ）は `e2e/CLAUDE.md` を参照。
 
 ## CI/CD（GitHub Actions）
 
