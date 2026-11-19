@@ -339,6 +339,48 @@ describe("useSearch", () => {
     expect(result.current.total).toBe(10);
   });
 
+  it("空クエリで先頭へ戻る offset 変更は初期ロードに入り直さない（total を巻き戻さず COUNT も再発行しない）", async () => {
+    // 総数 5 のうち limit 2 ずつ読む。先頭 → 1 件先 → 先頭 と動かす
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts)
+      .mockResolvedValueOnce([{ ...marisa }, alice])
+      .mockResolvedValueOnce([{ ...reimu }, { ...marisa }]);
+
+    const totals: number[] = [];
+    const { result, rerender } = renderHook(
+      ({ offset }) => {
+        const r = useSearch("rk1", "", 2, offset, 0);
+        totals.push(r.total);
+        return r;
+      },
+      { initialProps: { offset: 0 } }
+    );
+    await waitFor(() => {
+      expect(result.current.total).toBe(5);
+    });
+
+    rerender({ offset: 1 });
+    await waitFor(() => {
+      expect(result.current.ghosts).toHaveLength(3);
+    });
+    const totalsBeforeReturn = totals.length;
+
+    rerender({ offset: 0 });
+    await waitFor(() => {
+      expect(searchGhosts).toHaveBeenCalledTimes(2);
+      expect(result.current.loading).toBe(false);
+    });
+
+    // 初期ロード経路（全置換 + 暫定 total + COUNT）はリセット時だけ
+    expect(searchGhostsInitialPage).toHaveBeenCalledTimes(1);
+    expect(countGhostsByQuery).toHaveBeenCalledTimes(1);
+    expect(totals.slice(totalsBeforeReturn).every((t) => t === 5)).toBe(true);
+    // マージ経路に乗るので、内容が等しい行は参照を保ち、バッファも縮まない
+    expect(result.current.ghosts).toHaveLength(3);
+    expect(result.current.ghosts[0]).toBe(reimu);
+  });
+
   it("sortEpoch の変化で全置換リフェッチが走る（マージ分岐に旧シードのバッファが混ざらない）", async () => {
     vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5).mockResolvedValueOnce(5);
     vi.mocked(searchGhosts)

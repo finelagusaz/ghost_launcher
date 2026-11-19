@@ -61,7 +61,10 @@ export function useSearch(
       setLoading(true);
       setDbError(null);
       try {
-        const isInitialLoad = query === "" && offset === 0;
+        // 初期ロード（全置換 + 暫定 total + COUNT の遅延取得）はリセット時だけ。
+        // スクロールで先頭へ戻っただけの offset 0 は下のマージ経路に流し、
+        // total の巻き戻りと COUNT の再発行を避ける
+        const isInitialLoad = isReset && query === "" && offset === 0;
 
         if (isInitialLoad) {
           const initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);

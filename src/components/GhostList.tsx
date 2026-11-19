@@ -126,9 +126,11 @@ export function GhostList({ ghosts, total, loadedStart, sspPath, searchQuery, lo
   useEffect(() => {
     if (!shouldVirtualize || total === 0 || searchLoading) return;
 
+    // 端の先に未読込の行が残っている側だけを見る。読込済み範囲が先頭（0）や末尾（total）に
+    // 達している側は、表示がどれだけ近づいても読むものがない
     const needsLoad =
-      startIndex < loadedStart + PREFETCH_THRESHOLD ||
-      endIndex > loadedEnd - PREFETCH_THRESHOLD;
+      (loadedStart > 0 && startIndex < loadedStart + PREFETCH_THRESHOLD) ||
+      (loadedEnd < total && endIndex > loadedEnd - PREFETCH_THRESHOLD);
     if (!needsLoad) return;
 
     const timer = setTimeout(() => {
