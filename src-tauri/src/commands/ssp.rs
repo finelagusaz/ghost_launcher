@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::commands::error::CommandError;
+use crate::local_path::is_local_drive_path;
 
 /// SSP へ渡すゴースト指定引数を構築する。
 /// SSP 内ゴースト（source == "ssp"）はディレクトリ名のみ、外部ゴーストはフルパス。
@@ -19,6 +20,7 @@ fn build_ghost_arg(ghost_source: &str, ghost_directory_name: &str) -> String {
 /// SSP フォルダのパスを検証する（ssp.exe の存在確認）
 #[tauri::command]
 pub fn validate_ssp_path(ssp_path: String) -> Result<(), CommandError> {
+    ensure_local_ssp_path(&ssp_path)?;
     let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
     if !ssp_exe.exists() {
         return Err(CommandError::SspExeNotFound {
@@ -35,6 +37,7 @@ pub fn launch_ghost(
     ghost_directory_name: String,
     ghost_source: String,
 ) -> Result<(), CommandError> {
+    ensure_local_ssp_path(&ssp_path)?;
     let ssp_exe = Path::new(&ssp_path).join("ssp.exe");
 
     if !ssp_exe.exists() {
@@ -57,9 +60,69 @@ pub fn launch_ghost(
     Ok(())
 }
 
+/// webview から受け取った SSP フォルダを、ローカルのドライブ文字で始まる絶対パスに限る。
+///
+/// 乗っ取られた webview が `\\attacker\share` を渡すと、リモート共有上の `ssp.exe` を
+/// 起動できてしまう。UNC は `exists()` の時点で SMB 接続も起こすため、ファイルシステムに
+/// 触れる前に弾く（判定の中身は `local_path` が単一権威）。
+fn ensure_local_ssp_path(ssp_path: &str) -> Result<(), CommandError> {
+    if is_local_drive_path(Path::new(ssp_path)) {
+        Ok(())
+    } else {
+        Err(CommandError::SspPathNotLocal {
+            path: ssp_path.to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CommandError, build_ghost_arg, validate_ssp_path};
+    use super::{
+        CommandError, build_ghost_arg, ensure_local_ssp_path, launch_ghost, validate_ssp_path,
+    };
+
+    #[test]
+    fn ローカルでないsspフォルダは渡したパスを載せた種別で拒否する() {
+        let path = "\\\\attacker.invalid\\share";
+        assert_eq!(
+            ensure_local_ssp_path(path),
+            Err(CommandError::SspPathNotLocal {
+                path: path.to_string()
+            })
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn ドライブ文字で始まる絶対パスのsspフォルダは通す() {
+        for path in ["C:\\SSP", "Z:\\Apps\\SSP", "c:/ssp", "\\\\?\\C:\\SSP"] {
+            assert_eq!(ensure_local_ssp_path(path), Ok(()), "{path}");
+        }
+    }
+
+    /// UNC への `exists()` 自体が SMB 接続を起こすため、存在確認より前に拒否する。
+    /// 存在確認が先に走れば `SspExeNotFound` が返り、この試験は落ちる。
+    #[test]
+    fn validate_ssp_path_はunc形式を存在確認より前に拒否する() {
+        let result = validate_ssp_path("\\\\attacker.invalid\\share".to_string());
+        assert!(
+            matches!(result, Err(CommandError::SspPathNotLocal { .. })),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn launch_ghost_はunc形式を存在確認より前に拒否する() {
+        let result = launch_ghost(
+            "\\\\attacker.invalid\\share".to_string(),
+            "my_ghost".to_string(),
+            "ssp".to_string(),
+        );
+        assert!(
+            matches!(result, Err(CommandError::SspPathNotLocal { .. })),
+            "{result:?}"
+        );
+    }
 
     #[test]
     fn ssp内ゴーストはディレクトリ名のみを渡す() {

@@ -51,6 +51,7 @@
   "error.detail": "（詳細資訊：{{detail}}）",
   "error.scanFailed": "取得幽靈清單失敗。請確認SSP資料夾與附加資料夾，然後點選「$t(header.refresh)」。{{detail}}",
   "error.sspExeNotFound": "找不到 ssp.exe：{{path}}",
+  "error.sspPathNotLocal": "SSP 資料夾必須是以磁碟機代號開頭的路徑（不能使用 \\\\server\\share 這類網路共用路徑）：{{path}}",
   "error.sspLaunchFailed": "無法啟動SSP：{{detail}}",
   "error.ghostFolderNotFound": "找不到 ghost 資料夾：{{path}}",
   "error.ghostFolderNotDirectory": "ghost 不是資料夾：{{path}}",

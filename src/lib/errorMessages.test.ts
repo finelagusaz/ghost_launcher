@@ -21,6 +21,14 @@ describe("describeError", () => {
     expect(message).not.toMatch(JAPANESE);
   });
 
+  it("ローカルでない SSP フォルダの拒否は、渡したパスを UI の言語の文言に載せる", () => {
+    const error: CommandError = { kind: "sspPathNotLocal", path: "\\\\server\\share" };
+    const message = describeError(error, t);
+    expect(message).not.toBe("error.sspPathNotLocal");
+    expect(message).toContain("\\\\server\\share");
+    expect(message).not.toMatch(JAPANESE);
+  });
+
   it("種別の文言は言語の切替に追従する", async () => {
     const error: CommandError = { kind: "ghostFolderNotFound", path: "C:/SSP/ghost" };
     const en = describeError(error, t);

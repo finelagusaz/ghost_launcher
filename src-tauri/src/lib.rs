@@ -3,6 +3,7 @@ mod actor;
 pub mod bench_support;
 mod cache_schema;
 mod commands;
+mod local_path;
 #[cfg(any(test, feature = "bench"))]
 mod tempdir;
 #[cfg(test)]

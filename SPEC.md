@@ -79,6 +79,7 @@ Ghost Launcher は、**伺か/SSP ゴースト**を検出・一覧表示・検�
 | `commands/launch_history.rs` | 起動履歴記録の本体（アクター RecordLaunch ジョブから呼ばれる `record_launch_inner`）と user-data.db 管理: 履歴 INSERT ＋ ghosts 集計列 bump・キャッシュ再構築（cache miss）後の集計列 backfill・旧 ghosts.db 履歴の移送 |
 | `commands/locale.rs`| ユーザー言語ファイル読込                                                                  |
 | `commands/error.rs` | UI へ届くコマンドエラー `CommandError`（種別 `kind` + 引数。ts-rs で TS 型を生成）。文言は持たず、フロントエンドが種別から i18n で組み立てる（§13） |
+| `local_path.rs`     | webview から受け取ったパスを、ファイルシステムに触れる前に字句で絞る判定（`is_local_drive_path`: ドライブ文字で始まる絶対パスで `..` を含まない）。UNC は存在確認だけで SMB 接続を起こすため受けない。`commands/ssp.rs`（§6.2/§6.3）と `thumbnail_protocol.rs` が使う |
 | `thumbnail_protocol.rs` | サムネイル画像を webview へ渡す読み取り専用プロトコル（`thumbnail:`）。ゴーストのサムネイルとして成り立つ形のパス（`ghost_meta::is_thumbnail_candidate`）だけを返し、それ以外は 404（無いファイルと区別しない）。読む大きさに上限を設ける。Tauri の asset プロトコルは使わない（場所で絞ると junction 越しのゴーストが読めず、許可範囲を足す前にキャッシュ表示が画像を要求するため、形で絞る） |
 
 **`crates/ghost-meta/`（ゴーストメタデータ解析クレート）**
@@ -279,7 +280,8 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | 戻り値 | `()`                                                                                                                                                            |
 | 処理   | `ssp.exe /g {ghost_arg}` を起動。SSP 内ゴースト（`source == "ssp"`）はディレクトリ名のみ、外部ゴーストは `{source}/{directory_name}` のフルパスを渡す           |
 | 非同期 | `Command::spawn()` で起動し、プロセス終了を待たず即座に処理を返す。複数インスタンスの起動制御や重複起動防止はランチャー側で行わず、SSP 側（本体機能）に一任する |
-| エラー | `CommandError`（§13）。`ssp.exe` 不在時は `sspExeNotFound`、起動失敗時は `sspLaunchFailed`                                                                     |
+| 検証   | `ssp_path` はドライブ文字で始まる絶対パス（`C:\…`・`\\?\C:\…`）に限る。UNC（`\\server\share`・`\\?\UNC\…`）・デバイスパス・相対パス・ドライブ相対（`C:ssp`）・`..` を含むパスは、ファイルシステムに触れる前に拒否する（乗っ取られた webview からリモート共有上の exe を起動させない。UNC は存在確認だけで SMB 接続を起こすため）。割り当て済みのネットワークドライブ（`Z:` 等）は通す |
+| エラー | `CommandError`（§13）。`ssp_path` が上記の検証を通らないときは `sspPathNotLocal`、`ssp.exe` 不在時は `sspExeNotFound`、起動失敗時は `sspLaunchFailed`       |
 
 ### 6.3 `validate_ssp_path`
 
@@ -287,8 +289,8 @@ ghosts.db の使い捨てスキーマ機構（`cache_schema.rs`、§13）の対�
 | ------ | ------------------------------------------------------------ |
 | 引数   | `ssp_path: String`                                           |
 | 戻り値 | `()`                                                         |
-| 処理   | `{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
-| エラー | `ssp.exe` 不在時に `CommandError` の `sspExeNotFound` を返す（設定画面が UI の言語の文言にして表示） |
+| 処理   | `ssp_path` を §6.2 と同じ検証（ドライブ文字で始まる絶対パスに限る）にかけてから、`{ssp_path}/ssp.exe` の存在を検証する（設定ダイアログのフォルダ選択時） |
+| エラー | 検証を通らないときは `sspPathNotLocal`、`ssp.exe` 不在時は `sspExeNotFound` を `CommandError` で返す（設定画面が UI の言語の文言にして表示） |
 
 ### 6.4 `read_user_locale`
 
@@ -734,6 +736,7 @@ launcher の速さを支えるため、検索欄を起点にキーボードだ�
 | `descript.txt` 不在                  | そのゴーストをスキップ                                   |
 | `descript.txt` に `name` 未定義      | ディレクトリ名をフォールバック表示名とする               |
 | `ssp.exe` 不在（カード個別起動）     | 起動時エラー表示（カード内 `role="alert"`・インライン）   |
+| SSP フォルダがドライブ文字で始まらない（UNC 等） | ファイルシステムに触れる前に `sspPathNotLocal` で拒否（§6.2/§6.3）。表示は `ssp.exe` 不在と同じ経路 |
 | ランダム起動の成功/失敗/対象なし     | トースト通知（成功/エラー/警告）。ゴースト一覧は破壊しない |
 | スキャンエラー（キャッシュ表示済み） | キャッシュ表示を維持し、エラーを抑制                     |
 | スキャンエラー（キャッシュなし）     | エラーメッセージ表示 + ゴーストリストクリア              |

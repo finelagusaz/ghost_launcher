@@ -7,10 +7,12 @@
 //! （`ghost_meta::is_thumbnail_candidate`）だけを読み、それ以外は 404 を返す。状態を持たない。
 
 use std::borrow::Cow;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use tauri::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
+
+use crate::local_path::is_local_drive_path;
 
 /// プロトコル名。フロントエンドの `src/lib/thumbnailUrl.ts` と CSP の `img-src` が同じ名前を使う。
 pub(crate) const SCHEME: &str = "thumbnail";
@@ -93,33 +95,12 @@ fn decode_request_path(raw_path: &str) -> Option<PathBuf> {
 }
 
 /// 読ませてよいパスか。
-/// - 絶対パスで、`..` を含まない（形の判定は正規化しないため、`..` で構造の外へ出させない）
-/// - ローカルのドライブ（Windows）。UNC パスは、判定のためのファイル確認だけで任意のサーバへ
-///   SMB 接続を起こすため受けない（割り当て済みのネットワークドライブは通る）
+/// - ローカルのドライブ文字で始まる絶対パスで、`..` を含まない（`local_path::is_local_drive_path`。
+///   形の判定は正規化しないため `..` で構造の外へ出させず、UNC は判定のためのファイル確認だけで
+///   任意のサーバへ SMB 接続を起こすため受けない。割り当て済みのネットワークドライブは通る）
 /// - ゴーストのサムネイルとして成り立つ形（`ghost_meta::is_thumbnail_candidate`）
 fn is_servable(path: &Path) -> bool {
-    path.is_absolute()
-        && !path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
-        && is_drive_path(path)
-        && ghost_meta::is_thumbnail_candidate(path)
-}
-
-#[cfg(windows)]
-fn is_drive_path(path: &Path) -> bool {
-    use std::path::Prefix;
-    match path.components().next() {
-        Some(Component::Prefix(prefix)) => {
-            matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-        }
-        _ => false,
-    }
-}
-
-#[cfg(not(windows))]
-fn is_drive_path(_path: &Path) -> bool {
-    true
+    is_local_drive_path(path) && ghost_meta::is_thumbnail_candidate(path)
 }
 
 fn mime_type(path: &Path) -> &'static str {

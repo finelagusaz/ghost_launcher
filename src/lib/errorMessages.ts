@@ -14,6 +14,7 @@ export interface CaughtError {
 /// （Rust 側に種別を足して TS 型を再生成すると、ここが埋まるまで型検査が落ちる）。
 const KIND_KEYS: Record<KnownKind, string> = {
   sspExeNotFound: "error.sspExeNotFound",
+  sspPathNotLocal: "error.sspPathNotLocal",
   sspLaunchFailed: "error.sspLaunchFailed",
   ghostFolderNotFound: "error.ghostFolderNotFound",
   ghostFolderNotDirectory: "error.ghostFolderNotDirectory",
