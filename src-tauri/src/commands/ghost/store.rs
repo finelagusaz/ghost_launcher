@@ -281,8 +281,14 @@ pub(crate) fn store_ghosts_delta(
     Ok(total as usize)
 }
 
+/// 世代（request_key）を新しい順に列挙し、TTL 超過かどうかを添える（?1 は "-N days"）。
+/// 世代の台帳は ghost_fingerprints（世代ごとに 1 行・`store_ghosts_delta` が ghosts と同一
+/// トランザクションで書く）。新しさの基準はその updated_at＝その世代へ最後に書き込んだ時刻で、
+/// ghosts を世代ごとに集計しない（全行ぶんの index 走査と、そのためだけの index を避ける）。
+const CLEANUP_GENERATIONS_SQL: &str = "SELECT request_key, updated_at < datetime('now', ?1) FROM ghost_fingerprints ORDER BY updated_at DESC";
+
 /// 古い request_key 世代のキャッシュを削除する（JS cleanupOldGhostCaches の移植・設計書 §5.1）。
-/// 保持規則: 更新降順の上位 max_generations（TTL 未超過のもの）+ current は無条件。
+/// 保持規則: 最終書込の降順で上位 max_generations（TTL 未超過のもの）+ current は無条件。
 /// ghosts / ghost_fingerprints / ghost_scan_entries は運命共有のため同一トランザクションで消す。
 pub(crate) fn cleanup_old_ghost_caches(
     conn: &Connection,
@@ -292,9 +298,7 @@ pub(crate) fn cleanup_old_ghost_caches(
 ) -> Result<u32, String> {
     let rows: Vec<(String, bool)> = {
         let mut stmt = conn
-            .prepare(
-                "SELECT request_key, MAX(updated_at) < datetime('now', ?1) FROM ghosts GROUP BY request_key ORDER BY MAX(updated_at) DESC",
-            )
+            .prepare(CLEANUP_GENERATIONS_SQL)
             .map_err(|e| format!("世代 SELECT 準備エラー: {e}"))?;
         stmt.query_map([format!("-{ttl_days} days")], |r| {
             Ok((r.get(0)?, r.get(1)?))
@@ -806,6 +810,78 @@ mod tests {
         let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
         assert_eq!(deleted, 1);
         assert_eq!(remaining_keys(&conn), vec!["rk-current".to_string()]);
+    }
+
+    /// 世代の列挙は ghost_fingerprints（世代ごとに 1 行）だけを読む。ghosts を世代ごとに
+    /// 集計すると、cache miss のたびに全行ぶんの index 走査になり、そのためだけの index
+    /// (request_key, updated_at) を全行の書込で維持することになる。
+    #[test]
+    fn cleanupの世代列挙はghostsを読まない() {
+        let conn = setup_db();
+        let mut stmt = conn
+            .prepare(&format!("EXPLAIN QUERY PLAN {CLEANUP_GENERATIONS_SQL}"))
+            .unwrap();
+        let plan: Vec<String> = stmt
+            .query_map(["-30 days"], |r| r.get::<_, String>(3))
+            .unwrap()
+            .map(|row| row.expect("EXPLAIN QUERY PLAN の detail 列を読めること"))
+            .collect();
+        assert!(
+            plan.iter().any(|d| d.contains("ghost_fingerprints")),
+            "ghost_fingerprints を読んでいない: {plan:?}"
+        );
+        assert!(
+            !plan.iter().any(|d| d.contains(" ghosts")),
+            "ghosts を読んでいる: {plan:?}"
+        );
+    }
+
+    /// 世代の新しさと TTL は「その世代へ最後に書き込んだ時刻」（ghost_fingerprints.updated_at）で
+    /// 測る。行が長く不変でも、最近書き込みのあった世代は TTL で消さない。
+    #[test]
+    fn cleanupは行が古くても最近書き込んだ世代をttlで消さない() {
+        let conn = setup_db();
+        seed_generation(&conn, "rk-stable", "2020-01-01 00:00:00"); // 行は古いまま不変
+        conn.execute(
+            "UPDATE ghost_fingerprints SET updated_at = ?1 WHERE request_key = 'rk-stable'",
+            [days_ago(&conn, 1)],
+        )
+        .unwrap(); // 世代への最後の書込（0 子変更の cache miss 等）は最近
+        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
+
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
+
+        assert_eq!(deleted, 0);
+        assert_eq!(
+            remaining_keys(&conn),
+            vec!["rk-current".to_string(), "rk-stable".to_string()]
+        );
+    }
+
+    /// ゴーストが 0 体の世代（ghosts に行が無く fingerprint と scan_entries だけがある）も
+    /// 世代として数え、上限を超えたら消す。ghosts の集計からは見えず、残り続けていた。
+    #[test]
+    fn cleanupはゴースト0体の世代も削除する() {
+        let conn = setup_db();
+        for sql in [
+            "INSERT INTO ghost_fingerprints (request_key, fingerprint, updated_at) VALUES ('rk-empty', 'fp', '2020-01-01 00:00:00')",
+            "INSERT INTO ghost_scan_entries (request_key, scan_key, token, ghost_identity_key) VALUES ('rk-empty', 'sk', 't', 'id')",
+        ] {
+            conn.execute(sql, []).unwrap();
+        }
+        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
+
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 5, 30).unwrap();
+
+        assert_eq!(deleted, 1);
+        let left: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM ghost_fingerprints WHERE request_key = 'rk-empty') + (SELECT COUNT(*) FROM ghost_scan_entries WHERE request_key = 'rk-empty')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "fingerprint と scan_entries が残っている");
     }
 
     #[test]
