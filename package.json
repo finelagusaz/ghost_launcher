@@ -15,8 +15,10 @@
     "test:hooks": "node --test scripts/hooks/hooks.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
-    "e2e:setup": "cargo install tauri-driver --locked && npx tauri build --no-bundle",
-    "e2e": "playwright test -c playwright.tauri.config.ts"
+    "e2e:setup": "cargo install tauri-driver --locked",
+    "e2e:build": "node e2e/build.mjs",
+    "e2e": "node e2e/build.mjs && playwright test -c playwright.tauri.config.ts",
+    "e2e:test": "playwright test -c playwright.tauri.config.ts"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.74.1",
