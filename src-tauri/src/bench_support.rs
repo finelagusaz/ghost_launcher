@@ -154,6 +154,19 @@ pub fn select_cols_prefixed() -> String {
         .join(", ")
 }
 
+/// countGhostsByQuery（非空クエリ）と同形の検索 COUNT。params: [rk, q]。真の権威は
+/// ghostDatabase.ts の GHOST_SEARCH_COUNT_SQL で、共有 fixture search-sql-shapes.json を
+/// include_str! で取り込むため、本番の変更は再コンパイルで自動追従する。
+pub fn search_count_sql() -> String {
+    const RAW: &str = include_str!("../../src/test/fixtures/search-sql-shapes.json");
+    let shapes: serde_json::Value =
+        serde_json::from_str(RAW).expect("search-sql-shapes.json をパースできること");
+    shapes["searchCount"]
+        .as_str()
+        .expect("search-sql-shapes.json に searchCount があること")
+        .to_string()
+}
+
 /// searchGhosts と同形の WHERE（g. 前置き）。真の権威は ghostDatabase.ts の
 /// GHOST_SEARCH_WHERE_PREFIXED（共有 fixture search-sql-shapes.json で機械照合）。
 /// search_text は CACHE_SCHEMA の生成列（検索 6 列の \x1f 連結）。

@@ -4,5 +4,6 @@
     "name": "g.name_lower ASC",
     "recent": "g.last_launched DESC NULLS LAST, g.name_lower ASC",
     "frequency": "g.launch_count DESC, g.name_lower ASC"
-  }
+  },
+  "searchCount": "SELECT COUNT(*) as count FROM ghosts INDEXED BY idx_ghosts_request_key_name_search WHERE request_key = ? AND (instr(search_text, ?) > 0)"
 }
