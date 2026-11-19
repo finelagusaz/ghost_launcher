@@ -1,7 +1,8 @@
-use std::path::{Component, Path};
+use std::path::Path;
 use std::process::Command;
 
 use crate::commands::error::CommandError;
+use crate::local_path::is_local_drive_path;
 
 /// SSP へ渡すゴースト指定引数を構築する。
 /// SSP 内ゴースト（source == "ssp"）はディレクトリ名のみ、外部ゴーストはフルパス。
@@ -62,18 +63,10 @@ pub fn launch_ghost(
 /// webview から受け取った SSP フォルダを、ローカルのドライブ文字で始まる絶対パスに限る。
 ///
 /// 乗っ取られた webview が `\\attacker\share` を渡すと、リモート共有上の `ssp.exe` を
-/// 起動できてしまう。UNC は `exists()` の時点で SMB 接続（NTLM 認証の送出）も起こすため、
-/// ファイルシステムに触れる前にここで弾く。割り当て済みのネットワークドライブ（`Z:` 等）は
-/// 利用者が自分で割り当てたものなので通す。判定はサムネイルのプロトコル（PR #244 の
-/// `thumbnail_protocol::is_drive_path`）と同じ考え方で、両方が main に揃ったら共通化する。
+/// 起動できてしまう。UNC は `exists()` の時点で SMB 接続も起こすため、ファイルシステムに
+/// 触れる前に弾く（判定の中身は `local_path` が単一権威）。
 fn ensure_local_ssp_path(ssp_path: &str) -> Result<(), CommandError> {
-    let path = Path::new(ssp_path);
-    let is_local = path.is_absolute()
-        && !path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
-        && is_drive_path(path);
-    if is_local {
+    if is_local_drive_path(Path::new(ssp_path)) {
         Ok(())
     } else {
         Err(CommandError::SspPathNotLocal {
@@ -82,59 +75,21 @@ fn ensure_local_ssp_path(ssp_path: &str) -> Result<(), CommandError> {
     }
 }
 
-#[cfg(windows)]
-fn is_drive_path(path: &Path) -> bool {
-    use std::path::Prefix;
-    match path.components().next() {
-        Some(Component::Prefix(prefix)) => {
-            matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-        }
-        _ => false,
-    }
-}
-
-#[cfg(not(windows))]
-fn is_drive_path(_path: &Path) -> bool {
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         CommandError, build_ghost_arg, ensure_local_ssp_path, launch_ghost, validate_ssp_path,
     };
 
-    fn assert_rejected(path: &str) {
+    #[test]
+    fn ローカルでないsspフォルダは渡したパスを載せた種別で拒否する() {
+        let path = "\\\\attacker.invalid\\share";
         assert_eq!(
             ensure_local_ssp_path(path),
             Err(CommandError::SspPathNotLocal {
                 path: path.to_string()
-            }),
-            "拒否されるべきパスが通った: {path}"
+            })
         );
-    }
-
-    #[test]
-    fn unc形式のsspフォルダを拒否する() {
-        assert_rejected("\\\\attacker.invalid\\share");
-        assert_rejected("//attacker.invalid/share");
-        assert_rejected("\\\\?\\UNC\\attacker.invalid\\share");
-        assert_rejected("\\\\.\\C:\\SSP");
-    }
-
-    #[test]
-    fn 相対パスとドライブ相対のsspフォルダを拒否する() {
-        assert_rejected("SSP");
-        assert_rejected("..\\SSP");
-        assert_rejected("\\SSP");
-        assert_rejected("C:SSP");
-        assert_rejected("");
-    }
-
-    #[test]
-    fn 親ディレクトリ参照を含むsspフォルダを拒否する() {
-        assert_rejected("C:\\SSP\\..\\Other");
-        assert_rejected("\\\\?\\C:\\SSP\\..\\Other");
     }
 
     #[test]

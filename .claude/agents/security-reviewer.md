@@ -19,7 +19,7 @@ tools: Read, Grep, Glob, Bash
 
 ### 2. コマンドインジェクション
 - `Command::new()` や `std::process::Command` でユーザー入力が引数に渡される箇所
-- `ssp.rs` の `launch_ghost` のように外部プロセスを起動する箇所で、引数がサニタイズされているか
+- `ssp.rs` の `launch_ghost` のように外部プロセスを起動する箇所で、引数がサニタイズされているか。webview 由来のパスは、ファイルシステムに触れる前に `src-tauri/src/local_path.rs` の `is_local_drive_path` で絞る（UNC は存在確認だけで SMB 接続を起こし、実行ファイルならリモート上の exe を起動させる）
 - シェル経由（`sh -c` / `cmd /c`）での実行がないか
 
 ### 3. パストラバーサル
