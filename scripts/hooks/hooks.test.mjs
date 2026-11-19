@@ -153,11 +153,13 @@ test("check-rust-clippy: clippy の失敗を additionalContext で知らせる",
 });
 
 test("check-rust-clippy: ワークツリーで編集したら、元のチェックアウトでなくそのワークツリーを検査する", () => {
-  withProject(REPORT_CWD, ({ env, file, worktree }) => {
+  withProject(REPORT_CWD, ({ env, file }) => {
     const result = runHook("check-rust-clippy.sh", edit(file.worktree), env);
     assert.equal(result.status, 0);
-    const context = contextOf(result, "PostToolUse").replaceAll("\\", "/").toLowerCase();
-    assert.ok(context.includes(`cwd=${worktree.replaceAll("\\", "/").toLowerCase()}`), context);
+    // パス全体は比べない。一時ディレクトリは 8.3 形式（RUNNER~1 等）で渡ることがあり、
+    // pwd の長い形式と文字列が一致しない。作業ツリーの名前（worktree / project）で見分ける
+    const cwd = contextOf(result, "PostToolUse").match(/cwd=(\S+)/)?.[1] ?? "";
+    assert.match(cwd, /[\\/]worktree$/i, cwd);
   });
 });
 
