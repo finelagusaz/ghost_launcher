@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 function read(relativePath) {
@@ -9,18 +9,6 @@ function read(relativePath) {
   } catch (error) {
     throw new Error(`ファイルを読み込めません: ${relativePath} (${String(error)})`);
   }
-}
-
-const SOURCE_EXTENSIONS = [".ts", ".tsx"];
-
-// dir 内の全 .ts/.tsx ソースを結合して返す
-function readDir(relativeDir) {
-  const fullPath = resolve(process.cwd(), relativeDir);
-  const entries = readdirSync(fullPath, { recursive: true });
-  return entries
-    .filter((entry) => SOURCE_EXTENSIONS.some((ext) => entry.endsWith(ext)))
-    .map((entry) => readFileSync(join(fullPath, entry), "utf8"))
-    .join("\n");
 }
 
 export const checks = [
@@ -85,7 +73,7 @@ export function runChecks() {
   for (const check of checks) {
     let targets;
     try {
-      targets = check.dir ? [check.dir] : check.files ? check.files() : [check.file];
+      targets = check.files ? check.files() : [check.file];
     } catch (error) {
       failures.push(`[${check.id}] ${String(error)}`);
       continue;
@@ -99,7 +87,7 @@ export function runChecks() {
     for (const target of targets) {
       let passed;
       try {
-        passed = check.test(check.dir ? readDir(target) : read(target));
+        passed = check.test(read(target));
       } catch (error) {
         failures.push(`[${check.id}] ${target}: ${String(error)}`);
         continue;

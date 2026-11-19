@@ -6,6 +6,8 @@ import type { CommandError } from "../types/generated/CommandError";
 // i18n.t は言語切替に追従する。テストごとに言語を明示して始める
 const t = i18n.t.bind(i18n);
 const JAPANESE = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
+/// 文言に漢字・かなを含まない言語（日本語と中国語は除く）。日本語が混ざらないことを確かめる対象
+const NON_CJK_LANGUAGES: readonly string[] = ["en", "ko", "ru"];
 
 describe("describeError", () => {
   beforeEach(async () => {
@@ -62,7 +64,7 @@ describe("buildScanErrorMessage", () => {
     const message = buildScanErrorMessage(new Error("boom"), t);
     expect(message).toContain(t("header.refresh"));
     expect(message).toContain("boom");
-    if (lang !== "ja" && !lang.startsWith("zh")) {
+    if (NON_CJK_LANGUAGES.includes(lang)) {
       expect(message).not.toMatch(JAPANESE);
     }
   });

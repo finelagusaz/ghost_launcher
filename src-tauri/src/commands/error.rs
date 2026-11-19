@@ -31,26 +31,13 @@ pub enum CommandError {
     Internal { detail: String },
 }
 
-/// ログ・テスト向けの開発者用文言。UI はこれを使わず `kind` から文言を組み立てる。
+/// ログ・テスト向けの表示。文言は持たない（利用者向けの文言はフロントエンドの i18n リソースが
+/// 単一権威）。種別つきの失敗は種別名と引数を、内部失敗は詳細をそのまま出す。
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SspExeNotFound { path } => write!(f, "ssp.exe が見つかりません: {path}"),
-            Self::SspLaunchFailed { detail } => write!(f, "SSP の起動に失敗しました: {detail}"),
-            Self::GhostFolderNotFound { path } => {
-                write!(f, "ghost フォルダが見つかりません: {path}")
-            }
-            Self::GhostFolderNotDirectory { path } => {
-                write!(f, "ghost フォルダがディレクトリではありません: {path}")
-            }
-            Self::GhostFolderUnreadable { path, detail } => {
-                write!(f, "ディレクトリを読み取れませんでした ({path}): {detail}")
-            }
-            Self::GhostIdentityCollision { first, second } => write!(
-                f,
-                "ゴースト identity が衝突しています（NFKC 畳み込みで別ディレクトリが同一キーに）: {first} / {second}"
-            ),
             Self::Internal { detail } => f.write_str(detail),
+            other => write!(f, "{other:?}"),
         }
     }
 }
