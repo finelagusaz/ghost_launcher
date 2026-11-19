@@ -24,6 +24,7 @@ import { AppHeader } from "./components/AppHeader";
 import { GhostContent } from "./components/GhostContent";
 import { ScanProgressBar } from "./components/ScanProgressBar";
 import { SettingsPanel } from "./components/SettingsPanel";
+import ghostListConfig from "./config/ghost-list.json";
 import { requestKeyFromSettings, formatErrorDetail } from "./lib/ghostScanUtils";
 import { getRandomGhost, reseedRandomSort, sortDependsOnLaunchStats } from "./lib/ghostDatabase";
 import { subscribeLaunchRecorded } from "./lib/sspClient";
@@ -105,7 +106,8 @@ function App() {
   // useDeferredValue はレンダー優先度側の遅延で、役割が異なるため両方通す
   const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
   const deferredSearchQuery = useDeferredValue(debouncedSearchQuery);
-  const LIMIT = 500;
+  // 一覧の 1 ページの件数。src/config/ghost-list.json が単一権威（ベンチと E2E も同じ値を読む）
+  const LIMIT = ghostListConfig.pageLimit;
 
   const {
     settingsOpen,
