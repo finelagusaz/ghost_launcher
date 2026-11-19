@@ -32,6 +32,8 @@ cargo sweep -t 30 .
 
 **Tauri コマンド呼び出し**: フロントエンドは `invoke()` で camelCase の引数名を使い、Rust 側では自動的に snake_case に変換されます（例: `sspPath` → `ssp_path`, `additionalFolders` → `additional_folders`）。**戻り値のフィールド名は変換されず**、Rust の snake_case のまま JS へ渡ります。
 
+**コマンドのエラー**: UI へ届く失敗は `CommandError`（`src-tauri/src/commands/error.rs`）の種別と引数で返し、Rust は文言を持たない。invoke の reject 値は `Error` でなくこのオブジェクトなので、`e.message`・`String(e)` で受けず `src/lib/errorMessages.ts` の `describeError`・`formatErrorDetail` を通す。
+
 **ゴーストのディレクトリ構造**: `{parent}/ghost/{ghost_name}/ghost/master/descript.txt`。`parent` は `{ssp_path}`（SSP ネイティブゴースト用）または、ゴーストサブディレクトリを直接含むユーザー指定の追加フォルダです。
 
 **Claude Code フック**: `.claude/settings.json` のフックは `scripts/hooks/*.sh` を `bash "$CLAUDE_PROJECT_DIR/..."`（絶対パス）で呼ぶ。tool 入力は **stdin の JSON** で渡り `jq -r '.tool_input.file_path'` で取り出す（`$TOOL_INPUT` は存在しない。フックの cwd も保証されないので相対パス厳禁）。**ワークツリーのセッションでも `$CLAUDE_PROJECT_DIR` は元のチェックアウトを指す**（実行中のフックのコマンドラインで実測）。検査系のフックは `_lib.sh` の `hook_resolve_worktree` で、編集したファイルの作業ツリーを検査する。**モデルへ届く出力は `hookSpecificOutput.additionalContext` だけ**で、exit 0 の素の標準出力は誰にも届かない——入力の読み取りと通知は `scripts/hooks/_lib.sh` を通す。`timeout` の単位は**秒**。フックを足したら、発火する編集を実際に行い通知が届くことで較正する（スクリプト単体が正しく出力しても、届いている証拠にはならない）。
@@ -50,7 +52,7 @@ KISS/DRY/SRP/YAGNI・既存パターン踏襲・根本原因まで詰める・�
 
 スキルは `.claude/skills/` が単一権威（一覧と用途はハーネスが description から供給する）。frontmatter に `disable-model-invocation` を持つものはユーザー起動専用で、モデルからは呼べない——手順が必要なら該当 `SKILL.md` を Read して踏襲する。
 
-複数フェーズ・10 タスク規模・アーキテクチャ変更を伴う大規模作業は、設計書（`docs/superpowers/specs/`）→実装計画（`docs/superpowers/plans/`）→タスク単位実行（各タスクで `/implement` 相当の TDD サイクル）の計画駆動フローへ切り替える（#134 / #146 の実績運用）。計画書の冒頭には起点の issue 番号を書く（規範。次節の「進行中」の判定に使う）。
+複数フェーズ・10 タスク規模・アーキテクチャ変更を伴う大規模作業は、設計書（`docs/superpowers/specs/`）→実装計画（`docs/superpowers/plans/`）→タスク単位実行（各タスクで `/implement` 相当の TDD サイクル）の計画駆動フローへ切り替える（#134 / #146 の実績運用）。計画書の冒頭には起点の issue 番号を書く（規範。「参照ドキュメント」節の「進行中」の判定に使う）。
 
 計画駆動フローの最終タスクには**足場撤去 sweep** を定型で置く（規範）。計画・実装中に「後で削除」「後続タスクで置き換え」「プレースホルダ」等と記した仮設コードは、撤去指示がコメントに埋もれると消化が保証されない。サイクル完了前に `grep -rniE 'TODO|FIXME|後続タスク|後で(削除|置き換え|実装)|仮実装|仮置き' src src-tauri crates` で洗い出し、消化を確認する（#133 の `__bench_support_linked` が「後続タスクで置き換える」と書かれたまま #173 まで生存した教訓。`placeholder` 等は UI 属性・i18n キーで恒常ヒットするため意図句に絞る）。機械検証されないため検算手段として `/health-check` 項目 9 を用いる。
 
@@ -62,6 +64,7 @@ GitHub Flow。ブランチ名は `{prefix}/{issue番号}-{英語で内容の説�
 
 - **フェーズ分けの作業では、全フェーズ完了後に一括で PR を作成する**（途中フェーズで PR を開くと、後から同一ブランチに追加されたコミットが PR タイトルと乖離し、マージ済み確認が困難になる）
 - 複数 PR を並行して進める場合: 一方が CI 失敗すると main ベースの他の PR もマージできなくなる。CI 失敗の原因が共有コード（Rust テスト等）にある場合は優先して修正 PR を立てる
+- `main` はルールセットで必須チェック `build`（CI Build）を持ち、`gh pr merge --auto` はその通過を待つ。ただし最新の `main` の取り込みは求めない設定なので、先に別の PR がマージされたあとの組み合わせは CI で試されない。同じファイルに触れる PR を続けてマージするときは、`main` を取り込んで手元のゲートを通し直す
 
 ## 参照ドキュメント
 
