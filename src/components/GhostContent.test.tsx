@@ -46,6 +46,7 @@ const baseProps = {
   onRandomLaunch: vi.fn(),
   onOpenSettings: vi.fn(),
   onLoadMore: vi.fn(),
+  sortEpoch: 0,
 };
 
 // 選択中（data-selected）のカードのゴースト名を返す

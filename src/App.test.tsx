@@ -60,8 +60,11 @@ vi.mock("./components/GhostContent", () => ({
     return null;
   },
 }));
-// plugin-sql のロードを避けるため DB アクセス関数はモック化する
-vi.mock("./lib/ghostDatabase", () => ({
+// plugin-sql のロードを避けるため DB アクセス関数はモック化する。
+// ソートの性質の判定（sortDependsOnLaunchStats）は DB に触れない純関数なので本物を使う
+vi.mock("./lib/ghostDatabase", async (importOriginal) => ({
+  sortDependsOnLaunchStats: (await importOriginal<typeof import("./lib/ghostDatabase")>())
+    .sortDependsOnLaunchStats,
   getRandomGhost: (...args: unknown[]) => mocks.getRandomGhostSpy(...args),
   recordLaunch: vi.fn(),
   reseedRandomSort: vi.fn(),
@@ -242,7 +245,7 @@ describe("App - 起動記録後の並びの更新", () => {
     return mocks.useSearchSpy.mock.calls.at(-1)?.[6] as number;
   }
 
-  async function selectSortAndRecordLaunch(sort: string) {
+  function selectSortAndRecordLaunch(sort: string) {
     render(<App />);
     const onSortChange = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onSortChange;
     act(() => onSortChange(sort));
@@ -253,18 +256,25 @@ describe("App - 起動記録後の並びの更新", () => {
     return { before, after: latestSortEpoch() };
   }
 
-  it.each(["recent", "frequency"])("%s 順では、起動の記録後に並びを取り直す", async (sort) => {
-    const { before, after } = await selectSortAndRecordLaunch(sort);
+  it.each(["recent", "frequency"])("%s 順では、起動の記録後に並びを取り直す", (sort) => {
+    const { before, after } = selectSortAndRecordLaunch(sort);
     expect(after).toBe(before + 1);
   });
 
-  it.each(["name", "random"])("%s 順では、起動の記録で並びを取り直さない", async (sort) => {
-    const { before, after } = await selectSortAndRecordLaunch(sort);
+  it.each(["name", "random"])("%s 順では、起動の記録で並びを取り直さない", (sort) => {
+    const { before, after } = selectSortAndRecordLaunch(sort);
     expect(after).toBe(before);
   });
 
-  it("アンマウントで購読を解除する", () => {
+  it("集計列で並べている間だけ購読し、ソートの切替とアンマウントで解除する", () => {
     const { unmount } = render(<App />);
+    expect(mocks.launchRecordedListeners.size).toBe(0); // 既定の名前順
+    const onSortChange = mocks.ghostContentSpy.mock.calls.at(-1)?.[0]?.onSortChange;
+    act(() => onSortChange("recent"));
+    expect(mocks.launchRecordedListeners.size).toBe(1);
+    act(() => onSortChange("name"));
+    expect(mocks.launchRecordedListeners.size).toBe(0);
+    act(() => onSortChange("frequency"));
     expect(mocks.launchRecordedListeners.size).toBe(1);
     unmount();
     expect(mocks.launchRecordedListeners.size).toBe(0);

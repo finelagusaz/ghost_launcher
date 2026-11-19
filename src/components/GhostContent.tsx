@@ -22,8 +22,8 @@ interface Props {
   onRandomLaunch: () => Promise<void>;
   onOpenSettings: () => void;
   onLoadMore: (targetOffset: number) => void;
-  // 同じ sortOrder のまま並び順が変わった回数（ランダム再選択・起動記録による並びの更新）
-  sortEpoch?: number;
+  // 同じ sortOrder のまま並び順が変わるたびに進む値（ランダムの再選択・起動の記録による並びの更新）
+  sortEpoch: number;
 }
 
 const SORT_OPTIONS: SortOrder[] = ["name", "recent", "frequency", "random"];
@@ -71,7 +71,7 @@ export const GhostContent = memo(function GhostContent({
   sspPath,
   searchQuery,
   sortOrder,
-  sortEpoch = 0,
+  sortEpoch,
   loading,
   searchLoading,
   error,
@@ -101,9 +101,10 @@ export const GhostContent = memo(function GhostContent({
   const [searchFocused, setSearchFocused] = useState(false);
   const launch = useGhostLauncher(sspPath);
 
-  // 検索クエリ・ソート変更・並びの更新で選択を先頭へ戻す。並びの更新では選択 index の下の
-  // ゴーストが入れ替わり、Enter で意図しない別のゴーストを起動しかねない（最近起動順では、
-  // 起動したゴーストが先頭へ上がるため先頭に戻すと同じゴーストを指し続ける）
+  // 検索クエリの変更・ソートの切替・並びの更新で、選択を先頭へ戻す。
+  // 並びが更新されると、選択 index の位置に別のゴーストが来る。そのまま Enter を押すと、
+  // 意図しないゴーストを起動してしまう。最近起動順では起動したゴーストが先頭へ上がるため、
+  // 先頭へ戻すと同じゴーストを選んだままになる
   useEffect(() => {
     setSelectedIndex(0);
   }, [searchQuery, sortOrder, sortEpoch]);

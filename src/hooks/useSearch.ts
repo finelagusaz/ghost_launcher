@@ -18,6 +18,19 @@ function isSameRow(a: GhostView, b: GhostView): boolean {
   return keys.every((k) => a[k] === b[k]);
 }
 
+// 並びの更新で取り直した行に、内容が等しい既存の行の参照を引き継ぐ（並びが変わると位置が
+// ずれるため、path で引く）。memo 化された GhostCard の再描画を避けるためである。
+// 全行が既存の参照のまま並びも変わらなければ、置き換え不要を null で返す
+function reuseSameRows(prev: GhostView[], incoming: GhostView[]): GhostView[] | null {
+  const byPath = new Map(prev.map((row) => [row.path, row]));
+  const next = incoming.map((row) => {
+    const existing = byPath.get(row.path);
+    return existing && isSameRow(existing, row) ? existing : row;
+  });
+  const unchanged = next.length === prev.length && next.every((row, i) => row === prev[i]);
+  return unchanged ? null : next;
+}
+
 export function useSearch(
   requestKey: string | null,
   query: string,
@@ -25,10 +38,10 @@ export function useSearch(
   offset: number,
   refreshTrigger: number,
   sortOrder: SortOrder = "name",
-  // 同じ sortOrder のまま並び順が変わったことを可視化する epoch（ランダムの再選択による
-  // シード変更、最近起動順・起動回数順での起動記録）。resetKey/deps に含めることで、
-  // モジュールスコープの状態や DB の集計列の更新だけでは検知できない並びの変化でも
-  // 取り直しを強制し、旧い並びのバッファが新しい並びのページと縫合されるのを防ぐ
+  // 同じ sortOrder のまま並び順が変わったことを知らせる epoch。ランダムの再選択（シードの
+  // 引き直し）と、最近起動順・起動回数順での起動記録（集計列の更新）で進む。どちらの変化も
+  // effect の依存からは見えないため、epoch を依存に含めて取り直しを強制する。取り直さないと、
+  // 古い並びのバッファが新しい並びのページと縫い合わされる
   sortEpoch: number = 0,
 ): { ghosts: GhostView[]; total: number; loadedStart: number; loading: boolean; dbError: string | null } {
   const [ghosts, setGhosts] = useState<GhostView[]>([]);
@@ -39,35 +52,30 @@ export function useSearch(
 
   // バッファマージ用: setGhosts 外からバッファ状態を参照するための ref
   const bufferRef = useRef({ ghosts: [] as GhostView[], start: 0 });
-  // コンテキスト変更（query/requestKey/refreshTrigger/sortOrder/sortEpoch）検知用
-  const resetKeyRef = useRef("");
-  // 直前に取得したときのコンテキストのうち、並び順の epoch を除いた部分
-  const contextKeyRef = useRef("");
-  // total を確定させた COUNT のキー。総数は requestKey/query/refreshTrigger だけで決まり、
-  // 並び替えでは変わらないため、同じキーなら COUNT を再発行せず total を保つ
+  // 直前に取得を確定したときの前提。context は総数と並びを決める値（requestKey・query・
+  // refreshTrigger・sortOrder）、epoch は並び順の epoch
+  const committedRef = useRef<{ context: string; epoch: number } | null>(null);
+  // total を確定させた COUNT のキー。総数は requestKey・query・refreshTrigger だけで決まり、
+  // ソートの切替や並びの更新では変わらない。キーが同じなら COUNT を発行せず total を保つ
   const countedKeyRef = useRef("");
 
   useEffect(() => {
     let isActive = true;
     const countKey = `${requestKey}\0${query}\0${refreshTrigger}`;
     const contextKey = `${countKey}\0${sortOrder}`;
-    const resetKey = `${contextKey}\0${sortEpoch}`;
-    const isReset = resetKey !== resetKeyRef.current;
-    const needsCount = countKey !== countedKeyRef.current;
-    // epoch だけが進んだ（同じ集合・同じソートのまま並び順が変わった）
+    const committed = committedRef.current;
+    const isSameContext = committed !== null && committed.context === contextKey;
+    const isReset = !isSameContext || committed.epoch !== sortEpoch;
+    // 並びの更新: epoch だけが進んだ（同じ集合・同じソートのまま、並び順だけが変わった）
     const isReorderOnly =
-      isReset && contextKey === contextKeyRef.current && bufferRef.current.ghosts.length > 0;
+      isSameContext && committed.epoch !== sortEpoch && bufferRef.current.ghosts.length > 0;
+    const needsCount = countKey !== countedKeyRef.current;
 
-    // COUNT の結果を total に反映したときだけ「数え済み」にする。発行時に印を付けると、
-    // 再実行で結果が捨てられたとき total が暫定値のまま固まる
+    // COUNT の結果を total に反映した時点で「数え済み」にする。発行時に印を付けると、
+    // effect の再実行で結果が捨てられたとき、total が暫定値のまま固まる
     function applyCount(count: number) {
       setTotal(count);
       countedKeyRef.current = countKey;
-    }
-
-    function commitKeys() {
-      resetKeyRef.current = resetKey;
-      contextKeyRef.current = contextKey;
     }
 
     async function fetchGhosts() {
@@ -78,8 +86,7 @@ export function useSearch(
         setDbError(null);
         setLoading(false);
         bufferRef.current = { ghosts: [], start: 0 };
-        resetKeyRef.current = "";
-        contextKeyRef.current = "";
+        committedRef.current = null;
         countedKeyRef.current = "";
         return;
       }
@@ -87,47 +94,22 @@ export function useSearch(
       setLoading(true);
       setDbError(null);
       try {
-        if (isReorderOnly) {
-          // 並びだけの更新: 表示中のバッファの範囲をそのまま取り直す。offset の窓で取り直すと、
-          // 先読みで広がったバッファのうち表示中の行が窓の外に落ち、いったん Skeleton になる
-          const prev = bufferRef.current;
-          const [pageGhosts, newTotal] = await Promise.all([
-            searchGhosts(requestKey, query, prev.ghosts.length, prev.start, sortOrder),
-            needsCount ? countGhostsByQuery(requestKey, query) : Promise.resolve(null),
-          ]);
-          if (!isActive) return;
-
-          commitKeys();
-          // 並びが変わっても行の内容は同じことが多いので、path で引いて内容が等しい行は
-          // 既存の参照を保ち、memo 化された GhostCard の再描画を避ける
-          const byPath = new Map(prev.ghosts.map((g) => [g.path, g]));
-          const next = pageGhosts.map((incoming) => {
-            const existing = byPath.get(incoming.path);
-            return existing && isSameRow(existing, incoming) ? existing : incoming;
-          });
-          setGhosts(next);
-          setLoadedStart(prev.start);
-          bufferRef.current = { ghosts: next, start: prev.start };
-          if (newTotal !== null) applyCount(newTotal);
-          return;
-        }
-
-        // 初期ロード（全置換 + 暫定 total + COUNT の遅延取得）はリセット時だけ。
-        // スクロールで先頭へ戻っただけの offset 0 は下のマージ経路に流し、
-        // total の巻き戻りと COUNT の再発行を避ける
-        const isInitialLoad = isReset && query === "" && offset === 0;
+        // 初期ロード（全置換・暫定 total・COUNT の遅延取得）はリセット時だけ。スクロールで先頭へ
+        // 戻っただけの offset 0 はマージ経路へ流し、total の巻き戻りと COUNT の再発行を避ける。
+        // 並びの更新は取得範囲の調整（下記）が要るため、初期ロードに入れない
+        const isInitialLoad = isReset && !isReorderOnly && query === "" && offset === 0;
 
         if (isInitialLoad) {
           const initialGhosts = await searchGhostsInitialPage(requestKey, limit, sortOrder);
           if (!isActive) return;
 
-          commitKeys();
+          committedRef.current = { context: contextKey, epoch: sortEpoch };
           setGhosts(initialGhosts);
           setLoadedStart(0);
           bufferRef.current = { ghosts: initialGhosts, start: 0 };
 
-          // 初期描画を優先して総件数は遅延取得する。ソートの切替など総数が変わらない
-          // リセットでは、暫定値へ巻き戻さず COUNT も発行しない
+          // 初期描画を優先し、総件数は遅延取得する。ソートの切替など総数が変わらないリセットでは、
+          // total を暫定値へ巻き戻さず、COUNT も発行しない
           if (needsCount) {
             setTotal(initialGhosts.length);
             void countGhostsByQuery(requestKey, query)
@@ -143,25 +125,34 @@ export function useSearch(
           return;
         }
 
-        // COUNT は総数が変わり得るリセット時のみ発行する（スクロールのページ送りや
-        // 並び替えで再発行しない）。SELECT と並行して待ち時間を重ねない
+        // 並びの更新では、offset の窓ではなく、読込済みのバッファの範囲をそのまま取り直す。
+        // offset の窓で取り直すと、先読みで広がったバッファのうち表示中の行が窓から外れ、
+        // いったん Skeleton になる
+        const prev = bufferRef.current;
+        const fetchLimit = isReorderOnly ? prev.ghosts.length : limit;
+        const fetchOffset = isReorderOnly ? prev.start : offset;
+
+        // COUNT は総数が変わり得るリセット時だけ発行する（スクロールのページ送り・ソートの切替・
+        // 並びの更新では発行しない）。SELECT と並行させ、待ち時間を重ねない
         const [pageGhosts, newTotal] = await Promise.all([
-          searchGhosts(requestKey, query, limit, offset, sortOrder),
+          searchGhosts(requestKey, query, fetchLimit, fetchOffset, sortOrder),
           isReset && needsCount ? countGhostsByQuery(requestKey, query) : Promise.resolve(null),
         ]);
         if (!isActive) return;
 
-        commitKeys();
+        committedRef.current = { context: contextKey, epoch: sortEpoch };
 
         if (isReset) {
-          // コンテキスト変更 → バッファクリアして全置換
-          setGhosts(pageGhosts);
-          setLoadedStart(offset);
-          bufferRef.current = { ghosts: pageGhosts, start: offset };
+          // コンテキストの変更・並びの更新 → バッファを全置換する
+          const next = isReorderOnly ? reuseSameRows(prev.ghosts, pageGhosts) : pageGhosts;
+          if (next !== null) {
+            setGhosts(next);
+            setLoadedStart(fetchOffset);
+            bufferRef.current = { ghosts: next, start: fetchOffset };
+          }
           if (newTotal !== null) applyCount(newTotal);
         } else {
           // スクロールによる offset 変更 → マージ（total はリセット時の値を保持）
-          const prev = bufferRef.current;
           const prevEnd = prev.start + prev.ghosts.length;
           const newEnd = offset + pageGhosts.length;
           const hasOverlap = offset <= prevEnd && newEnd >= prev.start;

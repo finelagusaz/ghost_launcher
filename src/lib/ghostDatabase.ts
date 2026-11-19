@@ -139,6 +139,12 @@ export function reseedRandomSort(): void {
   randomSortSeed = newRandomSortSeed();
 }
 
+// 起動の記録で並び順が変わるソートか（ghosts の集計列 last_launched / launch_count で並べるか）。
+// buildOrderBy と同じ場所に置き、ソートを足すときに両方を見直せるようにする
+export function sortDependsOnLaunchStats(sortOrder: SortOrder): boolean {
+  return sortOrder === "recent" || sortOrder === "frequency";
+}
+
 // SELECT の ORDER BY 式を返す。recent/frequency は ghosts の非正規化集計列
 // （last_launched / launch_count）で並べる。起動履歴は user-data.db（Rust 専有）に
 // 分離され、集計列は record_launch とスキャン時バックフィルで維持される。

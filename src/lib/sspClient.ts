@@ -6,18 +6,17 @@ export type LaunchTarget = Pick<GhostView, "directory_name" | "source" | "ghost_
 
 const launchRecordedListeners = new Set<() => void>();
 
-/// 起動履歴の記録（ghosts の集計列の更新を含む）が成功したことを購読する。戻り値で解除する。
-/// 最近起動順・起動回数順の並びを取り直す合図に使う。起動の成功時点ではなく記録の完了後に
-/// 通知するのは、集計列の更新より先に一覧を読み直して古い並びを掴まないため。
+/// 起動履歴の記録（ghosts の集計列の更新を含む）の成功を購読する。戻り値の関数で解除する。
+/// 最近起動順・起動回数順の並びを取り直す合図に使う。通知は起動の成功時ではなく、記録の
+/// 完了後に出す。起動の成功時に通知すると、集計列が更新される前に一覧を読み直し、古い並びを
+/// 取得してしまうためである。記録に失敗したときは通知しない。
 export function subscribeLaunchRecorded(listener: () => void): () => void {
   launchRecordedListeners.add(listener);
-  return () => {
-    launchRecordedListeners.delete(listener);
-  };
+  return () => launchRecordedListeners.delete(listener);
 }
 
-/// launch_ghost IPC の唯一の入口。起動成功時に起動履歴を fire-and-forget で記録し、
-/// 記録が成功したら購読者へ通知する（カード・Enter・ランダムの全起動経路がここを通る）。
+/// launch_ghost IPC の唯一の入口（カード・Enter・ランダムの全起動経路がここを通る）。
+/// 起動に成功したら起動履歴を fire-and-forget で記録し、記録の成功を購読者へ通知する。
 export async function launchGhost(sspPath: string, ghost: LaunchTarget): Promise<void> {
   await invoke("launch_ghost", {
     sspPath,

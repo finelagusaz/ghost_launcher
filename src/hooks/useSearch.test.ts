@@ -452,6 +452,27 @@ describe("useSearch", () => {
     expect(result.current.ghosts[0]).toBe(marisa);
   });
 
+  it("並びの更新で取り直した結果が同じなら、一覧を置き換えない", async () => {
+    vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
+    vi.mocked(countGhostsByQuery).mockResolvedValueOnce(5);
+    vi.mocked(searchGhosts).mockResolvedValueOnce([{ ...reimu }, { ...marisa }]);
+
+    const { result, rerender } = renderHook(
+      ({ sortEpoch }) => useSearch("rk1", "", 2, 0, 0, "recent", sortEpoch),
+      { initialProps: { sortEpoch: 0 } }
+    );
+    await waitFor(() => expect(result.current.total).toBe(5));
+    const before = result.current.ghosts;
+
+    rerender({ sortEpoch: 1 });
+    await waitFor(() => {
+      expect(searchGhosts).toHaveBeenCalledTimes(1);
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.ghosts).toBe(before);
+  });
+
   it("並びだけの更新は、表示中のバッファの範囲をそのまま取り直す（offset の窓に縮めない）", async () => {
     // offset 0 → 1 で先読みマージし、バッファは 0..3。その後 offset 1 のまま並びを更新する
     vi.mocked(searchGhostsInitialPage).mockResolvedValueOnce([reimu, marisa]);
