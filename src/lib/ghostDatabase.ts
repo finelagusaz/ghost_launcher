@@ -116,8 +116,9 @@ const GHOST_SEARCH_WHERE = GHOST_SEARCH_WHERE_PREFIXED.replace("g.", "");
 // 読んで search_text を評価するため、search_text 同乗 index を INDEXED BY で明示して
 // index 上で述語を完結させる（10 万体で約 4 倍速い）。index の実在・search_text の所持・
 // 選ばれることは Rust 側テストが共有 fixture（search-sql-shapes.json）経由でスキーマと照合する
+export const GHOST_SEARCH_COUNT_INDEX = "idx_ghosts_request_key_name_search";
 export const GHOST_SEARCH_COUNT_SQL =
-  `SELECT COUNT(*) as count FROM ghosts INDEXED BY idx_ghosts_request_key_name_search WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`;
+  `SELECT COUNT(*) as count FROM ghosts INDEXED BY ${GHOST_SEARCH_COUNT_INDEX} WHERE request_key = ? AND (${GHOST_SEARCH_WHERE})`;
 
 const GHOST_SELECT_COLUMNS_PREFIXED: [MissingGhostViewColumns] extends [never] ? string : never =
   GHOST_VIEW_COLUMNS.map((c) => `g.${c}`).join(", ");

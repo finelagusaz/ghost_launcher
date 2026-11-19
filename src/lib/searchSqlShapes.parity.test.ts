@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import shapes from "../test/fixtures/search-sql-shapes.json";
-import { GHOST_SEARCH_COUNT_SQL, GHOST_SEARCH_WHERE_PREFIXED, buildOrderBy } from "./ghostDatabase";
+import {
+  GHOST_SEARCH_COUNT_INDEX,
+  GHOST_SEARCH_COUNT_SQL,
+  GHOST_SEARCH_WHERE_PREFIXED,
+  buildOrderBy,
+} from "./ghostDatabase";
 
 describe("検索 SQL 形状の言語間パリティ", () => {
   it("検索述語が fixture と一致する", () => {
@@ -9,6 +14,7 @@ describe("検索 SQL 形状の言語間パリティ", () => {
 
   it("検索 COUNT の SQL が fixture と一致する（Rust 側がスキーマ上で index とプランを照合する）", () => {
     expect(GHOST_SEARCH_COUNT_SQL).toBe(shapes.searchCount);
+    expect(GHOST_SEARCH_COUNT_INDEX).toBe(shapes.searchCountIndex);
   });
 
   it("name/recent/frequency の ORDER BY が fixture と一致する", () => {

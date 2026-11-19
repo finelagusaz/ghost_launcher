@@ -121,11 +121,13 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(CACHE_SCHEMA).unwrap();
 
-        let index = sql
-            .split_whitespace()
-            .skip_while(|w| *w != "BY")
-            .nth(1)
-            .expect("INDEXED BY <index> を含む");
+        let index = shapes["searchCountIndex"]
+            .as_str()
+            .expect("searchCountIndex がある");
+        assert!(
+            sql.contains(&format!("INDEXED BY {index} ")),
+            "searchCount が searchCountIndex を明示していない: {sql}"
+        );
         let columns: Vec<String> = conn
             .prepare(&format!("PRAGMA index_info({index})"))
             .unwrap()
