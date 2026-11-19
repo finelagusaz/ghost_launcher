@@ -283,7 +283,9 @@ pub(crate) fn store_ghosts_delta(
 /// 世代の台帳は ghost_fingerprints（世代ごとに 1 行・`store_ghosts_delta` が ghosts と同一
 /// トランザクションで書く）。新しさの基準はその updated_at＝その世代へ最後に書き込んだ時刻で、
 /// ghosts を世代ごとに集計しない（全行ぶんの index 走査と、そのためだけの index を避ける）。
-const CLEANUP_GENERATIONS_SQL: &str = "SELECT request_key, updated_at < datetime('now', ?1) FROM ghost_fingerprints ORDER BY updated_at DESC";
+/// updated_at は秒精度のため、同じ秒に書いた世代の順序を request_key で決める（上限の境界で
+/// どちらを残すかが実行ごとに変わらないように）。
+const CLEANUP_GENERATIONS_SQL: &str = "SELECT request_key, updated_at < datetime('now', ?1) FROM ghost_fingerprints ORDER BY updated_at DESC, request_key";
 
 /// 古い request_key 世代のキャッシュを削除する（JS cleanupOldGhostCaches の移植・設計書 §5.1）。
 /// 保持規則: 最終書込の降順で上位 max_generations（TTL 未超過のもの）+ current は無条件。
@@ -823,7 +825,9 @@ mod tests {
             "ghost_fingerprints を読んでいない: {plan:?}"
         );
         assert!(
-            !plan.iter().any(|d| d.contains(" ghosts")),
+            !plan
+                .iter()
+                .any(|d| d.split_whitespace().any(|w| w == "ghosts")),
             "ghosts を読んでいる: {plan:?}"
         );
     }
@@ -852,6 +856,29 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, 0, "fingerprint と scan_entries が残っている");
+    }
+
+    #[test]
+    fn cleanupは同じ秒に書いた世代を_request_key_順で決定的に残す() {
+        let conn = setup_db();
+        let same_second = days_ago(&conn, 1);
+        for rk in ["rk-c", "rk-a", "rk-b"] {
+            seed_generation(&conn, rk, &same_second);
+        }
+        seed_generation(&conn, "rk-current", &days_ago(&conn, 0));
+
+        // 上限 3 = current + 同秒 3 世代のうち 2 世代。request_key 順で rk-a・rk-b を残す
+        let deleted = cleanup_old_ghost_caches(&conn, "rk-current", 3, 30).unwrap();
+
+        assert_eq!(deleted, 1);
+        assert_eq!(
+            remaining_keys(&conn),
+            vec![
+                "rk-a".to_string(),
+                "rk-b".to_string(),
+                "rk-current".to_string()
+            ]
+        );
     }
 
     #[test]
