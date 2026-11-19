@@ -18,6 +18,8 @@
 
 ## アーキテクチャメモ
 
+**エラーの文言は描画時に組み立てる**: 捕まえたエラーは翻訳済みの文字列でなく `CaughtError`（`{ cause }`、`src/lib/errorMessages.ts`）で state に持ち、描画時に `t()` で文言にする。翻訳済みの文字列を持つと、言語を切り替えても前の言語の文言が残る。
+
 **非同期 singleton の初期化**: 複数のセットアップステップを持つ singleton は、初期化 Promise をキャッシュして並行呼び出しを共有する。エラー時のみ Promise をリセットして再試行可能にする（例: `getDb()` の `dbInitPromise` パターン）。
 
 **循環依存の回避（src/lib/）**: モジュール A が B をインポートし、B も A のエクスポートを必要とする場合、B は A の値（例: `Database` インスタンス）を関数パラメータで受け取り、A の直接インポートを避ける。例: `dbMonitor.ts` の `reportDbSize(db, trigger)` は `getDb()` を内部で呼ばず、呼び出し元から `db` を受け取る。
