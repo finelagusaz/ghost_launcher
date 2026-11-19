@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GhostList } from "./GhostList";
 import type { GhostView } from "../types";
 
@@ -100,5 +100,66 @@ describe("GhostList - 空状態の描き分け", () => {
     expect(screen.getByText("list.empty")).toBeInTheDocument();
     expect(screen.queryByText("list.emptySearch")).not.toBeInTheDocument();
     expect(screen.queryByText("list.clearSearch")).not.toBeInTheDocument();
+  });
+});
+
+describe("GhostList - 先読み判定", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function manyGhosts(count: number): GhostView[] {
+    return Array.from({ length: count }, (_, i) => makeGhost(`G${i}`));
+  }
+
+  it("全件読込済みなら先読みを要求しない（先頭も末尾も、これ以上読むものがない）", () => {
+    const onLoadMore = vi.fn();
+    render(<GhostList {...baseProps} ghosts={manyGhosts(300)} total={300} loading={false} onLoadMore={onLoadMore} />);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it("読込済み範囲が先頭に達していて表示も先頭付近なら、先読みを要求しない", () => {
+    const onLoadMore = vi.fn();
+    render(<GhostList {...baseProps} ghosts={manyGhosts(840)} total={100_000} loading={false} onLoadMore={onLoadMore} />);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it("読込済み範囲の手前に未読込の行があり、表示がその端に近ければ先読みを要求する", () => {
+    const onLoadMore = vi.fn();
+    // 表示は先頭（startIndex=0）、読込済みは 50 以降 → 手前 50 行が未読込
+    render(
+      <GhostList {...baseProps} ghosts={manyGhosts(500)} total={100_000} loadedStart={50} loading={false} onLoadMore={onLoadMore} />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(onLoadMore).toHaveBeenCalledWith(0);
+  });
+
+  it("読込済み範囲の先に未読込の行があり、表示がその端に近ければ先読みを要求する", () => {
+    const onLoadMore = vi.fn();
+    // 読込済みは先頭 90 行のみ。表示範囲の終端が端から 100 行以内に入る
+    render(<GhostList {...baseProps} ghosts={manyGhosts(90)} total={100_000} loading={false} onLoadMore={onLoadMore} />);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(onLoadMore).toHaveBeenCalledWith(0);
   });
 });
