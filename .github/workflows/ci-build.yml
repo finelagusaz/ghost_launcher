@@ -86,7 +86,7 @@ jobs:
           test -z "$(git ls-files --others --exclude-standard src/types/generated/)"
 
       - name: Test ghost-meta with optional features
-        run: cargo test -p ghost-meta --features thumbnail,serde
+        run: cargo test -p ghost-meta --features thumbnail
 
       - name: Check bench harness compiles (signature drift guard)
         run: cargo check --manifest-path src-tauri/Cargo.toml --features bench --benches

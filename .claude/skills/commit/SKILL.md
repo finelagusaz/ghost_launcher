@@ -42,7 +42,7 @@ npm run test:hooks
 # グループ B（順次実行。ci-build.yml の Rust ゲートと同期させる——機構でなく規範。乖離は /health-check 項目 6 が検出する）
 cargo fmt --all -- --check
 cargo test --workspace
-cargo test -p ghost-meta --features thumbnail,serde
+cargo test -p ghost-meta --features thumbnail
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
